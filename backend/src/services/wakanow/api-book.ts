@@ -215,7 +215,16 @@ async function finalizeBookingViaBrowser(
     const listingsUrl = deeplink ?? `https://www.wakanow.com/en-ng/flights/search?searchKey=${searchKey}`;
     console.log(`[api-book] Browser: loading listings → ${listingsUrl.slice(0, 100)}...`);
     await page.goto(listingsUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await page.locator("div.flight-fare-detail-wrap").first().waitFor({ state: "visible", timeout: 60_000 });
+    console.log(`[api-book] Browser: page loaded, URL: ${page.url()}`);
+    const pageTitle = await page.title().catch(() => "");
+    console.log(`[api-book] Browser: page title: "${pageTitle}"`);
+    try {
+      await page.locator("div.flight-fare-detail-wrap").first().waitFor({ state: "visible", timeout: 60_000 });
+    } catch {
+      const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 500) ?? "").catch(() => "");
+      console.log(`[api-book] Browser: page text: ${bodyText}`);
+      throw new Error("Flight listings did not load. Page may be blocked or showing captcha.");
+    }
     await page.waitForTimeout(3_000);
 
     // Step 2: Click "Book Now" on the first flight
