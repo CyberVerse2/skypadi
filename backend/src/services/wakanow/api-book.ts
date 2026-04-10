@@ -1,6 +1,6 @@
 import { env } from "../../config.js";
 import type { Passenger } from "../../schemas/flight-booking.js";
-import { chromium, type Browser } from "playwright";
+import { chromium, type Browser, type BrowserContext } from "playwright";
 
 const USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
@@ -141,10 +141,19 @@ let sharedBrowser: Browser | null = null;
 
 async function getBrowser(): Promise<Browser> {
   if (sharedBrowser?.isConnected()) return sharedBrowser;
-  sharedBrowser = await chromium.launch({
+  const launchOpts: any = {
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-http2", "--disable-blink-features=AutomationControlled"]
-  });
+  };
+  if (env.PROXY_URL) {
+    const url = new URL(env.PROXY_URL);
+    launchOpts.proxy = {
+      server: `${url.protocol}//${url.hostname}:${url.port}`,
+      username: url.username,
+      password: url.password
+    };
+  }
+  sharedBrowser = await chromium.launch(launchOpts);
   return sharedBrowser;
 }
 
