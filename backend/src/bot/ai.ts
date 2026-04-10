@@ -130,27 +130,34 @@ export async function handleMessage(
           returnDate: z.string().optional().describe("Return date for round trips")
         }),
         execute: async ({ origin, destination, departureDate, returnDate }) => {
-          const result = await searchFlightsApi({
-            origin,
-            destination,
-            departureDate,
-            returnDate,
-            maxResults: 10
-          });
-          newSearchResults = result.results;
-          didNewSearch = true;
-          return {
-            count: result.resultCount,
-            flights: result.results.map((f, i) => ({
-              index: i + 1,
-              airline: f.airline,
-              departure: f.departureTime,
-              arrival: f.arrivalTime,
-              duration: f.duration,
-              stops: f.stops,
-              price: f.priceText
-            }))
-          };
+          console.log(`[searchFlights] ${origin} → ${destination} on ${departureDate}`);
+          try {
+            const result = await searchFlightsApi({
+              origin,
+              destination,
+              departureDate,
+              returnDate,
+              maxResults: 10
+            });
+            console.log(`[searchFlights] Found ${result.resultCount} flights`);
+            newSearchResults = result.results;
+            didNewSearch = true;
+            return {
+              count: result.resultCount,
+              flights: result.results.map((f, i) => ({
+                index: i + 1,
+                airline: f.airline,
+                departure: f.departureTime,
+                arrival: f.arrivalTime,
+                duration: f.duration,
+                stops: f.stops,
+                price: f.priceText
+              }))
+            };
+          } catch (e: any) {
+            console.error(`[searchFlights] Failed: ${e.message}`);
+            return { error: `Flight search failed: ${e.message}` };
+          }
         }
       },
       searchFlightsMultiDay: {
