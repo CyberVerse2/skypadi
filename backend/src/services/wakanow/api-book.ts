@@ -66,6 +66,7 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
     console.log(`[api-book] Browser flow complete. BookingId: ${bookingId}, ${bankTransfers.length} bank account(s), ₦${totalPrice.toLocaleString()}`);
   } catch (e: any) {
     console.log(`[api-book] Browser flow failed: ${e.message}`);
+    console.log(`[api-book] Stack: ${e.stack}`);
     throw new WakanowApiBookingError(`Booking failed: ${e.message}`);
   }
 
@@ -142,7 +143,7 @@ async function getBrowser(): Promise<Browser> {
   if (sharedBrowser?.isConnected()) return sharedBrowser;
   sharedBrowser = await chromium.launch({
     headless: true,
-    args: ["--disable-http2", "--disable-blink-features=AutomationControlled"]
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-http2", "--disable-blink-features=AutomationControlled"]
   });
   return sharedBrowser;
 }
