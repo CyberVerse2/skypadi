@@ -17,7 +17,8 @@ const envSchema = z.object({
     .transform((value) => value !== "false")
     .default("true"),
   WAKANOW_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
-  WAKANOW_MAX_RESULTS: z.coerce.number().int().positive().default(10)
+  WAKANOW_MAX_RESULTS: z.coerce.number().int().positive().default(10),
+  PROXY_URL: z.string().optional()
 });
 
 export const env = envSchema.parse(process.env);

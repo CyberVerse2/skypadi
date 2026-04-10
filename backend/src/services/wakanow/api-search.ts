@@ -4,11 +4,21 @@ import type {
   FlightSearchResponse,
   FlightSearchResult
 } from "../../schemas/flight-search.js";
+import { ProxyAgent, fetch as undiciFetch } from "undici";
 
 const FLIGHTS_API_BASE = "https://flights.wakanow.com/api/flights";
 const POLL_INTERVAL_MS = 1_500;
 const MAX_POLLS = 6;
 const FETCH_TIMEOUT_MS = 15_000;
+
+const proxyAgent = env.PROXY_URL ? new ProxyAgent(env.PROXY_URL) : undefined;
+
+function proxyFetch(url: string, opts: any = {}): Promise<Response> {
+  if (proxyAgent) {
+    return undiciFetch(url, { ...opts, dispatcher: proxyAgent }) as any;
+  }
+  return fetch(url, opts);
+}
 
 const AIRPORT_CODES: Record<string, { code: string; description: string; city: string; country: string }> = {
   lagos: { code: "LOS", description: "Murtala Muhammed International Airport (LOS)", city: "Lagos", country: "Nigeria" },
@@ -98,7 +108,7 @@ export async function searchFlightsApi(
   };
 
   // Step 1: Create search → get request key
-  const searchRes = await fetch(`${FLIGHTS_API_BASE}/Search`, {
+  const searchRes = await proxyFetch(`${FLIGHTS_API_BASE}/Search`, {
     method: "POST",
     headers: COMMON_HEADERS,
     body: JSON.stringify(searchBody),
@@ -120,7 +130,7 @@ export async function searchFlightsApi(
   let apiData: WakanowApiResponse | null = null;
 
   for (let attempt = 1; attempt <= MAX_POLLS; attempt++) {
-    const res = await fetch(
+    const res = await proxyFetch(
       `${FLIGHTS_API_BASE}/SearchV2/${requestKey}/${currency}`,
       { headers: COMMON_HEADERS, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }
     );
