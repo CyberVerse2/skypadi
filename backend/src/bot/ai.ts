@@ -155,7 +155,7 @@ export async function handleMessage(
               }))
             };
           } catch (e: any) {
-            console.error(`[searchFlights] Failed: ${e.message}`);
+            console.error(`[searchFlights] Failed: ${e.message}`, e.cause ?? "");
             return { error: `Flight search failed: ${e.message}` };
           }
         }
