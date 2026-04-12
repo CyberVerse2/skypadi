@@ -182,7 +182,8 @@ async function finalizeBookingViaBrowser(
   const context = await browser.newContext({
     locale: "en-NG",
     timezoneId: "Africa/Lagos",
-    userAgent: USER_AGENT
+    userAgent: USER_AGENT,
+    viewport: { width: 1440, height: 900 }
   });
 
   let bankTransfers: BankTransferDetails[] = [];
@@ -269,31 +270,44 @@ async function finalizeBookingViaBrowser(
     ).catch(() => []);
     console.log(`[api-book] Browser: card buttons: ${JSON.stringify(cardButtons)}`);
 
-    console.log(`[api-book] Browser: clicking Book Now...`);
-    // Try multiple selectors for "Book Now"
-    const bookNowSelectors = [
-      "div.flight-fare-detail-wrap >> text=Book Now",
-      "button:has-text('Book Now')",
-      "a:has-text('Book Now')",
-      "text=/book\\s*now/i"
-    ];
-    let clicked = false;
-    for (const sel of bookNowSelectors) {
-      const btn = page.locator(sel).first();
-      if (await btn.count()) {
-        console.log(`[api-book] Browser: clicking via selector: ${sel}`);
-        await btn.click({ timeout: 30_000 });
-        clicked = true;
-        break;
+    // Log all API calls after clicking Book Now to see if Select API fires
+    const postClickResponses: string[] = [];
+    const networkLogger = (res: any) => {
+      const url = res.url();
+      const req = res.request();
+      const rtype = req.resourceType();
+      if ((rtype === "xhr" || rtype === "fetch") && url.includes("wakanow.com")) {
+        postClickResponses.push(`${req.method()} ${url.split("?")[0].slice(-80)} → ${res.status()}`);
       }
-    }
-    if (!clicked) {
-      console.log(`[api-book] Browser: no Book Now button found with any selector`);
+    };
+    page.on("response", networkLogger);
+
+    console.log(`[api-book] Browser: clicking Book Now...`);
+    // Click the visible desktop "Book Now" button (d-none d-md-block)
+    const desktopBookNow = page.locator("div.flight-fare-detail-wrap").first()
+      .locator("button.box-button:not(.d-md-none)").first();
+    if (await desktopBookNow.isVisible().catch(() => false)) {
+      console.log(`[api-book] Browser: clicking desktop Book Now button`);
+      await desktopBookNow.click({ timeout: 30_000 });
+    } else {
+      // Fallback: click any visible "Book Now" via JS
+      console.log(`[api-book] Browser: desktop button not visible, using JS click`);
+      await page.evaluate(() => {
+        const buttons = document.querySelectorAll("button.box-button");
+        for (const btn of buttons) {
+          if ((btn as HTMLElement).offsetParent !== null && btn.textContent?.includes("Book Now")) {
+            (btn as HTMLElement).click();
+            return;
+          }
+        }
+      });
     }
 
-    // Wait a moment and check what happened
-    await page.waitForTimeout(5_000);
+    // Wait and log network activity
+    await page.waitForTimeout(10_000);
     console.log(`[api-book] Browser: URL after Book Now click: ${page.url()}`);
+    console.log(`[api-book] Browser: API calls after click: ${JSON.stringify(postClickResponses)}`);
+    page.off("response", networkLogger);
 
     // Check for any popup/modal that might have appeared
     const modalText = await page.evaluate(() => {
@@ -302,6 +316,18 @@ async function finalizeBookingViaBrowser(
     }).catch(() => null);
     if (modalText) {
       console.log(`[api-book] Browser: modal detected: ${modalText}`);
+    }
+
+    // Check for loading spinner or overlay
+    const hasOverlay = await page.evaluate(() => {
+      const overlay = document.querySelector(".loading, .spinner, .overlay, .loader, [class*='loading'], [class*='spinner']");
+      return overlay ? { class: overlay.className, visible: (overlay as HTMLElement).offsetParent !== null } : null;
+    }).catch(() => null);
+    if (hasOverlay) {
+      console.log(`[api-book] Browser: loading overlay detected: ${JSON.stringify(hasOverlay)}`);
+      // Wait longer for it to resolve
+      await page.waitForTimeout(15_000);
+      console.log(`[api-book] Browser: URL after waiting for overlay: ${page.url()}`);
     }
 
     // Capture debug screenshot after clicking Book Now
