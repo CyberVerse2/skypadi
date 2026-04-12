@@ -228,8 +228,53 @@ async function finalizeBookingViaBrowser(
     await page.waitForTimeout(3_000);
 
     // Step 2: Click "Book Now" on the first flight
+    const flightCards = await page.locator("div.flight-fare-detail-wrap").count();
+    console.log(`[api-book] Browser: found ${flightCards} flight card(s)`);
+
+    // Log all visible buttons in the first card for debugging
+    const cardButtons = await page.locator("div.flight-fare-detail-wrap").first().locator("button, a").evaluateAll(
+      els => els.map(el => ({ tag: el.tagName, text: (el as HTMLElement).innerText?.trim().slice(0, 40), class: el.className.slice(0, 60) }))
+    ).catch(() => []);
+    console.log(`[api-book] Browser: card buttons: ${JSON.stringify(cardButtons)}`);
+
     console.log(`[api-book] Browser: clicking Book Now...`);
-    await page.locator("div.flight-fare-detail-wrap").first().locator("text=Book Now").first().click({ timeout: 5_000 });
+    // Try multiple selectors for "Book Now"
+    const bookNowSelectors = [
+      "div.flight-fare-detail-wrap >> text=Book Now",
+      "button:has-text('Book Now')",
+      "a:has-text('Book Now')",
+      "text=/book\\s*now/i"
+    ];
+    let clicked = false;
+    for (const sel of bookNowSelectors) {
+      const btn = page.locator(sel).first();
+      if (await btn.count()) {
+        console.log(`[api-book] Browser: clicking via selector: ${sel}`);
+        await btn.click({ timeout: 5_000 });
+        clicked = true;
+        break;
+      }
+    }
+    if (!clicked) {
+      console.log(`[api-book] Browser: no Book Now button found with any selector`);
+    }
+
+    // Wait a moment and check what happened
+    await page.waitForTimeout(5_000);
+    console.log(`[api-book] Browser: URL after Book Now click: ${page.url()}`);
+
+    // Check for any popup/modal that might have appeared
+    const modalText = await page.evaluate(() => {
+      const modal = document.querySelector(".modal, .modal-content, ngb-modal-window, .swal2-container, .popup, [role='dialog']");
+      return modal ? (modal as HTMLElement).innerText?.slice(0, 300) : null;
+    }).catch(() => null);
+    if (modalText) {
+      console.log(`[api-book] Browser: modal detected: ${modalText}`);
+    }
+
+    // Take a debug screenshot after clicking Book Now
+    await page.screenshot({ path: "/tmp/skypadi-debug-after-booknow.png", fullPage: true }).catch(() => {});
+    console.log(`[api-book] Browser: debug screenshot → /tmp/skypadi-debug-after-booknow.png`);
 
     // Step 3: Wait for customer-info page
     console.log(`[api-book] Browser: waiting for customer-info page...`);
@@ -237,6 +282,9 @@ async function finalizeBookingViaBrowser(
       await page.waitForURL(/\/booking\/.*\/customer-info/i, { timeout: 60_000 });
     } catch {
       console.log(`[api-book] Browser: customer-info page not reached. Current URL: ${page.url()}`);
+      // Capture page text for debugging
+      const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 500) ?? "").catch(() => "");
+      console.log(`[api-book] Browser: page text: ${bodyText}`);
       throw new Error(`Failed to reach customer-info page. URL: ${page.url()}`);
     }
     await page.waitForTimeout(5_000);
