@@ -11,12 +11,10 @@ const POLL_INTERVAL_MS = 1_500;
 const MAX_POLLS = 6;
 const FETCH_TIMEOUT_MS = 15_000;
 
-const proxyAgent = env.PROXY_URL ? new ProxyAgent(env.PROXY_URL) : undefined;
+// Proxy disabled for now
+// const proxyAgent = env.PROXY_URL ? new ProxyAgent(env.PROXY_URL) : undefined;
 
 function proxyFetch(url: string, opts: any = {}): Promise<Response> {
-  if (proxyAgent) {
-    return undiciFetch(url, { ...opts, dispatcher: proxyAgent }) as any;
-  }
   return fetch(url, opts);
 }
 

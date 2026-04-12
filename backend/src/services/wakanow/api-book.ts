@@ -145,14 +145,15 @@ async function getBrowser(): Promise<Browser> {
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-http2", "--disable-blink-features=AutomationControlled"]
   };
-  if (env.PROXY_URL) {
-    const url = new URL(env.PROXY_URL);
-    launchOpts.proxy = {
-      server: `${url.protocol}//${url.hostname}:${url.port}`,
-      username: url.username,
-      password: url.password
-    };
-  }
+  // Proxy disabled for now
+  // if (env.PROXY_URL) {
+  //   const url = new URL(env.PROXY_URL);
+  //   launchOpts.proxy = {
+  //     server: `${url.protocol}//${url.hostname}:${url.port}`,
+  //     username: url.username,
+  //     password: url.password
+  //   };
+  // }
   sharedBrowser = await chromium.launch(launchOpts);
   return sharedBrowser;
 }
