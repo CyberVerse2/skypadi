@@ -140,7 +140,10 @@ function parseBankTransfers(paymentModel: any): BankTransferDetails[] {
 let sharedBrowser: Browser | null = null;
 
 async function getBrowser(): Promise<Browser> {
-  if (sharedBrowser?.isConnected()) return sharedBrowser;
+  if (sharedBrowser?.isConnected()) {
+    console.log(`[api-book] Browser: reusing existing browser instance`);
+    return sharedBrowser;
+  }
   const launchOpts: any = {
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-http2", "--disable-blink-features=AutomationControlled"]
@@ -152,6 +155,9 @@ async function getBrowser(): Promise<Browser> {
       username: url.username,
       password: url.password
     };
+    console.log(`[api-book] Browser: launching with proxy → ${url.hostname}:${url.port}`);
+  } else {
+    console.log(`[api-book] Browser: launching WITHOUT proxy (PROXY_URL not set)`);
   }
   sharedBrowser = await chromium.launch(launchOpts);
   return sharedBrowser;
