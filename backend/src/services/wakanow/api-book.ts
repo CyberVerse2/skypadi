@@ -220,7 +220,17 @@ async function finalizeBookingViaBrowser(
     // Step 1: Navigate to flight listings (the deeplink from search)
     const listingsUrl = deeplink ?? `https://www.wakanow.com/en-ng/flights/search?searchKey=${searchKey}`;
     console.log(`[api-book] Browser: loading listings → ${listingsUrl.slice(0, 100)}...`);
-    await page.goto(listingsUrl, { waitUntil: "domcontentloaded", timeout: 120_000 });
+    const MAX_GOTO_RETRIES = 3;
+    for (let attempt = 1; attempt <= MAX_GOTO_RETRIES; attempt++) {
+      try {
+        await page.goto(listingsUrl, { waitUntil: "domcontentloaded", timeout: 120_000 });
+        break;
+      } catch (e: any) {
+        console.log(`[api-book] Browser: page.goto attempt ${attempt}/${MAX_GOTO_RETRIES} failed: ${e.message.split("\n")[0]}`);
+        if (attempt === MAX_GOTO_RETRIES) throw e;
+        await page.waitForTimeout(3_000);
+      }
+    }
     console.log(`[api-book] Browser: page loaded, URL: ${page.url()}`);
     const pageTitle = await page.title().catch(() => "");
     console.log(`[api-book] Browser: page title: "${pageTitle}"`);
