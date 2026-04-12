@@ -4,7 +4,7 @@ import { z } from "zod";
 import { searchFlightsApi } from "../services/wakanow/api-search.js";
 import { bookFlightApi } from "../services/wakanow/api-book.js";
 import type { FlightSearchResult } from "../schemas/flight-search.js";
-import type { PassengerProfile } from "./session.js";
+import type { PassengerProfile, LastSearchRequest } from "./session.js";
 
 type Message = { role: "user" | "assistant" | "system"; content: string };
 
@@ -67,7 +67,8 @@ export async function handleMessage(
   searchResults: FlightSearchResult[] | undefined,
   selectedFlightIndex: number | undefined,
   profile: PassengerProfile | undefined,
-  onboarding: boolean
+  onboarding: boolean,
+  lastSearchRequest?: LastSearchRequest
 ): Promise<{
   reply: string;
   updatedHistory: Message[];
@@ -75,6 +76,7 @@ export async function handleMessage(
   selectedFlightIndex?: number;
   newSearch?: boolean;
   profile?: PassengerProfile;
+  lastSearchRequest?: LastSearchRequest;
   paymentUrl?: string;
   bankTransfers?: import("../services/wakanow/api-book.js").BankTransferDetails[];
 }> {
@@ -99,6 +101,7 @@ export async function handleMessage(
   let savedProfile: PassengerProfile | undefined;
   let paymentUrl: string | undefined;
   let bankTransfers: import("../services/wakanow/api-book.js").BankTransferDetails[] | undefined;
+  let newLastSearchRequest = lastSearchRequest;
 
   const result = await generateText({
     model: openai.chat("gpt-5.4-mini"),
@@ -142,6 +145,7 @@ export async function handleMessage(
             console.log(`[searchFlights] Found ${result.resultCount} flights`);
             newSearchResults = result.results;
             didNewSearch = true;
+            newLastSearchRequest = { origin, destination, departureDate, returnDate, searchedAt: Date.now() };
             return {
               count: result.resultCount,
               flights: result.results.map((f, i) => ({
@@ -237,6 +241,41 @@ export async function handleMessage(
             return { error: "Flight missing booking data. Try searching again." };
           }
 
+          // Re-search if results are older than 5 minutes to get a fresh deeplink
+          const STALE_MS = 5 * 60 * 1000;
+          if (newLastSearchRequest && (Date.now() - newLastSearchRequest.searchedAt) > STALE_MS) {
+            console.log(`[bookFlight] Search results are stale (${Math.round((Date.now() - newLastSearchRequest.searchedAt) / 1000)}s old), re-searching...`);
+            try {
+              const freshResult = await searchFlightsApi({
+                origin: newLastSearchRequest.origin,
+                destination: newLastSearchRequest.destination,
+                departureDate: newLastSearchRequest.departureDate,
+                returnDate: newLastSearchRequest.returnDate,
+                maxResults: 10
+              });
+              console.log(`[bookFlight] Re-search found ${freshResult.resultCount} flights`);
+              newSearchResults = freshResult.results;
+              newLastSearchRequest = { ...newLastSearchRequest, searchedAt: Date.now() };
+              // Find the same flight in fresh results by airline + time
+              const freshIdx = newSearchResults.findIndex(f =>
+                f.airline === flight.airline && f.departureTime === flight.departureTime && f.arrivalTime === flight.arrivalTime
+              );
+              if (freshIdx === -1) {
+                return { error: "Flight no longer available after refreshing. Try searching again." };
+              }
+              const freshFlight = newSearchResults[freshIdx];
+              if (!freshFlight.flightId || !freshFlight.searchKey) {
+                return { error: "Fresh flight missing booking data. Try searching again." };
+              }
+              // Use fresh flight data
+              Object.assign(flight, freshFlight);
+              newSelectedIndex = freshIdx;
+              didNewSearch = true;
+            } catch (e: any) {
+              console.log(`[bookFlight] Re-search failed: ${e.message}, proceeding with stale data`);
+            }
+          }
+
           console.log(`[bookFlight] Booking flight ${flightIndex}: ${flight.airline} via API`);
 
           const bookResult = await bookFlightApi({
@@ -301,6 +340,7 @@ export async function handleMessage(
     newSearch: didNewSearch,
     profile: savedProfile,
     paymentUrl,
-    bankTransfers
+    bankTransfers,
+    lastSearchRequest: newLastSearchRequest
   };
 }

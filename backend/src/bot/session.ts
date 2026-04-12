@@ -13,6 +13,14 @@ export type PassengerProfile = {
   email: string;
 };
 
+export type LastSearchRequest = {
+  origin: string;
+  destination: string;
+  departureDate: string;
+  returnDate?: string;
+  searchedAt: number; // Date.now()
+};
+
 export type SessionData = {
   history: Message[];
   searchResults?: FlightSearchResult[];
@@ -20,6 +28,7 @@ export type SessionData = {
   processing: boolean;
   profile?: PassengerProfile;
   onboarding: boolean; // true = currently collecting profile
+  lastSearchRequest?: LastSearchRequest;
 };
 
 export function defaultSession(): SessionData {

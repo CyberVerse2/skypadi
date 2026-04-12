@@ -154,12 +154,14 @@ async function runAI(ctx: BotContext, userText: string) {
       ctx.session.searchResults,
       ctx.session.selectedFlightIndex,
       ctx.session.profile,
-      ctx.session.onboarding
+      ctx.session.onboarding,
+      ctx.session.lastSearchRequest
     );
 
     ctx.session.history = result.updatedHistory;
     if (result.searchResults) ctx.session.searchResults = result.searchResults;
     if (result.selectedFlightIndex !== undefined) ctx.session.selectedFlightIndex = result.selectedFlightIndex;
+    if (result.lastSearchRequest) ctx.session.lastSearchRequest = result.lastSearchRequest;
     if (result.profile) {
       ctx.session.profile = result.profile;
       ctx.session.onboarding = false;
