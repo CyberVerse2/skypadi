@@ -220,12 +220,21 @@ async function finalizeBookingViaBrowser(
     // Step 1: Navigate to flight listings (the deeplink from search)
     const listingsUrl = deeplink ?? `https://www.wakanow.com/en-ng/flights/search?searchKey=${searchKey}`;
     console.log(`[api-book] Browser: loading listings → ${listingsUrl.slice(0, 100)}...`);
-    await page.goto(listingsUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await page.goto(listingsUrl, { waitUntil: "domcontentloaded", timeout: 120_000 });
     console.log(`[api-book] Browser: page loaded, URL: ${page.url()}`);
     const pageTitle = await page.title().catch(() => "");
     console.log(`[api-book] Browser: page title: "${pageTitle}"`);
+
+    // Dismiss cookie consent banner if present
+    const cookieBtn = page.locator("text=/yes,?\\s*i\\s*agree/i").first();
+    if (await cookieBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      console.log(`[api-book] Browser: dismissing cookie consent...`);
+      await cookieBtn.click({ timeout: 30_000 });
+      await page.waitForTimeout(1_000);
+    }
+
     try {
-      await page.locator("div.flight-fare-detail-wrap").first().waitFor({ state: "visible", timeout: 60_000 });
+      await page.locator("div.flight-fare-detail-wrap").first().waitFor({ state: "visible", timeout: 120_000 });
     } catch {
       const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 500) ?? "").catch(() => "");
       console.log(`[api-book] Browser: page text: ${bodyText}`);
@@ -256,7 +265,7 @@ async function finalizeBookingViaBrowser(
       const btn = page.locator(sel).first();
       if (await btn.count()) {
         console.log(`[api-book] Browser: clicking via selector: ${sel}`);
-        await btn.click({ timeout: 5_000 });
+        await btn.click({ timeout: 30_000 });
         clicked = true;
         break;
       }
@@ -285,7 +294,7 @@ async function finalizeBookingViaBrowser(
     // Step 3: Wait for customer-info page
     console.log(`[api-book] Browser: waiting for customer-info page...`);
     try {
-      await page.waitForURL(/\/booking\/.*\/customer-info/i, { timeout: 60_000 });
+      await page.waitForURL(/\/booking\/.*\/customer-info/i, { timeout: 120_000 });
     } catch {
       console.log(`[api-book] Browser: customer-info page not reached. Current URL: ${page.url()}`);
       // Capture page text for debugging
@@ -316,10 +325,10 @@ async function finalizeBookingViaBrowser(
     const dobContainer = page.locator("input[placeholder='yyyy-mm-dd']").first().locator("..");
     const calButton = dobContainer.locator("button:has(.fa-calendar), button.btn-outline-dark").first();
     if (await calButton.count()) {
-      await calButton.click({ timeout: 3_000 });
+      await calButton.click({ timeout: 30_000 });
       console.log(`[api-book] Browser: clicked calendar button`);
     } else {
-      await dobInput.click({ timeout: 3_000 }).catch(() => {});
+      await dobInput.click({ timeout: 30_000 }).catch(() => {});
       console.log(`[api-book] Browser: clicked DOB input directly`);
     }
     await page.waitForTimeout(1_500);
@@ -350,7 +359,7 @@ async function finalizeBookingViaBrowser(
 
     if (!(await fillDatepicker())) {
       console.log(`[api-book] Browser: datepicker not open, retrying...`);
-      await dobInput.click({ timeout: 3_000 }).catch(() => {});
+      await dobInput.click({ timeout: 30_000 }).catch(() => {});
       await page.waitForTimeout(1_000);
       await fillDatepicker();
     }
@@ -368,7 +377,7 @@ async function finalizeBookingViaBrowser(
 
     // Gender
     const genderId = passenger.gender === "Male" ? "#Male0" : "#Female0";
-    await page.locator(genderId).click({ timeout: 3_000 }).catch(async () => {
+    await page.locator(genderId).click({ timeout: 30_000 }).catch(async () => {
       await page.evaluate((id) => (document.querySelector(id) as HTMLElement)?.click(), genderId);
     });
     console.log(`[api-book] Browser: clicked gender ${passenger.gender}`);
@@ -404,10 +413,10 @@ async function finalizeBookingViaBrowser(
     console.log(`[api-book] Browser: submitting form...`);
     const cb = page.locator("#acceptTermsAndCondition");
     if (!(await cb.isChecked().catch(() => false))) {
-      await cb.click({ timeout: 2_000 }).catch(() => cb.evaluate(el => (el as any).click())).catch(() => {});
+      await cb.click({ timeout: 30_000 }).catch(() => cb.evaluate(el => (el as any).click())).catch(() => {});
     }
     await page.waitForTimeout(500);
-    await page.locator("button:has-text('Continue'), a:has-text('Continue')").first().click({ timeout: 5_000 });
+    await page.locator("button:has-text('Continue'), a:has-text('Continue')").first().click({ timeout: 30_000 });
 
     // Step 6: Handle any popups/modals and wait for navigation
     console.log(`[api-book] Browser: waiting for page change...`);
@@ -434,11 +443,11 @@ async function finalizeBookingViaBrowser(
       const closeBtn = page.locator("button.float-end:has-text('×'), button:has-text('×')").first();
       if (await closeBtn.count()) {
         console.log(`[api-book] Browser: closing popup via × button...`);
-        await closeBtn.click({ timeout: 3_000 }).catch(() => {});
+        await closeBtn.click({ timeout: 30_000 }).catch(() => {});
         await page.waitForTimeout(2_000);
         // After closing popup, re-click Continue to submit the form
         console.log(`[api-book] Browser: re-submitting after popup dismiss...`);
-        await page.locator("button.box-button:has-text('Continue')").first().click({ timeout: 5_000 }).catch(() => {});
+        await page.locator("button.box-button:has-text('Continue')").first().click({ timeout: 30_000 }).catch(() => {});
         await page.waitForTimeout(3_000);
       }
 
@@ -453,7 +462,7 @@ async function finalizeBookingViaBrowser(
         const btn = page.locator(selector).first();
         if (await btn.count()) {
           console.log(`[api-book] Browser: clicking popup button: ${selector}`);
-          await btn.click({ timeout: 3_000 }).catch(() => {});
+          await btn.click({ timeout: 30_000 }).catch(() => {});
           await page.waitForTimeout(3_000);
           break;
         }
@@ -462,13 +471,13 @@ async function finalizeBookingViaBrowser(
       // If still on customer-info, the main Continue might not have submitted — re-click it
       if (page.url().includes("/customer-info")) {
         console.log(`[api-book] Browser: re-clicking Continue...`);
-        await page.locator("button.box-button:has-text('Continue')").first().click({ timeout: 5_000 }).catch(() => {});
+        await page.locator("button.box-button:has-text('Continue')").first().click({ timeout: 30_000 }).catch(() => {});
         await page.waitForTimeout(3_000);
       }
     }
 
     // Wait for URL to change away from customer-info
-    await page.waitForURL(url => !url.toString().includes("/customer-info"), { timeout: 20_000 })
+    await page.waitForURL(url => !url.toString().includes("/customer-info"), { timeout: 120_000 })
       .catch(() => console.log(`[api-book] Browser: still on customer-info after 20s`));
     await page.waitForTimeout(3_000);
     console.log(`[api-book] Browser: URL after submit: ${page.url()}`);
@@ -478,7 +487,7 @@ async function finalizeBookingViaBrowser(
       console.log(`[api-book] Browser: clicking Pay Now...`);
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
       await page.waitForTimeout(2_000);
-      await page.locator("text=/pay\\s*now/i").first().click({ timeout: 5_000 });
+      await page.locator("text=/pay\\s*now/i").first().click({ timeout: 30_000 });
     }
 
     // Step 8: Wait for payment page
@@ -490,7 +499,7 @@ async function finalizeBookingViaBrowser(
     console.log(`[api-book] Browser: clicking Bank Transfer...`);
     const bankBtn = page.locator("text=/bank.?transfer/i").first();
     if (await bankBtn.count()) {
-      await bankBtn.click({ timeout: 5_000 });
+      await bankBtn.click({ timeout: 30_000 });
       await page.waitForTimeout(3_000);
       console.log(`[api-book] Browser: clicked Bank Transfer`);
     }
@@ -499,7 +508,7 @@ async function finalizeBookingViaBrowser(
     console.log(`[api-book] Browser: clicking Continue to see bank details...`);
     const continueBtn = page.locator("text=/continue.*bank.*transfer.*details/i").first();
     if (await continueBtn.count()) {
-      await continueBtn.click({ timeout: 5_000 });
+      await continueBtn.click({ timeout: 30_000 });
       console.log(`[api-book] Browser: clicked Continue — waiting for PNR + payment...`);
       await page.waitForTimeout(12_000);
 
