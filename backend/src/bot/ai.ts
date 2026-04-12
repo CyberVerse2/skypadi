@@ -79,6 +79,7 @@ export async function handleMessage(
   lastSearchRequest?: LastSearchRequest;
   paymentUrl?: string;
   bankTransfers?: import("../services/wakanow/api-book.js").BankTransferDetails[];
+  debugScreenshots?: Buffer[];
 }> {
   let systemContent = buildSystemPrompt(profile, onboarding);
 
@@ -102,6 +103,7 @@ export async function handleMessage(
   let paymentUrl: string | undefined;
   let bankTransfers: import("../services/wakanow/api-book.js").BankTransferDetails[] | undefined;
   let newLastSearchRequest = lastSearchRequest;
+  let debugScreenshots: Buffer[] | undefined;
 
   const result = await generateText({
     model: openai.chat("gpt-5.4-mini"),
@@ -278,22 +280,28 @@ export async function handleMessage(
 
           console.log(`[bookFlight] Booking flight ${flightIndex}: ${flight.airline} via API`);
 
-          const bookResult = await bookFlightApi({
-            searchKey: flight.searchKey,
-            flightId: flight.flightId,
-            deeplink: flight.deeplink,
-            passenger: {
-              title: p.title as "Mr" | "Ms" | "Mrs" | "Miss" | "Dr",
-              firstName: p.firstName,
-              lastName: p.lastName,
-              middleName: p.middleName,
-              dateOfBirth: p.dateOfBirth,
-              nationality: "Nigerian",
-              gender: p.gender as "Male" | "Female",
-              phone: p.phone,
-              email: p.email
-            }
-          });
+          let bookResult;
+          try {
+            bookResult = await bookFlightApi({
+              searchKey: flight.searchKey,
+              flightId: flight.flightId,
+              deeplink: flight.deeplink,
+              passenger: {
+                title: p.title as "Mr" | "Ms" | "Mrs" | "Miss" | "Dr",
+                firstName: p.firstName,
+                lastName: p.lastName,
+                middleName: p.middleName,
+                dateOfBirth: p.dateOfBirth,
+                nationality: "Nigerian",
+                gender: p.gender as "Male" | "Female",
+                phone: p.phone,
+                email: p.email
+              }
+            });
+          } catch (bookErr: any) {
+            if (bookErr.screenshots?.length) debugScreenshots = bookErr.screenshots;
+            return { error: `Booking failed: ${bookErr.message}` };
+          }
 
           paymentUrl = bookResult.paymentUrl;
           bankTransfers = bookResult.bankTransfers;
@@ -341,6 +349,7 @@ export async function handleMessage(
     profile: savedProfile,
     paymentUrl,
     bankTransfers,
-    lastSearchRequest: newLastSearchRequest
+    lastSearchRequest: newLastSearchRequest,
+    debugScreenshots
   };
 }

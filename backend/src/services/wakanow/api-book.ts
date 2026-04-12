@@ -6,10 +6,12 @@ const USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/
 
 export class WakanowApiBookingError extends Error {
   details?: Record<string, unknown>;
-  constructor(message: string, details?: Record<string, unknown>) {
+  screenshots?: Buffer[];
+  constructor(message: string, details?: Record<string, unknown>, screenshots?: Buffer[]) {
     super(message);
     this.name = "WakanowApiBookingError";
     this.details = details;
+    this.screenshots = screenshots;
   }
 }
 
@@ -67,7 +69,7 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
   } catch (e: any) {
     console.log(`[api-book] Browser flow failed: ${e.message}`);
     console.log(`[api-book] Stack: ${e.stack}`);
-    throw new WakanowApiBookingError(`Booking failed: ${e.message}`);
+    throw new WakanowApiBookingError(`Booking failed: ${e.message}`, undefined, e.debugScreenshots);
   }
 
   if (!bookingId) {
@@ -175,7 +177,7 @@ async function finalizeBookingViaBrowser(
   searchKey: string,
   passenger: Passenger,
   deeplink?: string
-): Promise<{ bankTransfers: BankTransferDetails[]; totalPrice?: number; bookingId?: string }> {
+): Promise<{ bankTransfers: BankTransferDetails[]; totalPrice?: number; bookingId?: string; debugScreenshots?: Buffer[] }> {
   const browser = await getBrowser();
   const context = await browser.newContext({
     locale: "en-NG",
@@ -186,6 +188,7 @@ async function finalizeBookingViaBrowser(
   let bankTransfers: BankTransferDetails[] = [];
   let totalPrice: number | undefined;
   let browserBookingId: string | undefined;
+  const debugScreenshots: Buffer[] = [];
 
   try {
     const page = await context.newPage();
@@ -248,7 +251,11 @@ async function finalizeBookingViaBrowser(
     } catch {
       const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 500) ?? "").catch(() => "");
       console.log(`[api-book] Browser: page text: ${bodyText}`);
-      throw new Error("Flight listings did not load. Page may be blocked or showing captcha.");
+      const listingsShot = await page.screenshot({ fullPage: true }).catch(() => null);
+      if (listingsShot) debugScreenshots.push(listingsShot);
+      const err: any = new Error("Flight listings did not load. Page may be blocked or showing captcha.");
+      err.debugScreenshots = debugScreenshots;
+      throw err;
     }
     await page.waitForTimeout(3_000);
 
@@ -297,9 +304,10 @@ async function finalizeBookingViaBrowser(
       console.log(`[api-book] Browser: modal detected: ${modalText}`);
     }
 
-    // Take a debug screenshot after clicking Book Now
-    await page.screenshot({ path: "/tmp/skypadi-debug-after-booknow.png", fullPage: true }).catch(() => {});
-    console.log(`[api-book] Browser: debug screenshot → /tmp/skypadi-debug-after-booknow.png`);
+    // Capture debug screenshot after clicking Book Now
+    const afterBookNow = await page.screenshot({ fullPage: true }).catch(() => null);
+    if (afterBookNow) debugScreenshots.push(afterBookNow);
+    console.log(`[api-book] Browser: captured debug screenshot after Book Now`);
 
     // Step 3: Wait for customer-info page
     console.log(`[api-book] Browser: waiting for customer-info page...`);
@@ -307,10 +315,13 @@ async function finalizeBookingViaBrowser(
       await page.waitForURL(/\/booking\/.*\/customer-info/i, { timeout: 120_000 });
     } catch {
       console.log(`[api-book] Browser: customer-info page not reached. Current URL: ${page.url()}`);
-      // Capture page text for debugging
       const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 500) ?? "").catch(() => "");
       console.log(`[api-book] Browser: page text: ${bodyText}`);
-      throw new Error(`Failed to reach customer-info page. URL: ${page.url()}`);
+      const custInfoShot = await page.screenshot({ fullPage: true }).catch(() => null);
+      if (custInfoShot) debugScreenshots.push(custInfoShot);
+      const err: any = new Error(`Failed to reach customer-info page. URL: ${page.url()}`);
+      err.debugScreenshots = debugScreenshots;
+      throw err;
     }
     await page.waitForTimeout(5_000);
     // Capture the BookingId from the browser URL
@@ -434,8 +445,9 @@ async function finalizeBookingViaBrowser(
 
     // Take debug screenshot if still on customer-info
     if (page.url().includes("/customer-info")) {
-      await page.screenshot({ path: "/tmp/skypadi-debug-after-continue.png", fullPage: true }).catch(() => {});
-      console.log(`[api-book] Browser: debug screenshot → /tmp/skypadi-debug-after-continue.png`);
+      const afterContinue = await page.screenshot({ fullPage: true }).catch(() => null);
+      if (afterContinue) debugScreenshots.push(afterContinue);
+      console.log(`[api-book] Browser: captured debug screenshot after Continue`);
 
       // Try to find and dismiss any popup/modal/overlay
       const popupBtns = await page.evaluate(() => {
@@ -543,6 +555,6 @@ async function finalizeBookingViaBrowser(
     await context.close();
   }
 
-  return { bankTransfers, totalPrice, bookingId: browserBookingId };
+  return { bankTransfers, totalPrice, bookingId: browserBookingId, debugScreenshots };
 }
 

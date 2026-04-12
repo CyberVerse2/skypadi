@@ -1,4 +1,4 @@
-import { Bot, type Context, InlineKeyboard, session } from "grammy";
+import { Bot, type Context, InlineKeyboard, InputFile, session } from "grammy";
 import type { SessionFlavor } from "grammy";
 import { env } from "../config.js";
 import { handleMessage } from "./ai.js";
@@ -202,6 +202,13 @@ async function runAI(ctx: BotContext, userText: string) {
       await ctx.reply("Tap a flight to book:", { reply_markup: keyboard });
     } else {
       await ctx.reply(result.reply || "Something went wrong. Try again.");
+    }
+
+    // Send debug screenshots if any (booking failures)
+    if (result.debugScreenshots?.length) {
+      for (const buf of result.debugScreenshots) {
+        await ctx.replyWithPhoto(new InputFile(buf, "debug.png"), { caption: "Debug screenshot" }).catch(() => {});
+      }
     }
   } catch (error) {
     console.error("AI handler error:", error);
