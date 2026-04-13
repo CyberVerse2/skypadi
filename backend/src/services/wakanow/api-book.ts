@@ -168,9 +168,19 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
     timezoneId: "Africa/Lagos",
     userAgent: USER_AGENT,
     viewport: { width: 1440, height: 900 },
-    extraHTTPHeaders: { "Accept-Language": "en-US,en;q=0.9" }
+    extraHTTPHeaders: { "Accept-Language": "en-NG,en;q=0.9" },
+    geolocation: { latitude: 6.5244, longitude: 3.3792 }, // Lagos
+    permissions: ["geolocation"]
   });
   await context.addInitScript(STEALTH_SCRIPT);
+
+  // Set cookies to force Nigerian locale
+  await context.addCookies([
+    { name: "waaboraliases", value: "en-ng", domain: ".wakanow.com", path: "/" },
+    { name: "cultureInfo", value: "en-ng", domain: ".wakanow.com", path: "/" },
+    { name: "CountryCode", value: "NG", domain: ".wakanow.com", path: "/" },
+    { name: "CurrencyCode", value: "NGN", domain: ".wakanow.com", path: "/" }
+  ]);
 
   let bankTransfers: BankTransferDetails[] = [];
   let totalPrice = 0;

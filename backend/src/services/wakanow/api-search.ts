@@ -168,7 +168,7 @@ export async function searchFlightsApi(
     });
   }
 
-  const deeplink = `https://www.wakanow.com/flight/listings/${requestKey}`;
+  const deeplink = `https://www.wakanow.com/en-ng/flight/listings/${requestKey}`;
   const results = apiData.SearchFlightResults
     .slice(0, request.maxResults)
     .map((r) => mapFlightResult(r, deeplink, requestKey));
