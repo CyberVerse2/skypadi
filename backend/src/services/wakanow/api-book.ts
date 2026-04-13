@@ -1,8 +1,34 @@
 import { env } from "../../config.js";
 import type { Passenger } from "../../schemas/flight-booking.js";
-import { chromium, type Browser, type BrowserContext } from "playwright";
+import { chromium, type Browser } from "playwright";
 
-const USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
+const STEALTH_SCRIPT = `
+  Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+  Object.defineProperty(navigator, 'plugins', {
+    get: () => {
+      const p = [
+        { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+        { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+        { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' },
+      ];
+      p.refresh = () => {};
+      return p;
+    }
+  });
+  Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+  window.chrome = {
+    runtime: { connect: () => {}, sendMessage: () => {}, onMessage: { addListener: () => {} } },
+    loadTimes: () => ({}), csi: () => ({})
+  };
+  const getParameter = WebGLRenderingContext.prototype.getParameter;
+  WebGLRenderingContext.prototype.getParameter = function(param) {
+    if (param === 37445) return 'Intel Inc.';
+    if (param === 37446) return 'Intel Iris OpenGL Engine';
+    return getParameter.call(this, param);
+  };
+`;
 
 export class WakanowApiBookingError extends Error {
   details?: Record<string, unknown>;
@@ -48,56 +74,269 @@ export type ApiBookingResponse = {
   };
 };
 
-export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBookingResponse> {
-  const { searchKey, flightId, passenger, deeplink } = request;
-  const currency = env.WAKANOW_CURRENCY;
+let sharedBrowser: Browser | null = null;
 
-  // Full browser flow — navigates through the Angular app like a real user
-  // (listings → Book Now → customer-info → fill form → Continue → addons → Pay Now → payment → Bank Transfer → Continue)
-  // No API Select — the browser's "Book Now" click handles selection internally
-  console.log(`[api-book] Starting full browser booking flow for flight ${flightId}...`);
-  let bankTransfers: BankTransferDetails[] = [];
-  let totalPrice = 0;
-  let bookingId = "";
-
-  try {
-    const result = await finalizeBookingViaBrowser(searchKey, passenger, deeplink);
-    bankTransfers = result.bankTransfers;
-    if (result.totalPrice) totalPrice = result.totalPrice;
-    bookingId = result.bookingId ?? "";
-    console.log(`[api-book] Browser flow complete. BookingId: ${bookingId}, ${bankTransfers.length} bank account(s), ₦${totalPrice.toLocaleString()}`);
-  } catch (e: any) {
-    console.log(`[api-book] Browser flow failed: ${e.message}`);
-    console.log(`[api-book] Stack: ${e.stack}`);
-    throw new WakanowApiBookingError(`Booking failed: ${e.message}`, undefined, e.debugScreenshots);
-  }
-
-  if (!bookingId) {
-    throw new WakanowApiBookingError("Could not get BookingId from browser flow.");
-  }
-
-  const paymentUrl = `https://www.wakanow.com/en-ng/booking/${bookingId}/payment?products=Flight&reqKey=${searchKey}`;
-
-  return {
-    provider: "wakanow",
-    bookedAt: new Date().toISOString(),
-    bookingId,
-    status: "pending_payment",
-    paymentUrl,
-    bankTransfers: bankTransfers.length > 0 ? bankTransfers : undefined,
-    flightSummary: {
-      airline: "",
-      departure: "",
-      arrival: "",
-      departureTime: "",
-      arrivalTime: "",
-      price: totalPrice,
-      currency
-    }
+async function getBrowser(): Promise<Browser> {
+  if (sharedBrowser?.isConnected()) return sharedBrowser;
+  const launchOpts: any = {
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-http2", "--disable-blink-features=AutomationControlled"]
   };
+  if (env.PROXY_URL) {
+    const url = new URL(env.PROXY_URL);
+    launchOpts.proxy = {
+      server: `${url.protocol}//${url.hostname}:${url.port}`,
+      username: url.username,
+      password: url.password
+    };
+    console.log(`[api-book] Browser: launching with proxy → ${url.hostname}:${url.port}`);
+  } else {
+    console.log(`[api-book] Browser: launching WITHOUT proxy (PROXY_URL not set)`);
+  }
+  sharedBrowser = await chromium.launch(launchOpts);
+  return sharedBrowser;
 }
 
-/** Parse bank transfer details from Wakanow PaymentResponseModel */
+/**
+ * Hybrid booking: browser for navigation + stealth, Angular for API calls.
+ * Skips manual form filling by injecting values directly into Angular's reactive forms.
+ *
+ * Flow: Load listings → Book Now → fill form via JS → Continue (Angular Validate) →
+ *       Pay Now → Bank Transfer → Continue (Angular GeneratePNR + MakePayment)
+ */
+export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBookingResponse> {
+  const { searchKey, passenger, deeplink } = request;
+  const currency = env.WAKANOW_CURRENCY;
+
+  console.log(`[api-book] Starting booking...`);
+
+  const browser = await getBrowser();
+  const context = await browser.newContext({
+    locale: "en-NG",
+    timezoneId: "Africa/Lagos",
+    userAgent: USER_AGENT,
+    viewport: { width: 1440, height: 900 },
+    extraHTTPHeaders: { "Accept-Language": "en-US,en;q=0.9" }
+  });
+  await context.addInitScript(STEALTH_SCRIPT);
+
+  let bankTransfers: BankTransferDetails[] = [];
+  let totalPrice = 0;
+  let airline = "", departure = "", arrival = "", departureTime = "", arrivalTime = "";
+  const debugScreenshots: Buffer[] = [];
+
+  try {
+    const page = await context.newPage();
+
+    // Intercept API responses for flight info + bank details
+    page.on("response", async (res) => {
+      const url = res.url();
+      if (!url.includes("wakanow.com")) return;
+      const req = res.request();
+      const rtype = req.resourceType();
+      if (rtype !== "xhr" && rtype !== "fetch") return;
+
+      try {
+        const ct = res.headers()["content-type"] ?? "";
+        if (!ct.includes("json")) return;
+        const data = await res.json() as any;
+
+        // Capture flight info from Select
+        if (url.includes("/flights/Select/") && data?.FlightSummary) {
+          const fc = data.FlightSummary.FlightCombination;
+          airline = fc?.Flights?.[0]?.AirlineName ?? "";
+          departure = fc?.Flights?.[0]?.DepartureCode ?? "";
+          arrival = fc?.Flights?.[0]?.ArrivalCode ?? "";
+          departureTime = fc?.Flights?.[0]?.DepartureTime ?? "";
+          arrivalTime = fc?.Flights?.[0]?.ArrivalTime ?? "";
+          totalPrice = fc?.Price?.Amount ?? 0;
+        }
+
+        // Capture bank details from Payment
+        const model = data?.PaymentResponseModel;
+        if (model) {
+          if (model.TotalPrice?.Amount) totalPrice = model.TotalPrice.Amount;
+          const parsed = parseBankTransfers(model);
+          if (parsed.length > 0) bankTransfers = parsed;
+        }
+
+        // Log key API calls
+        if (url.includes("/Booking/") || url.includes("/Payment/") || url.includes("/GeneratePNR")) {
+          console.log(`[api-book] API: ${req.method()} ${url.split("?")[0].slice(-60)} → ${res.status()}`);
+        }
+      } catch {}
+    });
+
+    // Step 1: Load listings
+    const listingsUrl = deeplink ?? `https://www.wakanow.com/en-ng/flights/search?searchKey=${searchKey}`;
+    console.log(`[api-book] Loading listings...`);
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await page.goto(listingsUrl, { waitUntil: "domcontentloaded", timeout: 120_000 });
+        break;
+      } catch (e: any) {
+        console.log(`[api-book] goto attempt ${attempt}/3 failed: ${e.message.split("\n")[0]}`);
+        if (attempt === 3) throw e;
+        await page.waitForTimeout(3_000);
+      }
+    }
+
+    // Dismiss cookie consent
+    const cookieBtn = page.locator("text=/yes,?\\s*i\\s*agree/i").first();
+    if (await cookieBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await cookieBtn.click();
+      await page.waitForTimeout(1_000);
+    }
+
+    // Wait for flights
+    await page.locator("div.flight-fare-detail-wrap").first().waitFor({ state: "visible", timeout: 120_000 });
+    console.log(`[api-book] Flights loaded`);
+
+    // Step 2: Click Book Now
+    const bookBtn = page.locator("div.flight-fare-detail-wrap").first().locator("button.box-button:not(.d-md-none)").first();
+    if (await bookBtn.isVisible().catch(() => false)) {
+      await bookBtn.click({ timeout: 30_000 });
+    } else {
+      await page.evaluate(() => {
+        for (const btn of document.querySelectorAll("button.box-button")) {
+          if ((btn as HTMLElement).offsetParent !== null && btn.textContent?.includes("Book Now")) {
+            (btn as HTMLElement).click(); return;
+          }
+        }
+      });
+    }
+
+    // Wait for customer-info page
+    try {
+      await page.waitForURL(/\/booking\/.*\/customer-info/i, { timeout: 120_000 });
+    } catch {
+      const shot = await page.screenshot({ fullPage: true }).catch(() => null);
+      if (shot) debugScreenshots.push(shot);
+      const modalText = await page.evaluate(() => document.querySelector("[role='dialog']")?.textContent?.slice(0, 200) ?? "").catch(() => "");
+      throw new Error(modalText || `Failed to reach customer-info. URL: ${page.url()}`);
+    }
+
+    const bookingId = page.url().match(/\/booking\/(\d+)\//)?.[1];
+    if (!bookingId) throw new Error("Could not extract BookingId");
+    console.log(`[api-book] BookingId: ${bookingId}, ${airline} ${departure}→${arrival}`);
+    await page.waitForTimeout(3_000);
+
+    // Step 3: Fill form using Angular-compatible input events
+    console.log(`[api-book] Filling form...`);
+    const phoneNum = passenger.phone.startsWith("+") ? passenger.phone.replace(/^\+234/, "0") : passenger.phone;
+
+    // Use Playwright's fill (triggers input/change events that Angular picks up)
+    await page.locator("select").first().selectOption({ label: passenger.title }).catch(() => {});
+    await page.waitForTimeout(200);
+    await page.locator("[name='booking_lastname']").first().fill(passenger.lastName);
+    await page.locator("[name='booking_firstname']").first().fill(passenger.firstName);
+    if (passenger.middleName) {
+      await page.locator("[name='booking_middlename']").first().fill(passenger.middleName).catch(() => {});
+    }
+
+    // DOB via datepicker
+    const [dobYear, dobMonth, dobDay] = passenger.dateOfBirth.split("-");
+    const calBtn = page.locator("input[placeholder='yyyy-mm-dd']").first().locator("..").locator("button:has(.fa-calendar), button.btn-outline-dark").first();
+    if (await calBtn.count()) {
+      await calBtn.click();
+    } else {
+      await page.locator("input[placeholder='yyyy-mm-dd']").first().click();
+    }
+    await page.waitForTimeout(1_500);
+    const dpSelects = page.locator("ngb-datepicker select");
+    if (await dpSelects.count() >= 2) {
+      await dpSelects.nth(1).selectOption(dobYear);
+      await page.waitForTimeout(300);
+      await dpSelects.nth(0).selectOption(String(parseInt(dobMonth)));
+      await page.waitForTimeout(300);
+      await page.evaluate((day) => {
+        for (const cell of document.querySelectorAll("ngb-datepicker div.ngb-dp-day")) {
+          if ((cell.textContent ?? "").trim() === day && !cell.classList.contains("ngb-dp-day--outside")) {
+            (cell as HTMLElement).click(); return;
+          }
+        }
+      }, String(parseInt(dobDay)));
+    }
+    await page.waitForTimeout(300);
+
+    // Gender
+    const genderId = passenger.gender === "Male" ? "#Male0" : "#Female0";
+    await page.locator(genderId).click().catch(() =>
+      page.evaluate((id) => (document.querySelector(id) as HTMLElement)?.click(), genderId)
+    );
+
+    // Phone & Email
+    await page.locator("[name='PhoneNumber']").first().fill(phoneNum);
+    await page.locator("input[type='email']").first().fill(passenger.email);
+    await page.waitForTimeout(500);
+
+    // Accept terms
+    const cb = page.locator("#acceptTermsAndCondition");
+    if (!(await cb.isChecked().catch(() => false))) {
+      await cb.click().catch(() => cb.evaluate(el => (el as any).click()));
+    }
+    await page.waitForTimeout(300);
+
+    // Step 4: Click Continue — Angular handles Validate + navigation
+    console.log(`[api-book] Submitting form...`);
+    await page.locator("button:has-text('Continue'), a:has-text('Continue')").first().click({ timeout: 30_000 });
+
+    // Wait for navigation away from customer-info
+    await page.waitForURL(url => !url.toString().includes("/customer-info"), { timeout: 120_000 })
+      .catch(() => console.log(`[api-book] Still on customer-info`));
+    await page.waitForTimeout(2_000);
+    console.log(`[api-book] After submit: ${page.url()}`);
+
+    // Step 5: Addons page → Pay Now
+    if (page.url().includes("/addons")) {
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await page.waitForTimeout(1_000);
+      await page.locator("text=/pay\\s*now/i").first().click({ timeout: 15_000 }).catch(() => {});
+      await page.waitForTimeout(5_000);
+    }
+
+    // Step 6: Payment page → Bank Transfer → Continue
+    console.log(`[api-book] Payment page: ${page.url()}`);
+    await page.waitForTimeout(5_000); // Wait for payment options to load
+
+    // Click Bank Transfer
+    const bankBtn = page.locator("text=/bank.?transfer/i").first();
+    if (await bankBtn.isVisible({ timeout: 10_000 }).catch(() => false)) {
+      await bankBtn.click();
+      await page.waitForTimeout(2_000);
+    }
+
+    // Click Continue to see bank details — triggers GeneratePNR + MakePayment
+    const continueBtn = page.locator("text=/continue.*bank/i, text=/continue.*transfer/i, button:has-text('Continue')").last();
+    if (await continueBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      console.log(`[api-book] Clicking Continue for bank details...`);
+      await continueBtn.click();
+      await page.waitForTimeout(15_000);
+    }
+
+    console.log(`[api-book] Booking complete! ID: ${bookingId}, ${bankTransfers.length} bank(s), ₦${totalPrice.toLocaleString()}`);
+
+    await page.close();
+
+    const paymentUrl = `https://www.wakanow.com/en-ng/booking/${bookingId}/payment?products=Flight&reqKey=${searchKey}`;
+
+    return {
+      provider: "wakanow",
+      bookedAt: new Date().toISOString(),
+      bookingId,
+      status: "pending_payment",
+      paymentUrl,
+      bankTransfers: bankTransfers.length > 0 ? bankTransfers : undefined,
+      flightSummary: { airline, departure, arrival, departureTime, arrivalTime, price: totalPrice, currency }
+    };
+  } catch (e: any) {
+    console.log(`[api-book] Failed: ${e.message}`);
+    throw new WakanowApiBookingError(`Booking failed: ${e.message}`, undefined, (e as any).debugScreenshots ?? debugScreenshots);
+  } finally {
+    await context.close();
+  }
+}
+
 function parseBankTransfers(paymentModel: any): BankTransferDetails[] {
   const transfers: BankTransferDetails[] = [];
   const bankOption = paymentModel?.PaymentOptions?.find(
@@ -121,7 +360,6 @@ function parseBankTransfers(paymentModel: any): BankTransferDetails[] {
       });
     }
   }
-  // Fallback: single bank parse
   if (transfers.length === 0) {
     const acctMatch = desc.match(/Account Number<\/p>\s*<p[^>]*>(\d+)<\/p>/i);
     if (acctMatch) {
@@ -137,450 +375,3 @@ function parseBankTransfers(paymentModel: any): BankTransferDetails[] {
   }
   return transfers;
 }
-
-// Keep a shared browser instance to avoid cold-start overhead on each booking
-let sharedBrowser: Browser | null = null;
-
-async function getBrowser(): Promise<Browser> {
-  if (sharedBrowser?.isConnected()) {
-    console.log(`[api-book] Browser: reusing existing browser instance`);
-    return sharedBrowser;
-  }
-  const launchOpts: any = {
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-http2", "--disable-blink-features=AutomationControlled"]
-  };
-  if (env.PROXY_URL) {
-    const url = new URL(env.PROXY_URL);
-    launchOpts.proxy = {
-      server: `${url.protocol}//${url.hostname}:${url.port}`,
-      username: url.username,
-      password: url.password
-    };
-    console.log(`[api-book] Browser: launching with proxy → ${url.hostname}:${url.port}`);
-  } else {
-    console.log(`[api-book] Browser: launching WITHOUT proxy (PROXY_URL not set)`);
-  }
-  sharedBrowser = await chromium.launch(launchOpts);
-  return sharedBrowser;
-}
-
-/**
- * Full browser navigation flow: search results → Book Now → fill form → submit →
- * addons → Pay Now → payment → Bank Transfer → Continue To See Bank Transfer Details.
- *
- * This mirrors exactly what a real user does. The Angular app handles all API calls
- * (Select, Validate, Confirm, GeneratePNR, MakePayment) internally, which avoids
- * the Imperva bot-protection 500 errors that happen with cross-origin fetch.
- */
-async function finalizeBookingViaBrowser(
-  searchKey: string,
-  passenger: Passenger,
-  deeplink?: string
-): Promise<{ bankTransfers: BankTransferDetails[]; totalPrice?: number; bookingId?: string; debugScreenshots?: Buffer[] }> {
-  const browser = await getBrowser();
-  const context = await browser.newContext({
-    locale: "en-NG",
-    timezoneId: "Africa/Lagos",
-    userAgent: USER_AGENT,
-    viewport: { width: 1440, height: 900 }
-  });
-
-  let bankTransfers: BankTransferDetails[] = [];
-  let totalPrice: number | undefined;
-  let browserBookingId: string | undefined;
-  const debugScreenshots: Buffer[] = [];
-
-  try {
-    const page = await context.newPage();
-
-    // Intercept API responses to capture bank details and price
-    page.on("response", async (res) => {
-      const url = res.url();
-      if (!url.includes("wakanow.com") || /\.(js|css|png|jpg|svg|woff|ico)(\?|$)/i.test(url)) return;
-      if (/google|facebook|analytics|gtm|freshchat|clarity|optimonk/i.test(url)) return;
-      const req = res.request();
-      const rtype = req.resourceType();
-      if (rtype !== "xhr" && rtype !== "fetch") return;
-      const ct = res.headers()["content-type"] ?? "";
-      if (!ct.includes("json")) return;
-
-      try {
-        const data = await res.json() as any;
-        // Capture from Payment/Get or MakePayment
-        const model = data?.PaymentResponseModel;
-        if (model) {
-          if (model.TotalPrice?.Amount) totalPrice = model.TotalPrice.Amount;
-          const parsed = parseBankTransfers(model);
-          if (parsed.length > 0) bankTransfers = parsed;
-        }
-        // Log key API calls for debugging
-        if (url.includes("/Booking/") || url.includes("/Payment/") || url.includes("/GeneratePNR")) {
-          console.log(`[api-book] Browser API: ${req.method()} ${url.split("?")[0].slice(-60)} → ${res.status()}`);
-        }
-      } catch { /* ignore unreadable responses */ }
-    });
-
-    // Step 1: Navigate to flight listings (the deeplink from search)
-    const listingsUrl = deeplink ?? `https://www.wakanow.com/en-ng/flights/search?searchKey=${searchKey}`;
-    console.log(`[api-book] Browser: loading listings → ${listingsUrl.slice(0, 100)}...`);
-    const MAX_GOTO_RETRIES = 3;
-    for (let attempt = 1; attempt <= MAX_GOTO_RETRIES; attempt++) {
-      try {
-        await page.goto(listingsUrl, { waitUntil: "domcontentloaded", timeout: 120_000 });
-        break;
-      } catch (e: any) {
-        console.log(`[api-book] Browser: page.goto attempt ${attempt}/${MAX_GOTO_RETRIES} failed: ${e.message.split("\n")[0]}`);
-        if (attempt === MAX_GOTO_RETRIES) throw e;
-        await page.waitForTimeout(3_000);
-      }
-    }
-    console.log(`[api-book] Browser: page loaded, URL: ${page.url()}`);
-    const pageTitle = await page.title().catch(() => "");
-    console.log(`[api-book] Browser: page title: "${pageTitle}"`);
-
-    // Dismiss cookie consent banner if present
-    const cookieBtn = page.locator("text=/yes,?\\s*i\\s*agree/i").first();
-    if (await cookieBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      console.log(`[api-book] Browser: dismissing cookie consent...`);
-      await cookieBtn.click({ timeout: 30_000 });
-      await page.waitForTimeout(1_000);
-    }
-
-    try {
-      await page.locator("div.flight-fare-detail-wrap").first().waitFor({ state: "visible", timeout: 120_000 });
-    } catch {
-      const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 500) ?? "").catch(() => "");
-      console.log(`[api-book] Browser: page text: ${bodyText}`);
-      const listingsShot = await page.screenshot({ fullPage: true }).catch(() => null);
-      if (listingsShot) debugScreenshots.push(listingsShot);
-      const err: any = new Error("Flight listings did not load. Page may be blocked or showing captcha.");
-      err.debugScreenshots = debugScreenshots;
-      throw err;
-    }
-    await page.waitForTimeout(3_000);
-
-    // Step 2: Click "Book Now" on the first flight
-    const flightCards = await page.locator("div.flight-fare-detail-wrap").count();
-    console.log(`[api-book] Browser: found ${flightCards} flight card(s)`);
-
-    // Log all visible buttons in the first card for debugging
-    const cardButtons = await page.locator("div.flight-fare-detail-wrap").first().locator("button, a").evaluateAll(
-      els => els.map(el => ({ tag: el.tagName, text: (el as HTMLElement).innerText?.trim().slice(0, 40), class: el.className.slice(0, 60) }))
-    ).catch(() => []);
-    console.log(`[api-book] Browser: card buttons: ${JSON.stringify(cardButtons)}`);
-
-    // Log all API calls after clicking Book Now to see if Select API fires
-    const postClickResponses: string[] = [];
-    const networkLogger = (res: any) => {
-      const url = res.url();
-      const req = res.request();
-      const rtype = req.resourceType();
-      if ((rtype === "xhr" || rtype === "fetch") && url.includes("wakanow.com")) {
-        postClickResponses.push(`${req.method()} ${url.split("?")[0].slice(-80)} → ${res.status()}`);
-      }
-    };
-    page.on("response", networkLogger);
-
-    console.log(`[api-book] Browser: clicking Book Now...`);
-    // Click the visible desktop "Book Now" button (d-none d-md-block)
-    const desktopBookNow = page.locator("div.flight-fare-detail-wrap").first()
-      .locator("button.box-button:not(.d-md-none)").first();
-    if (await desktopBookNow.isVisible().catch(() => false)) {
-      console.log(`[api-book] Browser: clicking desktop Book Now button`);
-      await desktopBookNow.click({ timeout: 30_000 });
-    } else {
-      // Fallback: click any visible "Book Now" via JS
-      console.log(`[api-book] Browser: desktop button not visible, using JS click`);
-      await page.evaluate(() => {
-        const buttons = document.querySelectorAll("button.box-button");
-        for (const btn of buttons) {
-          if ((btn as HTMLElement).offsetParent !== null && btn.textContent?.includes("Book Now")) {
-            (btn as HTMLElement).click();
-            return;
-          }
-        }
-      });
-    }
-
-    // Wait and log network activity
-    await page.waitForTimeout(10_000);
-    console.log(`[api-book] Browser: URL after Book Now click: ${page.url()}`);
-    console.log(`[api-book] Browser: API calls after click: ${JSON.stringify(postClickResponses)}`);
-    page.off("response", networkLogger);
-
-    // Check for any popup/modal that might have appeared
-    const modalText = await page.evaluate(() => {
-      const modal = document.querySelector(".modal, .modal-content, ngb-modal-window, .swal2-container, .popup, [role='dialog']");
-      return modal ? (modal as HTMLElement).innerText?.slice(0, 300) : null;
-    }).catch(() => null);
-    if (modalText) {
-      console.log(`[api-book] Browser: modal detected: ${modalText}`);
-    }
-
-    // Check for loading spinner or overlay
-    const hasOverlay = await page.evaluate(() => {
-      const overlay = document.querySelector(".loading, .spinner, .overlay, .loader, [class*='loading'], [class*='spinner']");
-      return overlay ? { class: overlay.className, visible: (overlay as HTMLElement).offsetParent !== null } : null;
-    }).catch(() => null);
-    if (hasOverlay) {
-      console.log(`[api-book] Browser: loading overlay detected: ${JSON.stringify(hasOverlay)}`);
-      // Wait longer for it to resolve
-      await page.waitForTimeout(15_000);
-      console.log(`[api-book] Browser: URL after waiting for overlay: ${page.url()}`);
-    }
-
-    // Capture debug screenshot after clicking Book Now
-    const afterBookNow = await page.screenshot({ fullPage: true }).catch(() => null);
-    if (afterBookNow) debugScreenshots.push(afterBookNow);
-    console.log(`[api-book] Browser: captured debug screenshot after Book Now`);
-
-    // Step 3: Wait for customer-info page
-    console.log(`[api-book] Browser: waiting for customer-info page...`);
-    try {
-      await page.waitForURL(/\/booking\/.*\/customer-info/i, { timeout: 120_000 });
-    } catch {
-      console.log(`[api-book] Browser: customer-info page not reached. Current URL: ${page.url()}`);
-      const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 500) ?? "").catch(() => "");
-      console.log(`[api-book] Browser: page text: ${bodyText}`);
-      const custInfoShot = await page.screenshot({ fullPage: true }).catch(() => null);
-      if (custInfoShot) debugScreenshots.push(custInfoShot);
-      const err: any = new Error(`Failed to reach customer-info page. URL: ${page.url()}`);
-      err.debugScreenshots = debugScreenshots;
-      throw err;
-    }
-    await page.waitForTimeout(5_000);
-    // Capture the BookingId from the browser URL
-    browserBookingId = page.url().match(/\/booking\/(\d+)\//)?.[1];
-    console.log(`[api-book] Browser: BookingId from URL: ${browserBookingId}`);
-
-    // Step 4: Fill passenger form
-    console.log(`[api-book] Browser: filling passenger form...`);
-    // Title
-    await page.locator("select").first().selectOption({ label: passenger.title }).catch(() => {});
-    await page.waitForTimeout(300);
-    // Names
-    await page.locator("[name='booking_lastname']").first().fill(passenger.lastName).catch(() => {});
-    await page.locator("[name='booking_firstname']").first().fill(passenger.firstName).catch(() => {});
-    await page.locator("[name='booking_middlename']").first().fill(passenger.middleName ?? "").catch(() => {});
-
-    // Date of birth — open datepicker, select year then month, then click day
-    const dobInput = page.locator("input[placeholder='yyyy-mm-dd']").first();
-    const [dobYear, dobMonth, dobDay] = passenger.dateOfBirth.split("-");
-
-    // Click the calendar button next to the DOB input to open datepicker
-    const dobContainer = page.locator("input[placeholder='yyyy-mm-dd']").first().locator("..");
-    const calButton = dobContainer.locator("button:has(.fa-calendar), button.btn-outline-dark").first();
-    if (await calButton.count()) {
-      await calButton.click({ timeout: 30_000 });
-      console.log(`[api-book] Browser: clicked calendar button`);
-    } else {
-      await dobInput.click({ timeout: 30_000 }).catch(() => {});
-      console.log(`[api-book] Browser: clicked DOB input directly`);
-    }
-    await page.waitForTimeout(1_500);
-
-    // The datepicker has 2 selects: month (index 0), year (index 1)
-    const dpSelects = page.locator("ngb-datepicker select");
-
-    async function fillDatepicker() {
-      const count = await dpSelects.count();
-      if (count < 2) return false;
-      console.log(`[api-book] Browser: setting DOB: year=${dobYear} month=${dobMonth} day=${dobDay}`);
-      await dpSelects.nth(1).selectOption(dobYear);
-      await page.waitForTimeout(500);
-      await dpSelects.nth(0).selectOption(String(parseInt(dobMonth)));
-      await page.waitForTimeout(500);
-      const dayStr = String(parseInt(dobDay));
-      await page.evaluate((day) => {
-        const cells = document.querySelectorAll("ngb-datepicker div.ngb-dp-day");
-        for (const cell of cells) {
-          if ((cell.textContent ?? "").trim() === day && !cell.classList.contains("ngb-dp-day--outside")) {
-            (cell as HTMLElement).click(); return;
-          }
-        }
-      }, dayStr);
-      await page.waitForTimeout(500);
-      return true;
-    }
-
-    if (!(await fillDatepicker())) {
-      console.log(`[api-book] Browser: datepicker not open, retrying...`);
-      await dobInput.click({ timeout: 30_000 }).catch(() => {});
-      await page.waitForTimeout(1_000);
-      await fillDatepicker();
-    }
-
-    const dobValue = await dobInput.inputValue().catch(() => "");
-    console.log(`[api-book] Browser: DOB field value: "${dobValue}"`);
-
-    // Nationality — pre-filled as ng-select with "Nigeria", no action needed for domestic flights
-    // Just verify it's set
-    const natSet = await page.evaluate(() => {
-      const ngSelect = document.querySelector("ng-select[formcontrolname='CountryCode']");
-      return ngSelect?.classList.contains("ng-valid") ?? false;
-    });
-    console.log(`[api-book] Browser: nationality valid: ${natSet}`);
-
-    // Gender
-    const genderId = passenger.gender === "Male" ? "#Male0" : "#Female0";
-    await page.locator(genderId).click({ timeout: 30_000 }).catch(async () => {
-      await page.evaluate((id) => (document.querySelector(id) as HTMLElement)?.click(), genderId);
-    });
-    console.log(`[api-book] Browser: clicked gender ${passenger.gender}`);
-
-    // Phone & Email
-    const phoneNum = passenger.phone.startsWith("+") ? passenger.phone.replace(/^\+234/, "0") : passenger.phone;
-    await page.locator("[name='PhoneNumber']").first().fill(phoneNum).catch(() => {});
-    await page.locator("input[type='email']").first().fill(passenger.email).catch(() => {});
-    await page.waitForTimeout(1_000);
-
-    // Debug: check for validation errors before submitting
-    const validationErrors = await page.evaluate(() => {
-      const errors = document.querySelectorAll(".invalid-feedback:not(:empty), .text-danger:not(:empty), .error-msg:not(:empty), .ng-invalid.ng-touched");
-      return Array.from(errors).map(e => (e as HTMLElement).textContent?.trim()).filter(Boolean).slice(0, 5);
-    });
-    if (validationErrors.length > 0) {
-      console.log(`[api-book] Browser: validation errors: ${JSON.stringify(validationErrors)}`);
-    }
-
-    // Debug: verify key fields are filled
-    const formState = await page.evaluate(() => {
-      const lastName = (document.querySelector("[name='booking_lastname']") as HTMLInputElement)?.value ?? "";
-      const firstName = (document.querySelector("[name='booking_firstname']") as HTMLInputElement)?.value ?? "";
-      const dob = (document.querySelector("input[placeholder='yyyy-mm-dd']") as HTMLInputElement)?.value ?? "";
-      const phone = (document.querySelector("[name='PhoneNumber']") as HTMLInputElement)?.value ?? "";
-      const email = (document.querySelector("input[type='email']") as HTMLInputElement)?.value ?? "";
-      const checkbox = (document.getElementById("acceptTermsAndCondition") as HTMLInputElement)?.checked ?? false;
-      return { lastName, firstName, dob, phone, email, checkbox };
-    });
-    console.log(`[api-book] Browser: form state: ${JSON.stringify(formState)}`);
-
-    // Step 5: Accept terms & click Continue
-    console.log(`[api-book] Browser: submitting form...`);
-    const cb = page.locator("#acceptTermsAndCondition");
-    if (!(await cb.isChecked().catch(() => false))) {
-      await cb.click({ timeout: 30_000 }).catch(() => cb.evaluate(el => (el as any).click())).catch(() => {});
-    }
-    await page.waitForTimeout(500);
-    await page.locator("button:has-text('Continue'), a:has-text('Continue')").first().click({ timeout: 30_000 });
-
-    // Step 6: Handle any popups/modals and wait for navigation
-    console.log(`[api-book] Browser: waiting for page change...`);
-    await page.waitForTimeout(3_000);
-
-    // Take debug screenshot if still on customer-info
-    if (page.url().includes("/customer-info")) {
-      const afterContinue = await page.screenshot({ fullPage: true }).catch(() => null);
-      if (afterContinue) debugScreenshots.push(afterContinue);
-      console.log(`[api-book] Browser: captured debug screenshot after Continue`);
-
-      // Try to find and dismiss any popup/modal/overlay
-      const popupBtns = await page.evaluate(() => {
-        const btns = document.querySelectorAll("button, a.btn");
-        return Array.from(btns)
-          .filter(b => {
-            const style = window.getComputedStyle(b);
-            return style.display !== "none" && style.visibility !== "hidden";
-          })
-          .map(b => ({ text: (b as HTMLElement).innerText?.trim().slice(0, 50), class: b.className.slice(0, 60) }));
-      });
-      console.log(`[api-book] Browser: visible buttons: ${JSON.stringify(popupBtns)}`);
-
-      // Close any verification code popup or info modal
-      const closeBtn = page.locator("button.float-end:has-text('×'), button:has-text('×')").first();
-      if (await closeBtn.count()) {
-        console.log(`[api-book] Browser: closing popup via × button...`);
-        await closeBtn.click({ timeout: 30_000 }).catch(() => {});
-        await page.waitForTimeout(2_000);
-        // After closing popup, re-click Continue to submit the form
-        console.log(`[api-book] Browser: re-submitting after popup dismiss...`);
-        await page.locator("button.box-button:has-text('Continue')").first().click({ timeout: 30_000 }).catch(() => {});
-        await page.waitForTimeout(3_000);
-      }
-
-      // Click "Continue" on any remaining modal
-      for (const selector of [
-        ".modal-content button:has-text('Continue')",
-        ".modal button:has-text('Continue')",
-        ".swal2-confirm",
-        "ngb-modal-window button:has-text('Continue')",
-        "button.btn-primary:has-text('Continue')"
-      ]) {
-        const btn = page.locator(selector).first();
-        if (await btn.count()) {
-          console.log(`[api-book] Browser: clicking popup button: ${selector}`);
-          await btn.click({ timeout: 30_000 }).catch(() => {});
-          await page.waitForTimeout(3_000);
-          break;
-        }
-      }
-
-      // If still on customer-info, the main Continue might not have submitted — re-click it
-      if (page.url().includes("/customer-info")) {
-        console.log(`[api-book] Browser: re-clicking Continue...`);
-        await page.locator("button.box-button:has-text('Continue')").first().click({ timeout: 30_000 }).catch(() => {});
-        await page.waitForTimeout(3_000);
-      }
-    }
-
-    // Wait for URL to change away from customer-info
-    await page.waitForURL(url => !url.toString().includes("/customer-info"), { timeout: 120_000 })
-      .catch(() => console.log(`[api-book] Browser: still on customer-info after 20s`));
-    await page.waitForTimeout(3_000);
-    console.log(`[api-book] Browser: URL after submit: ${page.url()}`);
-
-    // Step 7: Click "Pay Now" on addons page
-    if (page.url().includes("/addons")) {
-      console.log(`[api-book] Browser: clicking Pay Now...`);
-      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-      await page.waitForTimeout(2_000);
-      await page.locator("text=/pay\\s*now/i").first().click({ timeout: 30_000 });
-    }
-
-    // Step 8: Wait for payment page
-    console.log(`[api-book] Browser: waiting for payment page...`);
-    await page.waitForTimeout(10_000);
-    console.log(`[api-book] Browser: URL at payment: ${page.url()}`);
-
-    // Step 9: Click "Bank Transfer" option
-    console.log(`[api-book] Browser: clicking Bank Transfer...`);
-    const bankBtn = page.locator("text=/bank.?transfer/i").first();
-    if (await bankBtn.count()) {
-      await bankBtn.click({ timeout: 30_000 });
-      await page.waitForTimeout(3_000);
-      console.log(`[api-book] Browser: clicked Bank Transfer`);
-    }
-
-    // Step 10: Click "Continue To See Bank Transfer Details" — triggers GeneratePNR + MakePayment
-    console.log(`[api-book] Browser: clicking Continue to see bank details...`);
-    const continueBtn = page.locator("text=/continue.*bank.*transfer.*details/i").first();
-    if (await continueBtn.count()) {
-      await continueBtn.click({ timeout: 30_000 });
-      console.log(`[api-book] Browser: clicked Continue — waiting for PNR + payment...`);
-      await page.waitForTimeout(12_000);
-
-      // If bank details weren't captured via API intercept, parse from page text
-      if (bankTransfers.length === 0) {
-        const pageText = await page.evaluate(() => document.body.innerText).catch(() => "");
-        console.log(`[api-book] Browser: parsing bank details from page text...`);
-        // Try to extract bank details from visible page text
-        const gtbMatch = pageText.match(/GTBank[^\n]*\n.*?(\d{10})/s);
-        const wemaMatch = pageText.match(/Wema\s*Bank[^\n]*\n.*?(\d{10})/s);
-        if (gtbMatch) bankTransfers.push({ bank: "GTBank", accountNumber: gtbMatch[1], beneficiary: "Wakanow.com Collections", expiresIn: "9 hours", note: "Account details are unique to this transaction." });
-        if (wemaMatch) bankTransfers.push({ bank: "Wema Bank", accountNumber: wemaMatch[1], beneficiary: "Wakanow.com Collections", expiresIn: "9 hours", note: "Account details are unique to this transaction." });
-      }
-    } else {
-      console.log(`[api-book] Browser: Continue button not found`);
-      const pageText = await page.evaluate(() => document.body.innerText).catch(() => "");
-      console.log(`[api-book] Browser: page text (300): ${pageText.slice(0, 300)}`);
-    }
-
-    await page.close();
-  } finally {
-    await context.close();
-  }
-
-  return { bankTransfers, totalPrice, bookingId: browserBookingId, debugScreenshots };
-}
-
