@@ -4,6 +4,58 @@ import { chromium, type Browser } from "playwright";
 
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
+const NIGERIAN_NAMES = {
+  firstNames: {
+    male: ["Chukwuemeka", "Oluwaseun", "Adebayo", "Ikechukwu", "Tunde", "Emeka", "Obinna", "Chibueze", "Femi", "Tobi", "Damilola", "Yusuf", "Kelechi", "Chinedu", "Babatunde", "Nnamdi", "Uche", "Segun", "Abubakar", "Adeolu"],
+    female: ["Chidinma", "Oluwabunmi", "Adaeze", "Ngozi", "Funke", "Chiamaka", "Blessing", "Amina", "Ifeoma", "Titilayo", "Nneka", "Folake", "Yetunde", "Zainab", "Obiageli", "Bukola", "Halima", "Nkechi", "Aisha", "Ebele"]
+  },
+  middleNames: {
+    male: ["Ifeanyi", "Oluwatobi", "Chukwudi", "Adewale", "Nonso", "Olumide", "Tochukwu", "Ayodeji", "Ugochukwu", "Kayode"],
+    female: ["Onyinyechi", "Oluwakemi", "Adaugo", "Omotola", "Uchenna", "Oluwaseyi", "Chisom", "Adetola", "Nkemdilim", "Omolara"]
+  },
+  lastNames: ["Okonkwo", "Adeyemi", "Okafor", "Ibrahim", "Eze", "Abubakar", "Nwosu", "Balogun", "Obi", "Adekunle", "Uzoma", "Olawale", "Nwachukwu", "Fashola", "Okoro", "Adeleke", "Chukwuma", "Ogundimu", "Usman", "Onyeka"]
+};
+
+function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
+
+function randomDOB(): string {
+  const year = 1975 + Math.floor(Math.random() * 30); // 1975-2004
+  const month = 1 + Math.floor(Math.random() * 12);
+  const day = 1 + Math.floor(Math.random() * 28);
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function randomPhone(): string {
+  const prefixes = ["0803", "0805", "0806", "0807", "0808", "0810", "0811", "0812", "0813", "0814", "0815", "0816", "0817", "0818", "0909", "0908"];
+  return pick(prefixes) + String(Math.floor(Math.random() * 10_000_000)).padStart(7, "0");
+}
+
+function randomEmail(firstName: string, lastName: string): string {
+  const domains = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "mail.com"];
+  const sep = pick([".", "_", ""]);
+  const num = Math.random() > 0.5 ? String(Math.floor(Math.random() * 99)) : "";
+  return `${firstName.toLowerCase()}${sep}${lastName.toLowerCase()}${num}@${pick(domains)}`;
+}
+
+/** Generate a random realistic Nigerian passenger for testing */
+export function generateTestPassenger(email?: string, gender?: "Male" | "Female"): Passenger {
+  const g = gender ?? (Math.random() > 0.5 ? "Male" : "Female");
+  const gKey = g.toLowerCase() as "male" | "female";
+  const firstName = pick(NIGERIAN_NAMES.firstNames[gKey]);
+  const lastName = pick(NIGERIAN_NAMES.lastNames);
+  return {
+    title: g === "Male" ? pick(["Mr", "Mr", "Mr"]) : pick(["Ms", "Mrs", "Miss"]),
+    firstName,
+    lastName,
+    middleName: pick(NIGERIAN_NAMES.middleNames[gKey]),
+    dateOfBirth: randomDOB(),
+    nationality: "Nigerian",
+    gender: g,
+    phone: randomPhone(),
+    email: email ?? randomEmail(firstName, lastName)
+  };
+}
+
 const STEALTH_SCRIPT = `
   Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
   Object.defineProperty(navigator, 'plugins', {
@@ -181,15 +233,26 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
       }
     }
 
-    // Dismiss cookie consent
-    const cookieBtn = page.locator("text=/yes,?\\s*i\\s*agree/i").first();
-    if (await cookieBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      await cookieBtn.click();
-      await page.waitForTimeout(1_000);
+    // Dismiss cookie consent — try multiple times, proxy can be slow
+    for (let i = 0; i < 3; i++) {
+      const cookieBtn = page.locator("text=/yes,?\\s*i\\s*agree/i, button:has-text('I Agree')").first();
+      if (await cookieBtn.isVisible({ timeout: 10_000 }).catch(() => false)) {
+        await cookieBtn.click();
+        await page.waitForTimeout(1_000);
+        break;
+      }
     }
 
     // Wait for flights
-    await page.locator("div.flight-fare-detail-wrap").first().waitFor({ state: "visible", timeout: 120_000 });
+    try {
+      await page.locator("div.flight-fare-detail-wrap").first().waitFor({ state: "visible", timeout: 120_000 });
+    } catch {
+      const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 500) ?? "").catch(() => "");
+      console.log(`[api-book] Flights didn't load. Page: ${bodyText.slice(0, 200)}`);
+      const shot = await page.screenshot({ fullPage: true }).catch(() => null);
+      if (shot) debugScreenshots.push(shot);
+      throw new Error("Flight listings did not load");
+    }
     console.log(`[api-book] Flights loaded`);
 
     // Step 2: Click Book Now
@@ -221,17 +284,20 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
     console.log(`[api-book] BookingId: ${bookingId}, ${airline} ${departure}→${arrival}`);
     await page.waitForTimeout(3_000);
 
-    // Step 3: Fill form using Angular-compatible input events
+    // Step 3: Fill form — use fill() for Angular compatibility, with delays between fields
     console.log(`[api-book] Filling form...`);
     const phoneNum = passenger.phone.startsWith("+") ? passenger.phone.replace(/^\+234/, "0") : passenger.phone;
+    const delay = () => page.waitForTimeout(400 + Math.random() * 600);
 
-    // Use Playwright's fill (triggers input/change events that Angular picks up)
     await page.locator("select").first().selectOption({ label: passenger.title }).catch(() => {});
-    await page.waitForTimeout(200);
+    await delay();
     await page.locator("[name='booking_lastname']").first().fill(passenger.lastName);
+    await delay();
     await page.locator("[name='booking_firstname']").first().fill(passenger.firstName);
+    await delay();
     if (passenger.middleName) {
       await page.locator("[name='booking_middlename']").first().fill(passenger.middleName).catch(() => {});
+      await delay();
     }
 
     // DOB via datepicker
@@ -246,9 +312,9 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
     const dpSelects = page.locator("ngb-datepicker select");
     if (await dpSelects.count() >= 2) {
       await dpSelects.nth(1).selectOption(dobYear);
-      await page.waitForTimeout(300);
+      await delay();
       await dpSelects.nth(0).selectOption(String(parseInt(dobMonth)));
-      await page.waitForTimeout(300);
+      await delay();
       await page.evaluate((day) => {
         for (const cell of document.querySelectorAll("ngb-datepicker div.ngb-dp-day")) {
           if ((cell.textContent ?? "").trim() === day && !cell.classList.contains("ngb-dp-day--outside")) {
@@ -257,32 +323,55 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
         }
       }, String(parseInt(dobDay)));
     }
-    await page.waitForTimeout(300);
+    await delay();
 
     // Gender
     const genderId = passenger.gender === "Male" ? "#Male0" : "#Female0";
     await page.locator(genderId).click().catch(() =>
       page.evaluate((id) => (document.querySelector(id) as HTMLElement)?.click(), genderId)
     );
+    await delay();
 
-    // Phone & Email
     await page.locator("[name='PhoneNumber']").first().fill(phoneNum);
+    await delay();
     await page.locator("input[type='email']").first().fill(passenger.email);
-    await page.waitForTimeout(500);
+    await delay();
 
     // Accept terms
     const cb = page.locator("#acceptTermsAndCondition");
     if (!(await cb.isChecked().catch(() => false))) {
       await cb.click().catch(() => cb.evaluate(el => (el as any).click()));
     }
-    await page.waitForTimeout(300);
+    await delay();
 
     // Step 4: Click Continue — Angular handles Validate + navigation
     console.log(`[api-book] Submitting form...`);
     await page.locator("button:has-text('Continue'), a:has-text('Continue')").first().click({ timeout: 30_000 });
+    await page.waitForTimeout(5_000);
+
+    // Handle verification code popup if it appears (close it and retry)
+    if (page.url().includes("/customer-info")) {
+      const popupText = await page.evaluate(() => {
+        const modal = document.querySelector(".modal, ngb-modal-window, [role='dialog']");
+        return modal ? (modal as HTMLElement).innerText?.slice(0, 300) : null;
+      }).catch(() => null);
+
+      if (popupText) {
+        console.log(`[api-book] Popup detected: ${popupText.slice(0, 100)}`);
+        // Close the popup
+        const closeBtn = page.locator("button:has-text('×'), button.close, .modal button:has-text('Close'), button.btn-close").first();
+        if (await closeBtn.count()) {
+          await closeBtn.click().catch(() => {});
+          await page.waitForTimeout(2_000);
+        }
+        // Re-click Continue
+        await page.locator("button.box-button:has-text('Continue')").first().click({ timeout: 10_000 }).catch(() => {});
+        await page.waitForTimeout(5_000);
+      }
+    }
 
     // Wait for navigation away from customer-info
-    await page.waitForURL(url => !url.toString().includes("/customer-info"), { timeout: 120_000 })
+    await page.waitForURL(url => !url.toString().includes("/customer-info"), { timeout: 60_000 })
       .catch(() => console.log(`[api-book] Still on customer-info`));
     await page.waitForTimeout(2_000);
     console.log(`[api-book] After submit: ${page.url()}`);
