@@ -148,6 +148,26 @@ async function runAI(ctx: BotContext, userText: string) {
   ctx.session.processing = true;
 
   try {
+    // Verification code callback: ask user via Telegram, wait for reply
+    const onVerificationCode = async (email: string): Promise<string> => {
+      await ctx.reply(`Wakanow sent a verification code to ${email}. Please check your email and reply with the code.`);
+      ctx.session.processing = false; // Allow user to reply
+
+      return new Promise<string>((resolve) => {
+        const handler = (msgCtx: any) => {
+          if (msgCtx.from?.id === ctx.from?.id && msgCtx.message?.text) {
+            const code = msgCtx.message.text.trim();
+            if (/^\d{4,8}$/.test(code)) {
+              bot.off("message:text", handler);
+              ctx.session.processing = true;
+              resolve(code);
+            }
+          }
+        };
+        bot.on("message:text", handler);
+      });
+    };
+
     const result = await handleMessage(
       userText,
       ctx.session.history,
@@ -155,7 +175,8 @@ async function runAI(ctx: BotContext, userText: string) {
       ctx.session.selectedFlightIndex,
       ctx.session.profile,
       ctx.session.onboarding,
-      ctx.session.lastSearchRequest
+      ctx.session.lastSearchRequest,
+      onVerificationCode
     );
 
     ctx.session.history = result.updatedHistory;

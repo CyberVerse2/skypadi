@@ -68,7 +68,8 @@ export async function handleMessage(
   selectedFlightIndex: number | undefined,
   profile: PassengerProfile | undefined,
   onboarding: boolean,
-  lastSearchRequest?: LastSearchRequest
+  lastSearchRequest?: LastSearchRequest,
+  onVerificationCode?: (email: string) => Promise<string>
 ): Promise<{
   reply: string;
   updatedHistory: Message[];
@@ -296,7 +297,8 @@ export async function handleMessage(
                 gender: p.gender as "Male" | "Female",
                 phone: p.phone,
                 email: p.email
-              }
+              },
+              onVerificationCode
             });
           } catch (bookErr: any) {
             if (bookErr.screenshots?.length) debugScreenshots = bookErr.screenshots;

@@ -98,6 +98,8 @@ export type ApiBookingRequest = {
   flightId: string;
   passenger: Passenger;
   deeplink?: string;
+  /** Called when Wakanow asks for email verification code. Return the code string. */
+  onVerificationCode?: (email: string) => Promise<string>;
 };
 
 export type BankTransferDetails = {
@@ -380,9 +382,38 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
       console.log(`[api-book] Stuck on customer-info. Modal: ${pageState.modalText ?? "none"}`);
       console.log(`[api-book] Buttons: ${JSON.stringify(pageState.visibleButtons)}`);
 
-      if (pageState.modalText) {
-        // Try to close popup and retry
-        const closeBtn = page.locator("button:has-text('×'), button.close, button.btn-close, .modal button:has-text('Close')").first();
+      // Check if it's a verification code modal
+      const isVerification = pageState.modalText && (
+        pageState.modalText.toLowerCase().includes("verif") ||
+        pageState.modalText.toLowerCase().includes("code") ||
+        pageState.modalText.toLowerCase().includes("otp")
+      );
+
+      if (isVerification && request.onVerificationCode) {
+        console.log(`[api-book] Verification code required`);
+        const code = await request.onVerificationCode(passenger.email);
+        console.log(`[api-book] Got verification code, entering...`);
+
+        // Type the code into the input field in the modal
+        const codeInput = page.locator(".modal input, ngb-modal-window input, [role='dialog'] input").first();
+        if (await codeInput.count()) {
+          await codeInput.fill(code);
+          await page.waitForTimeout(500);
+          // Click submit/verify button in modal
+          const verifyBtn = page.locator(".modal button:has-text('Verify'), .modal button:has-text('Submit'), .modal button:has-text('Continue'), ngb-modal-window button:has-text('Verify'), ngb-modal-window button:has-text('Submit')").first();
+          if (await verifyBtn.count()) {
+            await verifyBtn.click();
+            await page.waitForTimeout(5_000);
+          }
+        }
+        // Re-click Continue after verification
+        if (page.url().includes("/customer-info")) {
+          await page.locator("button.box-button:has-text('Continue')").first().click({ timeout: 10_000 }).catch(() => {});
+          await page.waitForTimeout(5_000);
+        }
+      } else if (pageState.modalText) {
+        // Non-verification popup — try to close and retry
+        const closeBtn = page.locator("button:has-text('×'), button.close, button.btn-close").first();
         if (await closeBtn.count()) {
           await closeBtn.click().catch(() => {});
           await page.waitForTimeout(2_000);
@@ -391,7 +422,7 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
         }
       }
 
-      // If still on customer-info after handling popup, fail with details
+      // If still on customer-info after handling, fail with details
       if (page.url().includes("/customer-info")) {
         const err: any = new Error(`Booking blocked on customer-info. ${pageState.modalText ?? "No popup detected"}`);
         err.debugScreenshots = debugScreenshots;
