@@ -359,30 +359,49 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
     await page.locator("button:has-text('Continue'), a:has-text('Continue')").first().click({ timeout: 30_000 });
     await page.waitForTimeout(5_000);
 
-    // Handle verification code popup if it appears (close it and retry)
+    // Check what happened after Continue click
     if (page.url().includes("/customer-info")) {
-      const popupText = await page.evaluate(() => {
-        const modal = document.querySelector(".modal, ngb-modal-window, [role='dialog']");
-        return modal ? (modal as HTMLElement).innerText?.slice(0, 300) : null;
-      }).catch(() => null);
+      // Screenshot to see what's on screen
+      const shot = await page.screenshot({ fullPage: true }).catch(() => null);
+      if (shot) debugScreenshots.push(shot);
 
-      if (popupText) {
-        console.log(`[api-book] Popup detected: ${popupText.slice(0, 100)}`);
-        // Close the popup
-        const closeBtn = page.locator("button:has-text('×'), button.close, .modal button:has-text('Close'), button.btn-close").first();
+      // Check for any popup/modal (verification code, error, etc.)
+      const pageState = await page.evaluate(() => {
+        const modal = document.querySelector(".modal, ngb-modal-window, [role='dialog'], .swal2-container");
+        const modalText = modal ? (modal as HTMLElement).innerText?.trim().slice(0, 300) : null;
+        const bodyText = document.body?.innerText?.slice(0, 500) ?? "";
+        const visibleButtons = Array.from(document.querySelectorAll("button, a.btn"))
+          .filter(b => (b as HTMLElement).offsetParent !== null)
+          .map(b => (b as HTMLElement).innerText?.trim().slice(0, 40))
+          .filter(Boolean);
+        return { modalText, bodyText: bodyText.slice(0, 200), visibleButtons };
+      }).catch(() => ({ modalText: null, bodyText: "", visibleButtons: [] }));
+
+      console.log(`[api-book] Stuck on customer-info. Modal: ${pageState.modalText ?? "none"}`);
+      console.log(`[api-book] Buttons: ${JSON.stringify(pageState.visibleButtons)}`);
+
+      if (pageState.modalText) {
+        // Try to close popup and retry
+        const closeBtn = page.locator("button:has-text('×'), button.close, button.btn-close, .modal button:has-text('Close')").first();
         if (await closeBtn.count()) {
           await closeBtn.click().catch(() => {});
           await page.waitForTimeout(2_000);
+          await page.locator("button.box-button:has-text('Continue')").first().click({ timeout: 10_000 }).catch(() => {});
+          await page.waitForTimeout(5_000);
         }
-        // Re-click Continue
-        await page.locator("button.box-button:has-text('Continue')").first().click({ timeout: 10_000 }).catch(() => {});
-        await page.waitForTimeout(5_000);
+      }
+
+      // If still on customer-info after handling popup, fail with details
+      if (page.url().includes("/customer-info")) {
+        const err: any = new Error(`Booking blocked on customer-info. ${pageState.modalText ?? "No popup detected"}`);
+        err.debugScreenshots = debugScreenshots;
+        throw err;
       }
     }
 
-    // Wait for navigation away from customer-info
-    await page.waitForURL(url => !url.toString().includes("/customer-info"), { timeout: 60_000 })
-      .catch(() => console.log(`[api-book] Still on customer-info`));
+    // Wait for navigation to complete
+    await page.waitForURL(url => !url.toString().includes("/customer-info"), { timeout: 30_000 })
+      .catch(() => {});
     await page.waitForTimeout(2_000);
     console.log(`[api-book] After submit: ${page.url()}`);
 
