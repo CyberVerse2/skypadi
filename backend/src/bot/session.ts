@@ -29,12 +29,21 @@ export type SessionData = {
   profile?: PassengerProfile;
   onboarding: boolean; // true = currently collecting profile
   lastSearchRequest?: LastSearchRequest;
+  // UX state
+  isFirstVisit: boolean;
+  searchCount: number;
+  failedAttempts: number; // per-flow, reset on success
+  lastSeenAt: number; // Date.now()
 };
 
 export function defaultSession(): SessionData {
   return {
     history: [],
     processing: false,
-    onboarding: false
+    onboarding: false,
+    isFirstVisit: true,
+    searchCount: 0,
+    failedAttempts: 0,
+    lastSeenAt: Date.now()
   };
 }

@@ -22,11 +22,14 @@ export function createBot() {
     const existing = dbGetProfile(ctx.from!.id);
     if (existing) {
       ctx.session.profile = existing;
-      await ctx.reply(`Welcome back, ${existing.title} ${existing.firstName}! Ready to find flights. ✈️`);
+      ctx.session.isFirstVisit = false;
+      await ctx.reply(`Welcome back, ${existing.title} ${existing.firstName}! Where would you like to fly? ✈️`);
     } else {
-      ctx.session.onboarding = true;
-      await runAI(ctx,
-        "The user just started the bot. Welcome them briefly to SkyPadi and ask for their details to set up their profile: title, full name, date of birth, gender, phone number, and email. Be conversational — ask naturally, not as a form."
+      // No forced onboarding — let them search immediately
+      await ctx.reply(
+        `Welcome to SkyPadi! ✈️\n\n` +
+        `Tell me where you want to fly and I'll find the best flights.\n` +
+        `Try: "Lagos to Dubai next Friday"`
       );
     }
   });
@@ -36,14 +39,15 @@ export function createBot() {
     const profile = ctx.session.profile;
     ctx.session = defaultSession();
     ctx.session.profile = profile; // keep profile
-    await ctx.reply("Cleared. What would you like to do?");
+    ctx.session.isFirstVisit = false;
+    await ctx.reply("Fresh start. Where would you like to fly?");
   });
 
   // ── /profile ────────────────────────────────────────────
   bot.command("profile", async (ctx) => {
     const p = ctx.session.profile;
     if (!p) {
-      await ctx.reply("No profile saved. Use /start to set one up.");
+      await ctx.reply("No profile saved yet. I'll ask for your details when you're ready to book a flight.");
       return;
     }
     await ctx.reply(
@@ -107,38 +111,68 @@ export function createBot() {
 
     const flight = results[index];
     await ctx.answerCallbackQuery();
-    await ctx.reply(`Booking ${flight.airline} ${flight.departureTime}→${flight.arrivalTime} ${flight.priceText}... ⏳`);
 
+    // If no profile, collect it now (backloaded friction)
+    if (!ctx.session.profile) {
+      ctx.session.onboarding = true;
+      ctx.session.selectedFlightIndex = index;
+      await ctx.reply(
+        `Great choice! ${flight.airline} ${flight.departureTime}→${flight.arrivalTime} ${flight.priceText}\n\n` +
+        `To book this flight, I need a few details first.`
+      );
+      await runAI(ctx,
+        "The user wants to book a flight but has no profile yet. Collect their details conversationally: title (Mr/Ms/Mrs/Miss/Dr), full name, date of birth (YYYY-MM-DD), gender, phone, and email. Once done, call saveProfile, then immediately proceed to book the selected flight."
+      );
+      return;
+    }
+
+    await ctx.reply(`Booking ${flight.airline} ${flight.departureTime}→${flight.arrivalTime} ${flight.priceText}... ⏳`);
     await runAI(ctx, `The user confirmed booking flight ${index + 1}: ${flight.airline} ${flight.departureTime}→${flight.arrivalTime} ${flight.priceText}. Use the saved passenger profile and call bookFlight now — do NOT ask for any details.`);
   });
 
   // ── Callback: cancel booking ──────────────────────────
   bot.callbackQuery("cancel_book", async (ctx) => {
     await ctx.answerCallbackQuery();
-    await ctx.reply("Booking cancelled. Pick another flight or search again.");
+    await ctx.reply("No problem. Tap another flight above, or tell me a new route to search.");
   });
 
   // ── All text messages → AI ─────────────────────────────
   bot.on("message:text", async (ctx) => {
     if (ctx.session.processing) {
-      await ctx.reply("Still working on your last request...");
+      await ctx.reply("Still on it — hang tight.");
       return;
     }
     await runAI(ctx, ctx.message.text);
   });
 
-  return bot;
-}
+  // ── Helper: progress updater ────────────────────────────
+  async function createProgressUpdater(ctx: BotContext) {
+    let messageId: number | undefined;
+    let chatId: number | undefined;
+    let lastText = "";
 
-function formatShortDate(isoDate: string): string {
-  const d = new Date(`${isoDate}T12:00:00`);
-  const day = d.getDate();
-  const month = d.toLocaleString("en-US", { month: "short" });
-  const weekday = d.toLocaleString("en-US", { weekday: "short" });
-  return `${weekday} ${day} ${month}`;
-}
+    return {
+      async send(text: string) {
+        if (text === lastText) return;
+        lastText = text;
+        if (messageId && chatId) {
+          await ctx.api.editMessageText(chatId, messageId, text).catch(() => {});
+        } else {
+          const msg = await ctx.reply(text);
+          messageId = msg.message_id;
+          chatId = msg.chat.id;
+        }
+      },
+      async remove() {
+        if (messageId && chatId) {
+          await ctx.api.deleteMessage(chatId, messageId).catch(() => {});
+        }
+      }
+    };
+  }
 
-async function runAI(ctx: BotContext, userText: string) {
+  // ── Helper: run AI with all UX capabilities ─────────────
+  async function runAI(ctx: BotContext, userText: string) {
   // Ensure profile is loaded from DB if not in session
   if (!ctx.session.profile && ctx.from) {
     const saved = dbGetProfile(ctx.from.id);
@@ -146,6 +180,7 @@ async function runAI(ctx: BotContext, userText: string) {
   }
 
   ctx.session.processing = true;
+  ctx.session.lastSeenAt = Date.now();
 
   try {
     // Verification code callback: ask user via Telegram, wait for reply
@@ -154,19 +189,24 @@ async function runAI(ctx: BotContext, userText: string) {
       ctx.session.processing = false; // Allow user to reply
 
       return new Promise<string>((resolve) => {
+        let resolved = false;
         const handler = (msgCtx: any) => {
+          if (resolved) return;
           if (msgCtx.from?.id === ctx.from?.id && msgCtx.message?.text) {
             const code = msgCtx.message.text.trim();
             if (/^\d{4,8}$/.test(code)) {
-              bot.off("message:text", handler);
+              resolved = true;
               ctx.session.processing = true;
               resolve(code);
             }
           }
         };
-        bot.on("message:text", handler);
+        bot.on("message:text", handler as any);
       });
     };
+
+    // Progress updater for narration
+    const progress = await createProgressUpdater(ctx);
 
     const result = await handleMessage(
       userText,
@@ -176,13 +216,25 @@ async function runAI(ctx: BotContext, userText: string) {
       ctx.session.profile,
       ctx.session.onboarding,
       ctx.session.lastSearchRequest,
-      onVerificationCode
+      onVerificationCode,
+      (step: string) => progress.send(step)
     );
+
+    // Remove progress message — real results follow
+    await progress.remove();
 
     ctx.session.history = result.updatedHistory;
     if (result.searchResults) ctx.session.searchResults = result.searchResults;
     if (result.selectedFlightIndex !== undefined) ctx.session.selectedFlightIndex = result.selectedFlightIndex;
     if (result.lastSearchRequest) ctx.session.lastSearchRequest = result.lastSearchRequest;
+
+    // Track search count and reset failure counter on success
+    if (result.newSearch && result.searchResults && result.searchResults.length > 0) {
+      ctx.session.searchCount++;
+      ctx.session.failedAttempts = 0;
+      ctx.session.isFirstVisit = false;
+    }
+
     if (result.profile) {
       ctx.session.profile = result.profile;
       ctx.session.onboarding = false;
@@ -220,9 +272,14 @@ async function runAI(ctx: BotContext, userText: string) {
       });
 
       if (result.reply) await ctx.reply(result.reply);
-      await ctx.reply("Tap a flight to book:", { reply_markup: keyboard });
+      await ctx.reply("Tap a flight to see details:", { reply_markup: keyboard });
+
+      // First-journey hint — distributed onboarding
+      if (ctx.session.searchCount === 1) {
+        await ctx.reply(`💡 Tip: Try "search next week" to compare prices across multiple days.`);
+      }
     } else {
-      await ctx.reply(result.reply || "Something went wrong. Try again.");
+      await ctx.reply(result.reply || "I didn't catch that. Try something like \"flights from Lagos to Dubai on Friday\".");
     }
 
     // Send debug screenshots if any (booking failures)
@@ -233,9 +290,45 @@ async function runAI(ctx: BotContext, userText: string) {
     }
   } catch (error) {
     console.error("AI handler error:", error);
-    const msg = error instanceof Error ? error.message : "Unknown error";
-    await ctx.reply(`Something went wrong: ${msg}\n\nTry again or use /cancel to start over.`);
+    ctx.session.failedAttempts++;
+
+    // Localized error recovery with struggle detection
+    let reply: string;
+    if (ctx.session.failedAttempts >= 3) {
+      // Proactive help — skip explanation, offer alternative
+      reply = `This isn't working as expected. Here are some things that usually help:\n\n` +
+        `• Try a different route or date\n` +
+        `• Use city names like "Lagos" instead of codes\n` +
+        `• Use /cancel to start fresh\n\n` +
+        `Or just tell me what you're trying to do and I'll find another way.`;
+      ctx.session.failedAttempts = 0; // reset after proactive help
+    } else if (ctx.session.failedAttempts === 2) {
+      // Second failure — shorter, more direct
+      reply = `Still having trouble. Try a different date or route, or use /cancel to start over.`;
+    } else {
+      // First failure — explain + next step
+      const raw = error instanceof Error ? error.message : "";
+      if (raw.includes("No flight results") || raw.includes("search")) {
+        reply = `Couldn't find flights for that search. Try different dates — weekdays often have more options.`;
+      } else if (raw.includes("Booking") || raw.includes("booking")) {
+        reply = `The booking didn't go through. This can happen when flights sell out quickly. Try selecting the flight again.`;
+      } else {
+        reply = `Something unexpected happened. Try again, or use /cancel to start fresh.`;
+      }
+    }
+    await ctx.reply(reply);
   } finally {
     ctx.session.processing = false;
   }
+  }
+
+  return bot;
+}
+
+function formatShortDate(isoDate: string): string {
+  const d = new Date(`${isoDate}T12:00:00`);
+  const day = d.getDate();
+  const month = d.toLocaleString("en-US", { month: "short" });
+  const weekday = d.toLocaleString("en-US", { weekday: "short" });
+  return `${weekday} ${day} ${month}`;
 }

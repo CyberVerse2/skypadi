@@ -100,6 +100,8 @@ export type ApiBookingRequest = {
   deeplink?: string;
   /** Called when Wakanow asks for email verification code. Return the code string. */
   onVerificationCode?: (email: string) => Promise<string>;
+  /** Called to update the user on booking progress */
+  onProgress?: (step: string) => Promise<void>;
 };
 
 export type BankTransferDetails = {
@@ -159,10 +161,12 @@ async function getBrowser(): Promise<Browser> {
  *       Pay Now → Bank Transfer → Continue (Angular GeneratePNR + MakePayment)
  */
 export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBookingResponse> {
-  const { searchKey, passenger, deeplink } = request;
+  const { searchKey, passenger, deeplink, onProgress } = request;
   const currency = env.WAKANOW_CURRENCY;
+  const notify = (msg: string) => onProgress?.(msg) ?? Promise.resolve();
 
   console.log(`[api-book] Starting booking...`);
+  await notify("✈️ Starting your booking...");
 
   const browser = await getBrowser();
   const context = await browser.newContext({
@@ -234,6 +238,7 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
     // Step 1: Load listings
     const listingsUrl = deeplink ?? `https://www.wakanow.com/en-ng/flights/search?searchKey=${searchKey}`;
     console.log(`[api-book] Loading listings...`);
+    await notify("✈️ Loading flight details...");
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         await page.goto(listingsUrl, { waitUntil: "domcontentloaded", timeout: 120_000 });
@@ -266,6 +271,7 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
       throw new Error("Flight listings did not load");
     }
     console.log(`[api-book] Flights loaded`);
+    await notify("✅ Flight found\n⏳ Selecting your flight...");
 
     // Step 2: Click Book Now
     const bookBtn = page.locator("div.flight-fare-detail-wrap").first().locator("button.box-button:not(.d-md-none)").first();
@@ -298,6 +304,7 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
 
     // Step 3: Fill form — use fill() for Angular compatibility, with delays between fields
     console.log(`[api-book] Filling form...`);
+    await notify("✅ Flight selected\n⏳ Filling in your passenger details...");
     const phoneNum = passenger.phone.startsWith("+") ? passenger.phone.replace(/^\+234/, "0") : passenger.phone;
     const delay = () => page.waitForTimeout(400 + Math.random() * 600);
 
@@ -358,6 +365,7 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
 
     // Step 4: Click Continue — Angular handles Validate + navigation
     console.log(`[api-book] Submitting form...`);
+    await notify("✅ Details filled\n⏳ Submitting to Wakanow... (usually ~15s)");
     await page.locator("button:has-text('Continue'), a:has-text('Continue')").first().click({ timeout: 30_000 });
     await page.waitForTimeout(5_000);
 
@@ -438,6 +446,7 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
 
     // Step 5: Addons page → Pay Now
     if (page.url().includes("/addons")) {
+      await notify("✅ Booking submitted\n⏳ Skipping add-ons...");
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
       await page.waitForTimeout(1_000);
       await page.locator("text=/pay\\s*now/i").first().click({ timeout: 15_000 }).catch(() => {});
@@ -446,6 +455,7 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
 
     // Step 6: Payment page → Bank Transfer → Continue
     console.log(`[api-book] Payment page: ${page.url()}`);
+    await notify("✅ Almost there\n⏳ Getting payment details...");
     await page.waitForTimeout(5_000); // Wait for payment options to load
 
     // Click Bank Transfer
@@ -464,6 +474,7 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
     }
 
     console.log(`[api-book] Booking complete! ID: ${bookingId}, ${bankTransfers.length} bank(s), ₦${totalPrice.toLocaleString()}`);
+    await notify("✅ Booking complete!");
 
     await page.close();
 

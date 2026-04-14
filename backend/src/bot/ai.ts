@@ -17,21 +17,39 @@ Today's date: ${TODAY()}
 
 Guidelines:
 - Keep responses concise — this is a chat, not an email
-- Prices are in Nigerian Naira (NGN/₦)`;
+- Prices are in Nigerian Naira (NGN/₦)
+
+## User Experience
+
+NARRATION: When you trigger a search or booking, the app shows live progress updates. Don't narrate steps yourself — just confirm what you're doing in one short line ("Searching Lagos → Dubai for April 25...") and let the app handle progress.
+
+CONTEXT: After showing any result, add one line that interprets what it means. Then suggest one thing the user can do to get better results.
+Example: "These are all connecting flights. For a direct option, try departing from Abuja instead."
+
+FIRST-TIME USERS: If the user has no profile yet, welcome them warmly but let them search flights immediately. Only ask for profile details when they want to book. Don't front-load onboarding.
+
+ERRORS: Never show raw errors or technical details. Explain what went wrong plainly, give the most likely reason, and offer a specific next step.
+Bad: "WakanowApiSearchError: No flight results found. {requestKey: abc123}"
+Good: "No flights found for Lagos → London on that date. Try a nearby date — Tuesdays and Wednesdays often have more options."
+
+STRUGGLE: If the user has tried the same thing twice and failed, skip the explanation and go straight to a fix. After 3 failures, proactively name what they're trying to do and suggest a different approach.
+
+AGENCY: After every recommendation, give the user one thing they can do to influence the next result.
+Example: "Flexible on dates? Try 'search next week' to find the cheapest day."`;
+
 
   if (onboarding) {
     prompt += `
 
-CURRENT MODE: Onboarding — collecting passenger profile.
+CURRENT MODE: Collecting passenger profile for booking.
 Ask the user for their details conversationally: title (Mr/Ms/Mrs/Miss/Dr), full name (first, middle if any, last), date of birth (YYYY-MM-DD), gender (Male/Female), phone number, and email.
-You can ask for several at once. Once you have ALL details, call the saveProfile tool.
-Don't ask about flights yet — just get the profile set up first.`;
+You can ask for several at once. Once you have ALL details, call the saveProfile tool.`;
   } else {
     prompt += `
 
 Your capabilities:
 1. Search flights — use searchFlights when a user wants to find flights
-2. Book flights — use bookFlight when a user selects a flight
+2. Book flights — use bookFlight when a user selects a flight (requires profile)
 
 Search guidelines:
 - When the user mentions a destination and timeframe, search immediately
@@ -69,7 +87,8 @@ export async function handleMessage(
   profile: PassengerProfile | undefined,
   onboarding: boolean,
   lastSearchRequest?: LastSearchRequest,
-  onVerificationCode?: (email: string) => Promise<string>
+  onVerificationCode?: (email: string) => Promise<string>,
+  onProgress?: (step: string) => Promise<void>
 ): Promise<{
   reply: string;
   updatedHistory: Message[];
@@ -137,6 +156,7 @@ export async function handleMessage(
         }),
         execute: async ({ origin, destination, departureDate, returnDate }) => {
           console.log(`[searchFlights] ${origin} → ${destination} on ${departureDate}`);
+          await onProgress?.(`🔍 Searching ${origin} → ${destination} for ${departureDate}...`);
           try {
             const result = await searchFlightsApi({
               origin,
@@ -146,6 +166,7 @@ export async function handleMessage(
               maxResults: 10
             });
             console.log(`[searchFlights] Found ${result.resultCount} flights`);
+            await onProgress?.(`✅ Found ${result.resultCount} flights — preparing results...`);
             newSearchResults = result.results;
             didNewSearch = true;
             newLastSearchRequest = { origin, destination, departureDate, returnDate, searchedAt: Date.now() };
@@ -163,7 +184,7 @@ export async function handleMessage(
             };
           } catch (e: any) {
             console.error(`[searchFlights] Failed: ${e.message}`, e.cause ?? "");
-            return { error: `Flight search failed: ${e.message}` };
+            return { error: `No flights found for ${origin} → ${destination} on ${departureDate}. Try a different date — Tuesdays and Wednesdays often have more options.` };
           }
         }
       },
@@ -176,6 +197,7 @@ export async function handleMessage(
         }),
         execute: async ({ origin, destination, dates }) => {
           const CONCURRENCY = 2; // Wakanow throttles beyond 2 concurrent requests
+          await onProgress?.(`🔍 Searching ${origin} → ${destination} across ${dates.length} dates... (usually ~${Math.ceil(dates.length * 5)}s)`);
 
           // Process dates in batches to avoid rate limiting
           const allResults: any[] = [];
@@ -189,6 +211,8 @@ export async function handleMessage(
               )
             );
             allResults.push(...batchResults.flat());
+            const searched = Math.min(i + CONCURRENCY, dates.length);
+            await onProgress?.(`🔍 Checked ${searched}/${dates.length} dates — ${allResults.length} flights so far...`);
           }
 
           // Sort by price (extract numeric value)
@@ -226,28 +250,29 @@ export async function handleMessage(
         execute: async ({ flightIndex }) => {
           const p = savedProfile ?? profile;
           if (!p) {
-            return { error: "No passenger profile found. Ask the user for their details." };
+            return { error: "I need your details before booking. Could you share your name, date of birth, gender, phone, and email?" };
           }
           if (!newSearchResults || newSearchResults.length === 0) {
-            return { error: "No search results. Search for flights first." };
+            return { error: "No flights loaded yet. Search for flights first, then pick one to book." };
           }
 
           const idx = flightIndex - 1;
           if (idx < 0 || idx >= newSearchResults.length) {
-            return { error: `Flight ${flightIndex} not found.` };
+            return { error: `Flight ${flightIndex} isn't in the current results. Tap one of the flight buttons above to select it.` };
           }
 
           newSelectedIndex = idx;
           const flight = newSearchResults[idx];
 
           if (!flight.flightId || !flight.searchKey) {
-            return { error: "Flight missing booking data. Try searching again." };
+            return { error: "This flight can't be booked directly. Try searching again — the refreshed results will have full booking data." };
           }
 
           // Re-search if results are older than 5 minutes to get a fresh deeplink
           const STALE_MS = 5 * 60 * 1000;
           if (newLastSearchRequest && (Date.now() - newLastSearchRequest.searchedAt) > STALE_MS) {
             console.log(`[bookFlight] Search results are stale (${Math.round((Date.now() - newLastSearchRequest.searchedAt) / 1000)}s old), re-searching...`);
+            await onProgress?.(`🔄 Refreshing flight availability before booking...`);
             try {
               const freshResult = await searchFlightsApi({
                 origin: newLastSearchRequest.origin,
@@ -264,11 +289,11 @@ export async function handleMessage(
                 f.airline === flight.airline && f.departureTime === flight.departureTime && f.arrivalTime === flight.arrivalTime
               );
               if (freshIdx === -1) {
-                return { error: "Flight no longer available after refreshing. Try searching again." };
+                return { error: "That flight is no longer available — it may have sold out. Search again to see what's current." };
               }
               const freshFlight = newSearchResults[freshIdx];
               if (!freshFlight.flightId || !freshFlight.searchKey) {
-                return { error: "Fresh flight missing booking data. Try searching again." };
+                return { error: "The refreshed flight can't be booked directly. Try a new search." };
               }
               // Use fresh flight data
               Object.assign(flight, freshFlight);
@@ -280,6 +305,7 @@ export async function handleMessage(
           }
 
           console.log(`[bookFlight] Booking flight ${flightIndex}: ${flight.airline} via API`);
+          await onProgress?.(`✈️ Booking ${flight.airline} ${flight.departureTime}→${flight.arrivalTime}...\n⏳ Filling passenger details... (usually ~60s)`);
 
           let bookResult;
           try {
@@ -298,11 +324,12 @@ export async function handleMessage(
                 phone: p.phone,
                 email: p.email
               },
-              onVerificationCode
+              onVerificationCode,
+              onProgress
             });
           } catch (bookErr: any) {
             if (bookErr.screenshots?.length) debugScreenshots = bookErr.screenshots;
-            return { error: `Booking failed: ${bookErr.message}` };
+            return { error: `The booking didn't go through — Wakanow's system may be busy. Try selecting the flight again, or pick a different option.` };
           }
 
           paymentUrl = bookResult.paymentUrl;
@@ -334,7 +361,7 @@ export async function handleMessage(
     stopWhen: stepCountIs(5)
   });
 
-  const assistantReply = result.text || "Sorry, I couldn't process that. Try again.";
+  const assistantReply = result.text || "I didn't quite get that. Try telling me where you want to fly — for example, \"Lagos to Dubai next Friday\".";
 
   const updatedHistory: Message[] = [
     ...conversationHistory,
