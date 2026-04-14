@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend-dev",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--prefix", "backend", "tsx", "watch", "backend/src/index.ts"],
+      "port": 8787
+    }
+  ]
+}
