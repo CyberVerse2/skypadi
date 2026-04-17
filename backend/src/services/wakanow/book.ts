@@ -105,7 +105,7 @@ async function runBookingFlow(
   await acceptAndContinue(page, trace);
 
   // Step 6: Wait for next page and capture result
-  await page.waitForTimeout(8_000);
+  await page.waitForTimeout(30_000);
   const currentUrl = page.url();
   const bodyText = collapseWhitespace(
     await page.locator("body").innerText().catch(() => "")

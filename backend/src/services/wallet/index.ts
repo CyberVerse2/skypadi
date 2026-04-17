@@ -1,6 +1,6 @@
 import { env } from "../../config.js";
 import { getWallet, insertWallet, markWalletFunded, type WalletRecord } from "../../db.js";
-import { encrypt, decrypt } from "./crypto.js";
+import { encrypt } from "./crypto.js";
 import { fundTestnet, generateWallet } from "./stellar.js";
 
 export type EnsuredWallet = {
@@ -8,11 +8,7 @@ export type EnsuredWallet = {
   created: boolean;
 };
 
-/**
- * Return the user's wallet, generating one on first call.
- * On testnet, funds new wallets via friendbot (failures are non-fatal).
- */
-export async function ensureWallet(telegramId: number): Promise<EnsuredWallet> {
+export function ensureWallet(telegramId: number): EnsuredWallet {
   const existing = getWallet(telegramId);
   if (existing) return { record: existing, created: false };
 
@@ -21,18 +17,18 @@ export async function ensureWallet(telegramId: number): Promise<EnsuredWallet> {
   insertWallet(telegramId, publicKey, encrypted, env.STELLAR_NETWORK, false);
 
   if (env.STELLAR_NETWORK === "testnet") {
-    try {
-      await fundTestnet(publicKey);
-      markWalletFunded(telegramId);
-    } catch (err) {
-      console.warn(`[wallet] Friendbot funding failed for ${telegramId}:`, err);
-    }
+    void fundTestnet(publicKey)
+      .then(() => markWalletFunded(telegramId))
+      .catch((err) => console.warn(`[wallet] Friendbot funding failed for ${telegramId}:`, err));
   }
 
-  const record = getWallet(telegramId)!;
+  const record: WalletRecord = {
+    telegramId,
+    publicKey,
+    encryptedSecret: encrypted,
+    network: env.STELLAR_NETWORK,
+    funded: false,
+    createdAt: new Date().toISOString()
+  };
   return { record, created: true };
-}
-
-export function revealSecret(record: WalletRecord): string {
-  return decrypt(record.encryptedSecret);
 }
