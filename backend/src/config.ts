@@ -18,7 +18,11 @@ const envSchema = z.object({
     .default("true"),
   WAKANOW_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
   WAKANOW_MAX_RESULTS: z.coerce.number().int().positive().default(10),
-  PROXY_URL: z.string().optional()
+  PROXY_URL: z.string().optional(),
+  STELLAR_NETWORK: z.enum(["testnet", "mainnet"]).default("testnet"),
+  WALLET_ENCRYPTION_KEY: z
+    .string()
+    .min(1, "WALLET_ENCRYPTION_KEY is required (32-byte key as hex or base64)")
 });
 
 export const env = envSchema.parse(process.env);

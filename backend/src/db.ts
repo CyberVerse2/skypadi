@@ -25,6 +25,17 @@ db.exec(`
   )
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS wallets (
+    telegram_id INTEGER PRIMARY KEY,
+    public_key TEXT NOT NULL UNIQUE,
+    encrypted_secret TEXT NOT NULL,
+    network TEXT NOT NULL,
+    funded INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  )
+`);
+
 // Migration: add middle_name column if missing (existing databases)
 try {
   db.exec(`ALTER TABLE profiles ADD COLUMN middle_name TEXT`);
@@ -74,4 +85,49 @@ export function getProfile(telegramId: number): PassengerProfile | undefined {
     phone: row.phone,
     email: row.email
   };
+}
+
+const insertWalletStmt = db.prepare(`
+  INSERT INTO wallets (telegram_id, public_key, encrypted_secret, network, funded)
+  VALUES (?, ?, ?, ?, ?)
+`);
+
+const getWalletStmt = db.prepare(`SELECT * FROM wallets WHERE telegram_id = ?`);
+
+const markWalletFundedStmt = db.prepare(`UPDATE wallets SET funded = 1 WHERE telegram_id = ?`);
+
+export type WalletRecord = {
+  telegramId: number;
+  publicKey: string;
+  encryptedSecret: string;
+  network: string;
+  funded: boolean;
+  createdAt: string;
+};
+
+export function getWallet(telegramId: number): WalletRecord | undefined {
+  const row = getWalletStmt.get(telegramId) as any;
+  if (!row) return undefined;
+  return {
+    telegramId: row.telegram_id,
+    publicKey: row.public_key,
+    encryptedSecret: row.encrypted_secret,
+    network: row.network,
+    funded: !!row.funded,
+    createdAt: row.created_at
+  };
+}
+
+export function insertWallet(
+  telegramId: number,
+  publicKey: string,
+  encryptedSecret: string,
+  network: string,
+  funded: boolean
+): void {
+  insertWalletStmt.run(telegramId, publicKey, encryptedSecret, network, funded ? 1 : 0);
+}
+
+export function markWalletFunded(telegramId: number): void {
+  markWalletFundedStmt.run(telegramId);
 }
