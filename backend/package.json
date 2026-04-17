@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.52",
+    "@stellar/stellar-sdk": "^15.0.1",
     "ai": "^6.0.156",
     "axios": "^1.15.0",
     "better-sqlite3": "^12.8.0",

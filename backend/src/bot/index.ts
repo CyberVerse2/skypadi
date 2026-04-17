@@ -4,6 +4,7 @@ import { env } from "../config.js";
 import { handleMessage } from "./ai.js";
 import { defaultSession, type SessionData } from "./session.js";
 import { saveProfile as dbSaveProfile, getProfile as dbGetProfile } from "../db.js";
+import { ensureWallet } from "../services/wallet/index.js";
 
 type BotContext = Context & SessionFlavor<SessionData>;
 
@@ -20,18 +21,44 @@ export function createBot() {
   bot.command("start", async (ctx) => {
     ctx.session = defaultSession();
     const existing = dbGetProfile(ctx.from!.id);
+
+    // Ensure every user has a Stellar wallet
+    const { created } = await ensureWallet(ctx.from!.id).catch((err) => {
+      console.error(`[wallet] ensure failed for ${ctx.from!.id}:`, err);
+      return { created: false };
+    });
+
     if (existing) {
       ctx.session.profile = existing;
       ctx.session.isFirstVisit = false;
       await ctx.reply(`Welcome back, ${existing.title} ${existing.firstName}! Where would you like to fly? ✈️`);
     } else {
-      // No forced onboarding — let them search immediately
       await ctx.reply(
         `Welcome to SkyPadi! ✈️\n\n` +
         `Tell me where you want to fly and I'll find the best flights.\n` +
         `Try: "Lagos to Dubai next Friday"`
       );
     }
+
+    if (created) {
+      await ctx.reply(
+        `🪙 I've created a Stellar wallet for you (${env.STELLAR_NETWORK}). ` +
+        `Use /wallet to see your address.`
+      );
+    }
+  });
+
+  // ── /wallet ────────────────────────────────────────────
+  bot.command("wallet", async (ctx) => {
+    const { record } = await ensureWallet(ctx.from!.id);
+    const fundedNote = record.funded ? "✅ Funded" : (record.network === "testnet" ? "⏳ Funding pending" : "");
+    await ctx.reply(
+      `🪙 *Your Stellar Wallet*\n\n` +
+      `Network: \`${record.network}\`\n` +
+      `Address: \`${record.publicKey}\`\n` +
+      (fundedNote ? `${fundedNote}\n` : ""),
+      { parse_mode: "Markdown" }
+    );
   });
 
   // ── /cancel ─────────────────────────────────────────────
