@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import path from "path";
 import { fileURLToPath } from "url";
 import type { PassengerProfile } from "./bot/session.js";
+import type { StellarNetwork } from "./config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH = path.join(__dirname, "..", "skypadi.db");
@@ -100,7 +101,7 @@ export type WalletRecord = {
   telegramId: number;
   publicKey: string;
   encryptedSecret: string;
-  network: string;
+  network: StellarNetwork;
   funded: boolean;
   createdAt: string;
 };
@@ -112,7 +113,7 @@ export function getWallet(telegramId: number): WalletRecord | undefined {
     telegramId: row.telegram_id,
     publicKey: row.public_key,
     encryptedSecret: row.encrypted_secret,
-    network: row.network,
+    network: row.network as StellarNetwork,
     funded: !!row.funded,
     createdAt: row.created_at
   };
@@ -122,7 +123,7 @@ export function insertWallet(
   telegramId: number,
   publicKey: string,
   encryptedSecret: string,
-  network: string,
+  network: StellarNetwork,
   funded: boolean
 ): void {
   insertWalletStmt.run(telegramId, publicKey, encryptedSecret, network, funded ? 1 : 0);

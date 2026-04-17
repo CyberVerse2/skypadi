@@ -22,11 +22,12 @@ export function createBot() {
     ctx.session = defaultSession();
     const existing = dbGetProfile(ctx.from!.id);
 
-    // Ensure every user has a Stellar wallet
-    const { created } = await ensureWallet(ctx.from!.id).catch((err) => {
+    let created = false;
+    try {
+      ({ created } = ensureWallet(ctx.from!.id));
+    } catch (err) {
       console.error(`[wallet] ensure failed for ${ctx.from!.id}:`, err);
-      return { created: false };
-    });
+    }
 
     if (existing) {
       ctx.session.profile = existing;
@@ -41,22 +42,15 @@ export function createBot() {
     }
 
     if (created) {
-      await ctx.reply(
-        `🪙 I've created a Stellar wallet for you (${env.STELLAR_NETWORK}). ` +
-        `Use /wallet to see your address.`
-      );
+      await ctx.reply(`🪙 I've created a Stellar wallet for you. Use /wallet to see your address.`);
     }
   });
 
   // ── /wallet ────────────────────────────────────────────
   bot.command("wallet", async (ctx) => {
-    const { record } = await ensureWallet(ctx.from!.id);
-    const fundedNote = record.funded ? "✅ Funded" : (record.network === "testnet" ? "⏳ Funding pending" : "");
+    const { record } = ensureWallet(ctx.from!.id);
     await ctx.reply(
-      `🪙 *Your Stellar Wallet*\n\n` +
-      `Network: \`${record.network}\`\n` +
-      `Address: \`${record.publicKey}\`\n` +
-      (fundedNote ? `${fundedNote}\n` : ""),
+      `🪙 *Your Stellar Wallet*\n\nAddress: \`${record.publicKey}\``,
       { parse_mode: "Markdown" }
     );
   });

@@ -1,5 +1,4 @@
 import { Keypair } from "@stellar/stellar-sdk";
-import { env } from "../../config.js";
 
 export type GeneratedWallet = {
   publicKey: string;
@@ -12,7 +11,6 @@ export function generateWallet(): GeneratedWallet {
 }
 
 export async function fundTestnet(publicKey: string): Promise<void> {
-  if (env.STELLAR_NETWORK !== "testnet") return;
   const url = `https://friendbot.stellar.org/?addr=${encodeURIComponent(publicKey)}`;
   const res = await fetch(url);
   if (!res.ok) {
