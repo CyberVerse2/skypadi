@@ -15,6 +15,29 @@ type Message = { role: "user" | "assistant" | "system"; content: string };
 
 const TODAY = () => new Date().toISOString().split("T")[0];
 
+function summarizeBookingFailure(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error ?? "");
+  const message = raw.toLowerCase();
+
+  if (message.includes("agentmail") || message.includes("verification code required")) {
+    return "The booking paused at verification, but our AgentMail auto-resolver did not complete it. Please try again while we check the verification pipeline.";
+  }
+  if (message.includes("anti-bot") || message.includes("challenge")) {
+    return "The airline blocked this booking attempt before it could complete. Please tap the same flight again to retry.";
+  }
+  if (message.includes("sold out") || message.includes("no longer available")) {
+    return "That flight is no longer available. Please search again or choose another option.";
+  }
+  if (message.includes("validation")) {
+    return "The airline rejected some booking details during submission. Please try again while we inspect the validation step.";
+  }
+  if (message.includes("did not commit") || message.includes("customer-info")) {
+    return "The booking did not complete on the airline side. Please tap the same flight again to retry, or choose a different option.";
+  }
+
+  return "The booking didn't go through. Please tap the same flight again to retry, or choose a different option.";
+}
+
 function buildSystemPrompt(profile: PassengerProfile | undefined, onboarding: boolean): string {
   let prompt = `You are SkyPadi, our flight booking assistant on Telegram.
 
@@ -346,7 +369,8 @@ export async function handleMessage(
             });
           } catch (bookErr: any) {
             if (bookErr.screenshots?.length) debugScreenshots = bookErr.screenshots;
-            return { error: `The booking didn't go through — the provider may be busy. Try selecting the flight again, or pick a different option.` };
+            console.error("[bookFlight] Booking failed:", bookErr);
+            return { error: summarizeBookingFailure(bookErr) };
           }
 
           paymentUrl = bookResult.paymentUrl;
