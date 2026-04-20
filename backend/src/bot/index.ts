@@ -1,4 +1,4 @@
-import { Bot, type Context, InlineKeyboard, InputFile, session } from "grammy";
+import { Bot, type Context, InlineKeyboard, session } from "grammy";
 import type { SessionFlavor } from "grammy";
 import { env } from "../config.js";
 import { handleMessage } from "./ai.js";
@@ -211,8 +211,8 @@ export function createBot() {
 
   try {
     // Verification code callback: ask user via Telegram, wait for reply
-    const onVerificationCode = async (email: string): Promise<string> => {
-      await ctx.reply(`Wakanow sent a verification code to ${email}. Please check your email and reply with the code.`);
+    const onVerificationCode = async (_email: string): Promise<string> => {
+      await ctx.reply("Please enter the latest code to continue your booking.");
       ctx.session.processing = false; // Allow user to reply
 
       return new Promise<string>((resolve) => {
@@ -280,7 +280,11 @@ export function createBot() {
         amount: result.bookingSummary.price,
         currency: result.bookingSummary.currency,
         summary: result.bookingSummary,
-        bankTransfers: result.bankTransfers
+        bankTransfers: result.bankTransfers,
+        customerEmail: ctx.session.profile.email,
+        bookingContactEmail: result.contactContext?.bookingContactEmail,
+        verificationMode: result.contactContext?.verificationMode,
+        verificationStatus: result.contactContext?.verificationStatus
       });
     }
 
@@ -319,12 +323,6 @@ export function createBot() {
       await ctx.reply(result.reply || "I didn't catch that. Try something like \"flights from Lagos to Dubai on Friday\".");
     }
 
-    // Send debug screenshots if any (booking failures)
-    if (result.debugScreenshots?.length) {
-      for (const buf of result.debugScreenshots) {
-        await ctx.replyWithPhoto(new InputFile(buf, "debug.png"), { caption: "Debug screenshot" }).catch(() => {});
-      }
-    }
   } catch (error) {
     console.error("AI handler error:", error);
     ctx.session.failedAttempts++;

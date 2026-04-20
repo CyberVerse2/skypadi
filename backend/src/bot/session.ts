@@ -1,17 +1,9 @@
 import type { FlightSearchResult } from "../schemas/flight-search.js";
+import type { CustomerContactProfile } from "../schemas/booking-contract.js";
 
 type Message = { role: "user" | "assistant" | "system"; content: string };
 
-export type PassengerProfile = {
-  title: string;
-  firstName: string;
-  lastName: string;
-  middleName?: string;
-  dateOfBirth: string;
-  gender: string;
-  phone: string;
-  email: string;
-};
+export type PassengerProfile = CustomerContactProfile;
 
 export type LastSearchRequest = {
   origin: string;

@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "smoke:stealth": "tsx scripts/smoke-stealth.ts",
+    "test:bot-contract": "tsx scripts/check-bot-booking-contract.ts",
     "test:book": "tsx scripts/test-book.ts",
     "trace:analyze": "tsx scripts/analyze-trace.ts"
   },
