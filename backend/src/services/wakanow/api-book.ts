@@ -64,10 +64,12 @@ let sharedBrowser: Browser | null = null;
 
 async function getBrowser(): Promise<Browser> {
   if (sharedBrowser?.isConnected()) return sharedBrowser;
-  console.log(`[api-book] Launching Chrome ${env.PROXY_URL ? `via proxy ${new URL(env.PROXY_URL).hostname}` : "(no proxy)"}`);
+  const browserLabel = env.WAKANOW_BROWSER_CHANNEL ? `${env.WAKANOW_BROWSER_CHANNEL} channel` : "bundled chromium";
+  console.log(`[api-book] Launching ${browserLabel} ${env.PROXY_URL ? `via proxy ${new URL(env.PROXY_URL).hostname}` : "(no proxy)"}`);
   sharedBrowser = await launchStealthBrowser({
     headless: env.WAKANOW_HEADLESS,
-    proxyUrl: env.PROXY_URL
+    proxyUrl: env.PROXY_URL,
+    browserChannel: env.WAKANOW_BROWSER_CHANNEL
   });
   return sharedBrowser;
 }

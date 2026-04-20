@@ -18,6 +18,7 @@ const envSchema = z.object({
     .string()
     .transform((value) => value !== "false")
     .default("true"),
+  WAKANOW_BROWSER_CHANNEL: z.enum(["chrome", "msedge"]).optional(),
   WAKANOW_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
   WAKANOW_MAX_RESULTS: z.coerce.number().int().positive().default(10),
   PROXY_URL: z.string().optional(),

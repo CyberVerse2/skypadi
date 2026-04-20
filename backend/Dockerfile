@@ -1,10 +1,13 @@
-FROM mcr.microsoft.com/playwright:v1.59.1-noble
+FROM mcr.microsoft.com/playwright:v1.59.4-noble
 
 WORKDIR /app
 
 # Install all deps (including devDependencies for tsc)
 COPY package.json package-lock.json* ./
 RUN npm ci
+
+# Ensure Patchright has its bundled Chromium available inside the image.
+RUN npx patchright install chromium
 
 # Build
 COPY tsconfig.json ./

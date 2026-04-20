@@ -24,15 +24,18 @@ const SESSION_MAX_AGE_MS = 20 * 60_000; // CF clearance typically expires ~30m; 
 export type LaunchOpts = {
   headless?: boolean;
   proxyUrl?: string;
+  browserChannel?: "chrome" | "msedge";
   extraArgs?: string[];
 };
 
 export async function launchStealthBrowser(opts: LaunchOpts = {}): Promise<Browser> {
   const launchOpts: Parameters<typeof chromium.launch>[0] = {
     headless: opts.headless ?? true,
-    channel: "chrome",
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-http2", ...(opts.extraArgs ?? [])]
   };
+  if (opts.browserChannel) {
+    launchOpts.channel = opts.browserChannel;
+  }
   if (opts.proxyUrl) {
     const u = new URL(opts.proxyUrl);
     launchOpts.proxy = { server: `${u.protocol}//${u.hostname}:${u.port}`, username: u.username, password: u.password };

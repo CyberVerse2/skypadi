@@ -19,6 +19,8 @@ npm run dev
 
 Set `DATABASE_URL` in `.env` to your Postgres instance before starting the server. On boot, SkyPadi provisions these Postgres tables automatically if they do not already exist: `users`, `passenger_profiles`, `booking_attempts`, `payment_attempts`, and `audit_events`.
 
+For remote servers, let Patchright use its bundled browser by default. Only set `WAKANOW_BROWSER_CHANNEL=chrome` if the host has a working system Chrome install and you explicitly want that channel.
+
 ## CLI
 
 ```bash
