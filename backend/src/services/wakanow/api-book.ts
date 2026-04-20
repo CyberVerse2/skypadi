@@ -44,7 +44,7 @@ export type ApiBookingRequest = {
   flightId: string;
   passenger: Passenger;
   deeplink?: string;
-  /** Called when Wakanow asks for email verification code. Return the code string. */
+  /** Called when the provider asks for email verification code. Return the code string. */
   onVerificationCode?: (email: string) => Promise<string>;
   /** Called to update the user on booking progress */
   onProgress?: (step: string) => Promise<void>;
@@ -211,7 +211,7 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
 
     // Step 4: Click Continue — Angular handles Validate + navigation
     console.log(`[api-book] Submitting form...`);
-    await notify("✅ Details filled\n⏳ Submitting to Wakanow...");
+    await notify("✅ Details filled\n⏳ Submitting your booking to Wakanow... (usually ~15s)");
     await humanClick(page.locator("button:has-text('Continue'), a:has-text('Continue')").first(), { timeout: 30_000 });
     await waitForSubmitOutcome(page);
 

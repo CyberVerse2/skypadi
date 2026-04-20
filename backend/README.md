@@ -1,13 +1,13 @@
 # SkyPadi Backend
 
-Fresh reset of the Wakanow backend scraper.
+Flight search and booking backend for SkyPadi.
 
 This version is intentionally smaller than the previous one:
 
 - homepage-first Playwright flow
 - simple API endpoint
 - CLI with live trace logs
-- clear failure messages when Wakanow does not confirm a UI action
+- clear failure messages when the provider does not confirm a UI action
 
 ## Run
 

@@ -211,8 +211,9 @@ export function createBot() {
 
   try {
     // Verification code callback: ask user via Telegram, wait for reply
-    const onVerificationCode = async (_email: string): Promise<string> => {
-      await ctx.reply("Please enter the latest code to continue your booking.");
+    const onVerificationCode = async (email: string): Promise<string> => {
+      const destination = email?.trim() ? ` to ${email}` : "";
+      await ctx.reply(`A verification code was sent${destination}. Please check your email and reply with the code.`);
       ctx.session.processing = false; // Allow user to reply
 
       return new Promise<string>((resolve) => {

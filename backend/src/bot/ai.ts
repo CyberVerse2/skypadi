@@ -16,7 +16,7 @@ type Message = { role: "user" | "assistant" | "system"; content: string };
 const TODAY = () => new Date().toISOString().split("T")[0];
 
 function buildSystemPrompt(profile: PassengerProfile | undefined, onboarding: boolean): string {
-  let prompt = `You are SkyPadi, a flight booking assistant on Telegram for Wakanow (Nigerian travel platform).
+  let prompt = `You are SkyPadi, our flight booking assistant on Telegram.
 
 Today's date: ${TODAY()}
 
@@ -34,7 +34,7 @@ Example: "These are all connecting flights. For a direct option, try departing f
 FIRST-TIME USERS: If the user has no profile yet, welcome them warmly but let them search flights immediately. Only ask for profile details when they want to book. Don't front-load onboarding.
 
 ERRORS: Never show raw errors or technical details. Explain what went wrong plainly, give the most likely reason, and offer a specific next step.
-Bad: "WakanowApiSearchError: No flight results found. {requestKey: abc123}"
+Bad: "SearchError: No flight results found. {requestKey: abc123}"
 Good: "No flights found for Lagos → London on that date. Try a nearby date — Tuesdays and Wednesdays often have more options."
 
 STRUGGLE: If the user has tried the same thing twice and failed, skip the explanation and go straight to a fix. After 3 failures, proactively name what they're trying to do and suggest a different approach.
@@ -215,7 +215,7 @@ export async function handleMessage(
           dates: z.array(z.string()).describe("Array of dates in YYYY-MM-DD format to search across")
         }),
         execute: async ({ origin, destination, dates }) => {
-          const CONCURRENCY = 2; // Wakanow throttles beyond 2 concurrent requests
+          const CONCURRENCY = 2; // Current provider throttles beyond 2 concurrent requests
           await onProgress?.(`🔍 Searching ${origin} → ${destination} across ${dates.length} dates... (usually ~${Math.ceil(dates.length * 5)}s)`);
 
           // Process dates in batches to avoid rate limiting
@@ -348,7 +348,7 @@ export async function handleMessage(
             });
           } catch (bookErr: any) {
             if (bookErr.screenshots?.length) debugScreenshots = bookErr.screenshots;
-            return { error: `The booking didn't go through — Wakanow's system may be busy. Try selecting the flight again, or pick a different option.` };
+            return { error: `The booking didn't go through — the provider may be busy. Try selecting the flight again, or pick a different option.` };
           }
 
           paymentUrl = bookResult.paymentUrl;
