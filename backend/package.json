@@ -8,26 +8,30 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "smoke": "tsx scripts/smoke-search.ts",
-    "cli": "node --import tsx scripts/cli.ts"
+    "smoke:stealth": "tsx scripts/smoke-stealth.ts",
+    "test:book": "tsx scripts/test-book.ts",
+    "trace:analyze": "tsx scripts/analyze-trace.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.52",
     "@stellar/stellar-sdk": "^15.0.1",
+    "agentmail": "^0.4.19",
     "ai": "^6.0.156",
     "axios": "^1.15.0",
-    "better-sqlite3": "^12.8.0",
     "dotenv": "^16.4.5",
     "fastify": "^5.0.0",
+    "fingerprint-generator": "^2.1.82",
+    "fingerprint-injector": "^2.1.82",
     "grammy": "^1.42.0",
     "hpagent": "^1.2.0",
-    "playwright": "^1.55.0",
+    "patchright": "^1.59.4",
+    "pg": "^8.20.0",
     "undici": "^8.0.2",
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.0.0",
+    "@types/pg": "^8.20.0",
     "tsx": "^4.19.1",
     "typescript": "^5.8.3"
   }

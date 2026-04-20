@@ -1,11 +1,13 @@
 import "dotenv/config";
 import { searchFlightsApi } from "../src/services/wakanow/api-search.js";
-import { bookFlightApi, generateTestPassenger } from "../src/services/wakanow/api-book.js";
+import { bookFlightApi } from "../src/services/wakanow/api-book.js";
+import { generateTestPassenger } from "./test-passenger.js";
 
 async function main() {
-  console.log("Searching for flights: Enugu → Lagos on 2026-04-19...");
+  const depart = new Date(Date.now() + 7 * 24 * 60 * 60_000).toISOString().slice(0, 10);
+  console.log(`Searching for flights: Enugu → Lagos on ${depart}...`);
   const searchResult = await searchFlightsApi({
-    origin: "Enugu", destination: "Lagos", departureDate: "2026-04-19", maxResults: 5
+    origin: "Enugu", destination: "Lagos", departureDate: depart, maxResults: 5
   });
 
   console.log(`Found ${searchResult.resultCount} flights:`);
@@ -28,4 +30,13 @@ async function main() {
   console.log("\nBooking result:", JSON.stringify(bookResult, null, 2));
 }
 
-main().catch(e => { console.error("FAILED:", e.message); if (e.details) console.error("Details:", e.details); });
+main()
+  .catch((e) => { console.error("FAILED:", e.message); if (e.details) console.error("Details:", e.details); process.exitCode = 1; })
+  .finally(async () => {
+    // Shared browser singleton in api-book.ts keeps Chrome alive across bookings.
+    // Explicitly close it so Node can exit instead of hanging on an open handle.
+    const { chromium } = await import("patchright");
+    for (const b of chromium.connect ? [] : []) await b.close().catch(() => undefined);
+    // Force exit — shared browser in api-book is a module-scope `let`; cleanest kill.
+    setTimeout(() => process.exit(process.exitCode ?? 0), 500).unref();
+  });
