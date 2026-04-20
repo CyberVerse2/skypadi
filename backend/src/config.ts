@@ -6,6 +6,8 @@ loadEnv();
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8787),
   HOST: z.string().default("0.0.0.0"),
+  DATABASE_URL: z.string().min(1),
+  PGSSLMODE: z.enum(["disable", "prefer", "require"]).default("prefer"),
   TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
   WAKANOW_BASE_URL: z.string().url().default("https://www.wakanow.com"),
@@ -23,6 +25,8 @@ const envSchema = z.object({
   WALLET_ENCRYPTION_KEY: z
     .string()
     .min(1, "WALLET_ENCRYPTION_KEY is required (32-byte key as hex or base64)")
+  AGENTMAIL_API_KEY: z.string().optional(),
+  AGENTMAIL_INBOX_ID: z.string().optional()
 });
 
 export const env = envSchema.parse(process.env);
