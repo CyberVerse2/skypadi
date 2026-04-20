@@ -2,8 +2,9 @@ import { Pool, types } from "pg";
 import { env } from "./config.js";
 import type { PassengerProfile } from "./bot/session.js";
 import type { StellarNetwork } from "./config.js";
-import type { FlightSearchResult } from "./schemas/flight-search.js";
-import type { BankTransferDetails } from "./services/wakanow/api-book.js";
+import type {
+  BookingPersistenceInput
+} from "./schemas/booking-contract.js";
 
 const pool = new Pool({
   connectionString: env.DATABASE_URL,
@@ -37,25 +38,6 @@ type WalletRow = {
 
 type UserRow = {
   id: number;
-};
-
-export type BookingPersistenceInput = {
-  telegramId: number;
-  profile: PassengerProfile;
-  selectedFlight?: FlightSearchResult;
-  providerBookingId: string;
-  status: string;
-  paymentUrl?: string;
-  amount?: number;
-  currency?: string;
-  summary?: {
-    airline?: string;
-    departure?: string;
-    arrival?: string;
-    departureTime?: string;
-    arrivalTime?: string;
-  };
-  bankTransfers?: BankTransferDetails[];
 };
 
 export type BookingRecord = {
@@ -115,6 +97,10 @@ export async function initDb(): Promise<void> {
       arrival_time TEXT,
       amount NUMERIC(12, 2),
       currency TEXT,
+      customer_email TEXT,
+      booking_contact_email TEXT,
+      verification_mode TEXT,
+      verification_status TEXT,
       payment_url TEXT,
       failure_reason TEXT,
       passenger_snapshot JSONB NOT NULL,
@@ -128,6 +114,11 @@ export async function initDb(): Promise<void> {
     CREATE UNIQUE INDEX IF NOT EXISTS booking_attempts_provider_booking_idx
     ON booking_attempts (provider, provider_booking_id)
   `);
+
+  await pool.query(`ALTER TABLE booking_attempts ADD COLUMN IF NOT EXISTS customer_email TEXT`);
+  await pool.query(`ALTER TABLE booking_attempts ADD COLUMN IF NOT EXISTS booking_contact_email TEXT`);
+  await pool.query(`ALTER TABLE booking_attempts ADD COLUMN IF NOT EXISTS verification_mode TEXT`);
+  await pool.query(`ALTER TABLE booking_attempts ADD COLUMN IF NOT EXISTS verification_status TEXT`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS payment_attempts (
@@ -392,13 +383,17 @@ export async function saveBookingAttempt(input: BookingPersistenceInput): Promis
         arrival_time,
         amount,
         currency,
+        customer_email,
+        booking_contact_email,
+        verification_mode,
+        verification_status,
         payment_url,
         passenger_snapshot,
         metadata,
         updated_at
       )
       VALUES (
-        $1, $2, 'wakanow', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14::jsonb, NOW()
+        $1, $2, 'wakanow', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb, $18::jsonb, NOW()
       )
       ON CONFLICT (provider, provider_booking_id) DO UPDATE SET
         passenger_profile_id = EXCLUDED.passenger_profile_id,
@@ -410,6 +405,10 @@ export async function saveBookingAttempt(input: BookingPersistenceInput): Promis
         arrival_time = EXCLUDED.arrival_time,
         amount = EXCLUDED.amount,
         currency = EXCLUDED.currency,
+        customer_email = EXCLUDED.customer_email,
+        booking_contact_email = EXCLUDED.booking_contact_email,
+        verification_mode = EXCLUDED.verification_mode,
+        verification_status = EXCLUDED.verification_status,
         payment_url = EXCLUDED.payment_url,
         passenger_snapshot = EXCLUDED.passenger_snapshot,
         metadata = EXCLUDED.metadata,
@@ -428,10 +427,20 @@ export async function saveBookingAttempt(input: BookingPersistenceInput): Promis
       input.summary?.arrivalTime ?? input.selectedFlight?.arrivalTime ?? null,
       input.amount ?? null,
       input.currency ?? null,
+      input.customerEmail ?? input.profile.email,
+      input.bookingContactEmail ?? input.customerEmail ?? input.profile.email,
+      input.verificationMode ?? null,
+      input.verificationStatus ?? null,
       input.paymentUrl ?? null,
       JSON.stringify(input.profile),
       JSON.stringify({
-        selectedFlight: input.selectedFlight ?? null
+        selectedFlight: input.selectedFlight ?? null,
+        contactContext: {
+          customerEmail: input.customerEmail ?? input.profile.email,
+          bookingContactEmail: input.bookingContactEmail ?? input.customerEmail ?? input.profile.email,
+          verificationMode: input.verificationMode ?? null,
+          verificationStatus: input.verificationStatus ?? null
+        }
       })
     ]
   );
@@ -474,7 +483,11 @@ export async function saveBookingAttempt(input: BookingPersistenceInput): Promis
       providerBookingId: input.providerBookingId,
       status: input.status,
       amount: input.amount ?? null,
-      currency: input.currency ?? null
+      currency: input.currency ?? null,
+      customerEmail: input.customerEmail ?? input.profile.email,
+      bookingContactEmail: input.bookingContactEmail ?? input.customerEmail ?? input.profile.email,
+      verificationMode: input.verificationMode ?? null,
+      verificationStatus: input.verificationStatus ?? null
     }
   });
 

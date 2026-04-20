@@ -5,7 +5,11 @@ import { searchFlightsApi } from "../services/wakanow/api-search.js";
 import { bookFlightApi } from "../services/wakanow/api-book.js";
 import type { FlightSearchResult } from "../schemas/flight-search.js";
 import type { PassengerProfile, LastSearchRequest } from "./session.js";
-import type { BankTransferDetails } from "../services/wakanow/api-book.js";
+import type {
+  BankTransferDetails,
+  BookingContactContext,
+  BookingFlightSummary
+} from "../schemas/booking-contract.js";
 
 type Message = { role: "user" | "assistant" | "system"; content: string };
 
@@ -37,6 +41,10 @@ STRUGGLE: If the user has tried the same thing twice and failed, skip the explan
 
 AGENCY: After every recommendation, give the user one thing they can do to influence the next result.
 Example: "Flexible on dates? Try 'search next week' to find the cheapest day."`;
+
+  prompt += `
+
+CONTACT DETAILS: Treat the saved passenger profile as the customer's contact details. Do not mention internal verification channels, shared inboxes, or any provider-side contact routing. If a booking needs verification, describe it neutrally as a booking verification step.`;
 
 
   if (onboarding) {
@@ -100,17 +108,10 @@ export async function handleMessage(
   lastSearchRequest?: LastSearchRequest;
   paymentUrl?: string;
   bankTransfers?: BankTransferDetails[];
+  contactContext?: BookingContactContext;
   bookingId?: string;
   bookingStatus?: string;
-  bookingSummary?: {
-    airline: string;
-    departure: string;
-    arrival: string;
-    departureTime: string;
-    arrivalTime: string;
-    price: number;
-    currency: string;
-  };
+  bookingSummary?: BookingFlightSummary;
   bookedFlight?: FlightSearchResult;
   debugScreenshots?: Buffer[];
 }> {
@@ -135,17 +136,10 @@ export async function handleMessage(
   let savedProfile: PassengerProfile | undefined;
   let paymentUrl: string | undefined;
   let bankTransfers: BankTransferDetails[] | undefined;
+  let contactContext: BookingContactContext | undefined;
   let bookingId: string | undefined;
   let bookingStatus: string | undefined;
-  let bookingSummary: {
-    airline: string;
-    departure: string;
-    arrival: string;
-    departureTime: string;
-    arrivalTime: string;
-    price: number;
-    currency: string;
-  } | undefined;
+  let bookingSummary: BookingFlightSummary | undefined;
   let bookedFlight: FlightSearchResult | undefined;
   let newLastSearchRequest = lastSearchRequest;
   let debugScreenshots: Buffer[] | undefined;
@@ -359,6 +353,7 @@ export async function handleMessage(
 
           paymentUrl = bookResult.paymentUrl;
           bankTransfers = bookResult.bankTransfers;
+          contactContext = bookResult.contactContext;
           bookingId = bookResult.bookingId;
           bookingStatus = bookResult.status;
           bookingSummary = bookResult.flightSummary;
@@ -375,7 +370,7 @@ export async function handleMessage(
           }
 
           const confirmationNote = bookResult.confirmationEmail
-            ? `\n\n✅ Confirmation email received from ${bookResult.confirmationEmail.from} — "${bookResult.confirmationEmail.subject}"`
+            ? `\n\n✅ Booking confirmation received — "${bookResult.confirmationEmail.subject}"`
             : "";
 
           return {
@@ -412,6 +407,7 @@ export async function handleMessage(
     profile: savedProfile,
     paymentUrl,
     bankTransfers,
+    contactContext,
     bookingId,
     bookingStatus,
     bookingSummary,

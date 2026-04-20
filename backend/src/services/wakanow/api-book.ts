@@ -2,6 +2,14 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import { env } from "../../config.js";
 import type { Passenger } from "../../schemas/flight-booking.js";
+import type {
+  BankTransferDetails,
+  BookingContactContext,
+  BookingVerificationMode,
+  BookingVerificationStatus,
+  ConfirmationEmail,
+  BookingFlightSummary
+} from "../../schemas/booking-contract.js";
 import type { Browser, BrowserContext, Locator, Page } from "patchright";
 import {
   launchStealthBrowser,
@@ -42,21 +50,6 @@ export type ApiBookingRequest = {
   onProgress?: (step: string) => Promise<void>;
 };
 
-export type BankTransferDetails = {
-  bank: string;
-  accountNumber: string;
-  beneficiary: string;
-  expiresIn: string;
-  note: string;
-};
-
-export type ConfirmationEmail = {
-  from: string;
-  subject: string;
-  receivedAt: string;
-  preview: string;
-};
-
 export type ApiBookingResponse = {
   provider: "wakanow";
   bookedAt: string;
@@ -65,15 +58,8 @@ export type ApiBookingResponse = {
   paymentUrl: string;
   bankTransfers?: BankTransferDetails[];
   confirmationEmail?: ConfirmationEmail;
-  flightSummary: {
-    airline: string;
-    departure: string;
-    arrival: string;
-    departureTime: string;
-    arrivalTime: string;
-    price: number;
-    currency: string;
-  };
+  contactContext: BookingContactContext;
+  flightSummary: BookingFlightSummary;
 };
 
 let sharedBrowser: Browser | null = null;
@@ -99,6 +85,7 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
   const { searchKey, deeplink, onProgress } = request;
   const currency = env.WAKANOW_CURRENCY;
   const notify = (msg: string) => onProgress?.(msg) ?? Promise.resolve();
+  const customerEmail = request.passenger.email;
 
   console.log(`[api-book] Starting booking...`);
   await notify("✈️ Starting your booking...");
@@ -109,6 +96,7 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
   const passenger: Passenger = { ...request.passenger };
   let inbox: Inbox | undefined;
   let inboxIsPersistent = false;
+  let verificationStatus: BookingVerificationStatus = "not_needed";
   const bookingStartedAt = new Date().toISOString();
   if (agentmail.isConfigured()) {
     const persistentInbox = await getPersistentInbox();
@@ -121,7 +109,7 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
       console.log(`[api-book] AgentMail inbox (disposable): ${inbox.email}`);
     }
     passenger.email = inbox.email;
-    await notify("📬 Set up inbox for confirmation");
+    await notify("⏳ Preparing your booking...");
   }
 
   const recordHarPath = process.env.HAR_RECORD ? path.join(FIXTURE_DIR, `booking-${Date.now()}.har`) : undefined;
@@ -228,7 +216,17 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
     await waitForSubmitOutcome(page);
 
     if (page.url().includes("/customer-info")) {
-      await handlePostSubmitModal(page, request, passenger, inbox, debugScreenshots, notify, captured);
+      verificationStatus = await handlePostSubmitModal(
+        page,
+        request,
+        customerEmail,
+        passenger,
+        inbox,
+        debugScreenshots,
+        notify,
+        captured,
+        verificationStatus
+      );
     }
 
     // Wait for navigation to complete
@@ -317,6 +315,12 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
       paymentUrl,
       bankTransfers: captured.bankTransfers.length > 0 ? captured.bankTransfers : undefined,
       confirmationEmail,
+      contactContext: {
+        customerEmail,
+        bookingContactEmail: passenger.email,
+        verificationMode: inbox ? "internal_contact" : "customer_contact",
+        verificationStatus
+      },
       flightSummary: {
         airline: captured.airline,
         departure: captured.departure,
@@ -733,12 +737,14 @@ async function isGenderSelected(page: Page, gender: string): Promise<boolean> {
 async function handlePostSubmitModal(
   page: Page,
   request: ApiBookingRequest,
+  customerEmail: string,
   passenger: Passenger,
   inbox: Inbox | undefined,
   debugScreenshots: Buffer[],
   notify: (msg: string) => Promise<void>,
-  captured: CapturedFlightData
-): Promise<void> {
+  captured: CapturedFlightData,
+  verificationStatus: BookingVerificationStatus
+): Promise<BookingVerificationStatus> {
   const shot = await page.screenshot({ fullPage: true }).catch(() => null);
   if (shot) debugScreenshots.push(shot);
 
@@ -760,7 +766,7 @@ async function handlePostSubmitModal(
 
   if (loadingIndicators.length > 0 || (!modalText && visibleButtons.length === 0)) {
     const resolved = await waitForLoadingStateToSettle(page, 20_000);
-    if (resolved !== "still-loading") return;
+    if (resolved !== "still-loading") return verificationStatus;
   }
 
   const verificationSignal = await waitForVerificationSignal(page, captured, 6_000);
@@ -786,8 +792,10 @@ async function handlePostSubmitModal(
   const modalRoot = page.locator(ACTIVE_MODAL_SELECTOR).first();
 
   if (needsVerification) {
-    await notify("📬 Email verification required. Checking inbox for code...");
-    const code = await resolveVerificationCode(request, passenger, inbox, notify);
+    await notify("⏳ Finalizing your booking details...");
+    const verification = await resolveVerificationCode(request, customerEmail, passenger, inbox, notify);
+    verificationStatus = verification.status;
+    const code = verification.code;
     if (!code) {
       const err: any = new Error(`Verification code required but no resolver available (set AGENTMAIL_API_KEY or provide onVerificationCode)`);
       err.debugScreenshots = debugScreenshots;
@@ -858,6 +866,7 @@ async function handlePostSubmitModal(
         throw err;
       }
     }
+    return verificationStatus;
   } else if (meaningfulValidationMessages.length > 0) {
     const err: any = new Error(`Booking blocked on customer-info. Validation: ${meaningfulValidationMessages.join(" | ")}`);
     err.debugScreenshots = debugScreenshots;
@@ -874,6 +883,7 @@ async function handlePostSubmitModal(
         await waitForSubmitOutcome(page);
       }
     }
+    return verificationStatus;
   }
 
   if (page.url().includes("/customer-info")) {
@@ -881,6 +891,7 @@ async function handlePostSubmitModal(
     err.debugScreenshots = debugScreenshots;
     throw err;
   }
+  return verificationStatus;
 }
 
 async function inspectSubmitOverlay(page: Page): Promise<{
@@ -1101,7 +1112,7 @@ async function pollConfirmationEmail(
   notify: (msg: string) => Promise<void>
 ): Promise<ConfirmationEmail | undefined> {
   console.log(`[api-book] Polling AgentMail for booking confirmation...`);
-  await notify("📬 Waiting for booking confirmation email...");
+  await notify("📬 Waiting for your booking confirmation...");
   const msg = await agentmail.waitForMessage(inbox.id, {
     timeoutMs: 180_000,
     sinceIso,
@@ -1113,7 +1124,7 @@ async function pollConfirmationEmail(
     return undefined;
   }
   console.log(`[api-book] Confirmation email received: ${msg.subject}`);
-  await notify(`📬 Got confirmation email: ${msg.subject}`);
+  await notify("📬 Booking confirmation received.");
   return {
     from: msg.from,
     subject: msg.subject,
@@ -1124,30 +1135,33 @@ async function pollConfirmationEmail(
 
 async function resolveVerificationCode(
   request: ApiBookingRequest,
+  customerEmail: string,
   passenger: Passenger,
   inbox: Inbox | undefined,
   notify: (msg: string) => Promise<void>
-): Promise<string | undefined> {
+): Promise<{ code?: string; status: BookingVerificationStatus }> {
   if (inbox) {
     const recentCode = await findRecentVerificationCode(inbox);
     if (recentCode) {
       console.log(`[api-book] Reusing recent verification code from inbox ${inbox.email}`);
-      await notify("📬 Found a recent verification code in inbox");
-      return recentCode;
+      await notify("⏳ Continuing your booking...");
+      return { code: recentCode, status: "automated" };
     }
 
     console.log(`[api-book] Polling AgentMail for verification code...`);
-    await notify("📬 Checking inbox for verification code...");
+    await notify("⏳ Continuing your booking...");
     const msg = await agentmail.waitForMessage(inbox.id, {
       timeoutMs: 90_000,
       matcher: (m) => /wakanow|verif|code|otp/i.test(`${m.from} ${m.subject}`) && agentmail.extractOtpCode(agentmail.messageBody(m)) !== undefined
     });
     const code = msg && agentmail.extractOtpCode(agentmail.messageBody(msg));
-    if (code) return code;
+    if (code) return { code, status: "automated" };
     console.log(`[api-book] AgentMail poll timed out or no code in message`);
   }
-  if (request.onVerificationCode) return request.onVerificationCode(passenger.email);
-  return undefined;
+  if (request.onVerificationCode) {
+    return { code: await request.onVerificationCode(customerEmail), status: "manual_assist" };
+  }
+  return { code: undefined, status: "not_needed" };
 }
 
 async function findRecentVerificationCode(inbox: Inbox): Promise<string | undefined> {

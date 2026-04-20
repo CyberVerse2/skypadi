@@ -24,7 +24,7 @@ const envSchema = z.object({
   STELLAR_NETWORK: z.enum(["testnet", "mainnet"]).default("testnet"),
   WALLET_ENCRYPTION_KEY: z
     .string()
-    .min(1, "WALLET_ENCRYPTION_KEY is required (32-byte key as hex or base64)")
+    .min(1, "WALLET_ENCRYPTION_KEY is required (32-byte key as hex or base64)"),
   AGENTMAIL_API_KEY: z.string().optional(),
   AGENTMAIL_INBOX_ID: z.string().optional()
 });
