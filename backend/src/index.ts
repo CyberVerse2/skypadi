@@ -1,10 +1,13 @@
 import { env } from "./config.js";
+import { initDb } from "./db.js";
 import { buildServer } from "./server.js";
 
 const server = buildServer();
 
 const start = async () => {
   try {
+    await initDb();
+
     await server.listen({
       host: env.HOST,
       port: env.PORT

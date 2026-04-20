@@ -1,0 +1,7 @@
+en=gtm.init&ep.event_id=9a5b3b89-f6ce-44bf-85c9-348a0d527eed_undefined_2&ep.is_tt=true&ep.page_hostname=www.wakanow.com&_et=1
+en=gtm.js&ep.event_id=9a5b3b89-f6ce-44bf-85c9-348a0d527eed_1776630626185_3&ep.is_tt=true&ep.page_hostname=www.wakanow.com
+en=gtm.dom&ep.event_id=9a5b3b89-f6ce-44bf-85c9-348a0d527eed_1776630626185_60&ep.is_tt=true&ep.page_hostname=www.wakanow.com&_et=1
+en=gtm.click&ep.event_id=9a5b3b89-f6ce-44bf-85c9-348a0d527eed_1776630626185_77&ep.is_tt=true&ep.page_hostname=www.wakanow.com
+en=gtm.historyChange&ep.event_id=9a5b3b89-f6ce-44bf-85c9-348a0d527eed_1776630626185_92&ep.is_tt=true&ep.page_hostname=www.wakanow.com&_et=1
+en=nw_pageview&dp=%2Fen-ng%2Fflight%2Flistings%2FbBrRNzw2zU_P8czb6illbg
+en=nw_Pageview&ep.event_id=9a5b3b89-f6ce-44bf-85c9-348a0d527eed_1776630626185_112&ep.is_tt=true&ep.page_hostname=www.wakanow.com

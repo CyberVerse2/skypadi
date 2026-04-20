@@ -3,7 +3,12 @@ import type { SessionFlavor } from "grammy";
 import { env } from "../config.js";
 import { handleMessage } from "./ai.js";
 import { defaultSession, type SessionData } from "./session.js";
-import { saveProfile as dbSaveProfile, getProfile as dbGetProfile } from "../db.js";
+import {
+  saveBookingAttempt,
+  saveProfile as dbSaveProfile,
+  getProfile as dbGetProfile,
+  touchUser
+} from "../db.js";
 import { ensureWallet } from "../services/wallet/index.js";
 
 type BotContext = Context & SessionFlavor<SessionData>;
@@ -20,14 +25,14 @@ export function createBot() {
   // ── /start ──────────────────────────────────────────────
   bot.command("start", async (ctx) => {
     ctx.session = defaultSession();
-    const existing = dbGetProfile(ctx.from!.id);
-
     let created = false;
     try {
-      ({ created } = ensureWallet(ctx.from!.id));
+      ({ created } = await ensureWallet(ctx.from!.id));
     } catch (err) {
       console.error(`[wallet] ensure failed for ${ctx.from!.id}:`, err);
     }
+    await touchUser(ctx.from!.id);
+    const existing = await dbGetProfile(ctx.from!.id);
 
     if (existing) {
       ctx.session.profile = existing;
@@ -48,7 +53,7 @@ export function createBot() {
 
   // ── /wallet ────────────────────────────────────────────
   bot.command("wallet", async (ctx) => {
-    const { record } = ensureWallet(ctx.from!.id);
+    const { record } = await ensureWallet(ctx.from!.id);
     await ctx.reply(
       `🪙 *Your Stellar Wallet*\n\nAddress: \`${record.publicKey}\``,
       { parse_mode: "Markdown" }
@@ -196,7 +201,8 @@ export function createBot() {
   async function runAI(ctx: BotContext, userText: string) {
   // Ensure profile is loaded from DB if not in session
   if (!ctx.session.profile && ctx.from) {
-    const saved = dbGetProfile(ctx.from.id);
+    await touchUser(ctx.from.id);
+    const saved = await dbGetProfile(ctx.from.id);
     if (saved) ctx.session.profile = saved;
   }
 
@@ -259,8 +265,23 @@ export function createBot() {
     if (result.profile) {
       ctx.session.profile = result.profile;
       ctx.session.onboarding = false;
-      dbSaveProfile(ctx.from!.id, result.profile);
+      await dbSaveProfile(ctx.from!.id, result.profile);
       console.log(`[profile] Saved profile for ${ctx.from!.id}`);
+    }
+
+    if (ctx.from && result.bookingId && result.bookingStatus && result.bookingSummary && ctx.session.profile) {
+      await saveBookingAttempt({
+        telegramId: ctx.from.id,
+        profile: ctx.session.profile,
+        selectedFlight: result.bookedFlight,
+        providerBookingId: result.bookingId,
+        status: result.bookingStatus,
+        paymentUrl: result.paymentUrl,
+        amount: result.bookingSummary.price,
+        currency: result.bookingSummary.currency,
+        summary: result.bookingSummary,
+        bankTransfers: result.bankTransfers
+      });
     }
 
     // If booking completed, send payment details
@@ -277,11 +298,6 @@ export function createBot() {
         bankMsg += `⚠️ ${result.bankTransfers[0].note}`;
         await ctx.reply(bankMsg, { parse_mode: "Markdown" });
       }
-
-      // Fallback: payment URL
-      const payKeyboard = new InlineKeyboard()
-        .url("💳 Pay Online Instead", result.paymentUrl);
-      await ctx.reply("Or pay online:", { reply_markup: payKeyboard });
     }
     // If new search results, send as inline buttons
     else if (result.newSearch && result.searchResults && result.searchResults.length > 0) {

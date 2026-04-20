@@ -5,6 +5,7 @@ import { searchFlightsApi } from "../services/wakanow/api-search.js";
 import { bookFlightApi } from "../services/wakanow/api-book.js";
 import type { FlightSearchResult } from "../schemas/flight-search.js";
 import type { PassengerProfile, LastSearchRequest } from "./session.js";
+import type { BankTransferDetails } from "../services/wakanow/api-book.js";
 
 type Message = { role: "user" | "assistant" | "system"; content: string };
 
@@ -98,7 +99,19 @@ export async function handleMessage(
   profile?: PassengerProfile;
   lastSearchRequest?: LastSearchRequest;
   paymentUrl?: string;
-  bankTransfers?: import("../services/wakanow/api-book.js").BankTransferDetails[];
+  bankTransfers?: BankTransferDetails[];
+  bookingId?: string;
+  bookingStatus?: string;
+  bookingSummary?: {
+    airline: string;
+    departure: string;
+    arrival: string;
+    departureTime: string;
+    arrivalTime: string;
+    price: number;
+    currency: string;
+  };
+  bookedFlight?: FlightSearchResult;
   debugScreenshots?: Buffer[];
 }> {
   let systemContent = buildSystemPrompt(profile, onboarding);
@@ -121,7 +134,19 @@ export async function handleMessage(
   let didNewSearch = false;
   let savedProfile: PassengerProfile | undefined;
   let paymentUrl: string | undefined;
-  let bankTransfers: import("../services/wakanow/api-book.js").BankTransferDetails[] | undefined;
+  let bankTransfers: BankTransferDetails[] | undefined;
+  let bookingId: string | undefined;
+  let bookingStatus: string | undefined;
+  let bookingSummary: {
+    airline: string;
+    departure: string;
+    arrival: string;
+    departureTime: string;
+    arrivalTime: string;
+    price: number;
+    currency: string;
+  } | undefined;
+  let bookedFlight: FlightSearchResult | undefined;
   let newLastSearchRequest = lastSearchRequest;
   let debugScreenshots: Buffer[] | undefined;
 
@@ -334,6 +359,10 @@ export async function handleMessage(
 
           paymentUrl = bookResult.paymentUrl;
           bankTransfers = bookResult.bankTransfers;
+          bookingId = bookResult.bookingId;
+          bookingStatus = bookResult.status;
+          bookingSummary = bookResult.flightSummary;
+          bookedFlight = flight;
 
           let bankInfo = "";
           if (bookResult.bankTransfers && bookResult.bankTransfers.length > 0) {
@@ -345,14 +374,19 @@ export async function handleMessage(
             bankInfo += `\nNote: ${bookResult.bankTransfers[0].note}`;
           }
 
+          const confirmationNote = bookResult.confirmationEmail
+            ? `\n\n✅ Confirmation email received from ${bookResult.confirmationEmail.from} — "${bookResult.confirmationEmail.subject}"`
+            : "";
+
           return {
             success: true,
             bookingId: bookResult.bookingId,
             status: bookResult.status,
             paymentUrl: bookResult.paymentUrl,
             bankTransfers: bookResult.bankTransfers,
+            confirmationEmail: bookResult.confirmationEmail,
             summary: `${bookResult.flightSummary.airline} ${bookResult.flightSummary.departure}→${bookResult.flightSummary.arrival} ₦${bookResult.flightSummary.price.toLocaleString()}`,
-            message: `Booking confirmed! Booking ID: ${bookResult.bookingId}. Transfer exactly ₦${bookResult.flightSummary.price.toLocaleString()} to complete payment.${bankInfo}`
+            message: `Booking confirmed! Booking ID: ${bookResult.bookingId}. Transfer exactly ₦${bookResult.flightSummary.price.toLocaleString()} to complete payment.${bankInfo}${confirmationNote}`
           };
         }
       }
@@ -378,6 +412,10 @@ export async function handleMessage(
     profile: savedProfile,
     paymentUrl,
     bankTransfers,
+    bookingId,
+    bookingStatus,
+    bookingSummary,
+    bookedFlight,
     lastSearchRequest: newLastSearchRequest,
     debugScreenshots
   };

@@ -41,7 +41,7 @@ Copy `backend/.env.example` to `backend/.env`. The Telegram bot requires `TELEGR
 - `bot/session.ts`: Per-user session (history, search results, selected flight, profile, onboarding state).
 
 ### Data Layer
-- `db.ts`: SQLite (better-sqlite3, WAL mode). Single `profiles` table keyed on `telegram_id` with upsert semantics.
+- `db.ts`: PostgreSQL (`pg`). Normalized persistence for `users`, `passenger_profiles`, `booking_attempts`, `payment_attempts`, and `audit_events`.
 - `schemas/`: Zod schemas for flight search requests/responses and passenger data. Dates must be YYYY-MM-DD, airport codes are 3-letter IATA.
 
 ### Server

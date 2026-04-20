@@ -8,13 +8,13 @@ export type EnsuredWallet = {
   created: boolean;
 };
 
-export function ensureWallet(telegramId: number): EnsuredWallet {
-  const existing = getWallet(telegramId);
+export async function ensureWallet(telegramId: number): Promise<EnsuredWallet> {
+  const existing = await getWallet(telegramId);
   if (existing) return { record: existing, created: false };
 
   const { publicKey, secretKey } = generateWallet();
   const encrypted = encrypt(secretKey);
-  insertWallet(telegramId, publicKey, encrypted, env.STELLAR_NETWORK, false);
+  await insertWallet(telegramId, publicKey, encrypted, env.STELLAR_NETWORK, false);
 
   if (env.STELLAR_NETWORK === "testnet") {
     void fundTestnet(publicKey)
