@@ -22,6 +22,14 @@ export function createBot() {
     })
   );
 
+  async function ensureProfileLoaded(ctx: BotContext) {
+    if (ctx.session.profile || !ctx.from) return ctx.session.profile;
+    await touchUser(ctx.from.id);
+    const saved = await dbGetProfile(ctx.from.id);
+    if (saved) ctx.session.profile = saved;
+    return ctx.session.profile;
+  }
+
   // ── /start ──────────────────────────────────────────────
   bot.command("start", async (ctx) => {
     ctx.session = defaultSession();
@@ -71,7 +79,7 @@ export function createBot() {
 
   // ── /profile ────────────────────────────────────────────
   bot.command("profile", async (ctx) => {
-    const p = ctx.session.profile;
+    const p = await ensureProfileLoaded(ctx);
     if (!p) {
       await ctx.reply("No profile saved yet. I'll ask for your details when you're ready to book a flight.");
       return;
@@ -138,6 +146,8 @@ export function createBot() {
     const flight = results[index];
     await ctx.answerCallbackQuery();
 
+    await ensureProfileLoaded(ctx);
+
     // If no profile, collect it now (backloaded friction)
     if (!ctx.session.profile) {
       ctx.session.onboarding = true;
@@ -200,39 +210,12 @@ export function createBot() {
   // ── Helper: run AI with all UX capabilities ─────────────
   async function runAI(ctx: BotContext, userText: string) {
   // Ensure profile is loaded from DB if not in session
-  if (!ctx.session.profile && ctx.from) {
-    await touchUser(ctx.from.id);
-    const saved = await dbGetProfile(ctx.from.id);
-    if (saved) ctx.session.profile = saved;
-  }
+  await ensureProfileLoaded(ctx);
 
   ctx.session.processing = true;
   ctx.session.lastSeenAt = Date.now();
 
   try {
-    // Verification code callback: ask user via Telegram, wait for reply
-    const onVerificationCode = async (email: string): Promise<string> => {
-      const destination = email?.trim() ? ` to ${email}` : "";
-      await ctx.reply(`A verification code was sent${destination}. Please check your email and reply with the code.`);
-      ctx.session.processing = false; // Allow user to reply
-
-      return new Promise<string>((resolve) => {
-        let resolved = false;
-        const handler = (msgCtx: any) => {
-          if (resolved) return;
-          if (msgCtx.from?.id === ctx.from?.id && msgCtx.message?.text) {
-            const code = msgCtx.message.text.trim();
-            if (/^\d{4,8}$/.test(code)) {
-              resolved = true;
-              ctx.session.processing = true;
-              resolve(code);
-            }
-          }
-        };
-        bot.on("message:text", handler as any);
-      });
-    };
-
     // Progress updater for narration
     const progress = await createProgressUpdater(ctx);
 
@@ -244,7 +227,6 @@ export function createBot() {
       ctx.session.profile,
       ctx.session.onboarding,
       ctx.session.lastSearchRequest,
-      onVerificationCode,
       (step: string) => progress.send(step)
     );
 

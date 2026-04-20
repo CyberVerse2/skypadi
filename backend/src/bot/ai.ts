@@ -96,7 +96,6 @@ export async function handleMessage(
   profile: PassengerProfile | undefined,
   onboarding: boolean,
   lastSearchRequest?: LastSearchRequest,
-  onVerificationCode?: (email: string) => Promise<string>,
   onProgress?: (step: string) => Promise<void>
 ): Promise<{
   reply: string;
@@ -340,10 +339,9 @@ export async function handleMessage(
                 dateOfBirth: p.dateOfBirth,
                 nationality: "Nigerian",
                 gender: p.gender as "Male" | "Female",
-                phone: p.phone,
-                email: p.email
-              },
-              onVerificationCode,
+              phone: p.phone,
+              email: p.email
+            },
               onProgress
             });
           } catch (bookErr: any) {

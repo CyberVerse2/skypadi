@@ -44,8 +44,6 @@ export type ApiBookingRequest = {
   flightId: string;
   passenger: Passenger;
   deeplink?: string;
-  /** Called when the provider asks for email verification code. Return the code string. */
-  onVerificationCode?: (email: string) => Promise<string>;
   /** Called to update the user on booking progress */
   onProgress?: (step: string) => Promise<void>;
 };
@@ -797,7 +795,7 @@ async function handlePostSubmitModal(
     verificationStatus = verification.status;
     const code = verification.code;
     if (!code) {
-      const err: any = new Error(`Verification code required but no resolver available (set AGENTMAIL_API_KEY or provide onVerificationCode)`);
+      const err: any = new Error("Verification code required but AgentMail did not provide a resolver");
       err.debugScreenshots = debugScreenshots;
       throw err;
     }
@@ -1134,9 +1132,9 @@ async function pollConfirmationEmail(
 }
 
 async function resolveVerificationCode(
-  request: ApiBookingRequest,
-  customerEmail: string,
-  passenger: Passenger,
+  _request: ApiBookingRequest,
+  _customerEmail: string,
+  _passenger: Passenger,
   inbox: Inbox | undefined,
   notify: (msg: string) => Promise<void>
 ): Promise<{ code?: string; status: BookingVerificationStatus }> {
@@ -1157,9 +1155,6 @@ async function resolveVerificationCode(
     const code = msg && agentmail.extractOtpCode(agentmail.messageBody(msg));
     if (code) return { code, status: "automated" };
     console.log(`[api-book] AgentMail poll timed out or no code in message`);
-  }
-  if (request.onVerificationCode) {
-    return { code: await request.onVerificationCode(customerEmail), status: "manual_assist" };
   }
   return { code: undefined, status: "not_needed" };
 }
