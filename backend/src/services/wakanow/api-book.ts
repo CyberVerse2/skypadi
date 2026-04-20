@@ -303,7 +303,7 @@ export async function bookFlightApi(request: ApiBookingRequest): Promise<ApiBook
 
     await page.close();
 
-    const confirmationEmail = inbox ? await pollConfirmationEmail(inbox, bookingStartedAt, notify) : undefined;
+    const confirmationEmail = inbox ? await pollConfirmationEmail(inbox, bookingStartedAt, notify, 5_000) : undefined;
 
     const paymentUrl = `https://www.wakanow.com/en-ng/booking/${bookingId}/payment?products=Flight&reqKey=${searchKey}`;
 
@@ -1109,12 +1109,12 @@ async function resolveNonVerificationModal(page: Page, visibleButtons: string[])
 async function pollConfirmationEmail(
   inbox: Inbox,
   sinceIso: string,
-  notify: (msg: string) => Promise<void>
+  notify: (msg: string) => Promise<void>,
+  timeoutMs = 180_000
 ): Promise<ConfirmationEmail | undefined> {
   console.log(`[api-book] Polling AgentMail for booking confirmation...`);
-  await notify("📬 Waiting for your booking confirmation...");
   const msg = await agentmail.waitForMessage(inbox.id, {
-    timeoutMs: 180_000,
+    timeoutMs,
     sinceIso,
     matcher: (m: AgentMailMessage) =>
       /wakanow/i.test(m.from) || /booking|itinerary|reservation|confirm/i.test(m.subject)
