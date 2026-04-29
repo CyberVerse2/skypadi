@@ -11,7 +11,7 @@
     "typecheck:test": "tsc -p tsconfig.test.json",
     "smoke:stealth": "tsx scripts/smoke-stealth.ts",
     "test:bot-contract": "tsx scripts/check-bot-booking-contract.ts",
-    "test:unit": "tsx tests/unit/test-harness.test.ts && tsx tests/unit/schema.test.ts && tsx tests/unit/domain-types.test.ts",
+    "test:unit": "tsx tests/unit/test-harness.test.ts && tsx tests/unit/schema.test.ts && tsx tests/unit/domain-types.test.ts && tsx tests/unit/whatsapp.mapper.test.ts",
     "test:workflow": "tsx tests/workflow/conversation.workflow.test.ts",
     "test:integration": "tsx tests/integration/whatsapp.routes.test.ts",
     "test:all": "npm run test:unit && npm run test:workflow && npm run test:integration && npm run typecheck:test",
