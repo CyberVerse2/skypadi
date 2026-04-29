@@ -112,7 +112,7 @@ export function createDrizzleConversationRepository(db: DbClient): ConversationR
           ${input.conversationId},
           'inbound',
           ${input.providerMessageId},
-          ${input.textBody},
+          ${input.textBody ?? null},
           ${JSON.stringify(input.payload)}::jsonb,
           ${input.receivedAt}
         )
