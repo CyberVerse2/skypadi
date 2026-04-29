@@ -1,33 +1,19 @@
 import { env } from "./config.js";
-import { initDb } from "./db.js";
-import { buildServer } from "./server.js";
+import { buildServer } from "./app.js";
 
 const server = buildServer();
 
 const start = async () => {
   try {
-    await initDb();
-
     await server.listen({
       host: env.HOST,
       port: env.PORT
     });
 
-    if (env.TELEGRAM_BOT_TOKEN && env.OPENAI_API_KEY) {
-      const { createBot } = await import("./bot/index.js");
-      const bot = createBot();
-      bot.catch((err) => {
-        console.error("Bot error:", err);
-      });
-      bot.start({
-        onStart: (info) => {
-          console.log(`Telegram bot @${info.username} is running`);
-        }
-      }).catch((err) => {
-        console.error("Bot polling failed:", err);
-      });
+    if (env.WHATSAPP_ACCESS_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID && env.WHATSAPP_VERIFY_TOKEN) {
+      console.log("WhatsApp webhook is enabled at /webhooks/whatsapp");
     } else {
-      console.log("TELEGRAM_BOT_TOKEN or OPENAI_API_KEY not set — bot disabled, API-only mode");
+      console.log("WhatsApp webhook disabled until WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_VERIFY_TOKEN are set");
     }
   } catch (error) {
     server.log.error(error);

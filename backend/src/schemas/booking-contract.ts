@@ -47,7 +47,7 @@ export type BookingFlightSummary = {
 };
 
 export type BookingPersistenceInput = {
-  telegramId: number;
+  userId: string;
   profile: CustomerContactProfile;
   selectedFlight?: FlightSearchResult;
   providerBookingId: string;
@@ -59,6 +59,7 @@ export type BookingPersistenceInput = {
   bookingContactEmail?: string;
   verificationMode?: BookingVerificationMode;
   verificationStatus?: BookingVerificationStatus;
+  bookingEmailAliasId?: number;
   summary?: Partial<BookingFlightSummary>;
   bankTransfers?: BankTransferDetails[];
 };
