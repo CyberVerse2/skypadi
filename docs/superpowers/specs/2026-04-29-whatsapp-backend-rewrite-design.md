@@ -205,9 +205,13 @@ priced
 passenger_details_collected
 payment_pending
 payment_confirmed
+supplier_hold_pending
+supplier_hold_created
+awaiting_payment_for_hold
 supplier_booking_pending
 supplier_verification_required
 issued
+hold_expired
 failed
 cancelled
 manual_review_required
@@ -249,7 +253,39 @@ OTP values are sensitive. They may be stored only as long as required for suppli
 
 ### Supplier Events
 
-`supplier_events` record externally observed events from Wakanow or supplier emails: OTP required, OTP received, booking confirmed, ticket issued, supplier failure, schedule change, or manual review required.
+`supplier_events` record externally observed events from Wakanow or supplier emails: hold created, hold unavailable, instant purchase required, hold expired, OTP required, OTP received, booking confirmed, ticket issued, supplier failure, schedule change, or manual review required.
+
+### Supplier Holds
+
+Skypadi supports a hybrid supplier risk model. If Wakanow creates an unpaid reservation/hold and returns a supplier reference plus expiry, Skypadi can collect payment during that hold window. If Wakanow requires instant purchase or does not clearly create a hold, Skypadi must use payment-first before attempting supplier ticketing.
+
+Public Wakanow support guidance says bookings may remain active for 9 hours when travel is at least one week away, while travel less than one week away requires instant purchase. The workflow must treat that as a baseline only. The operational truth for each itinerary is the Wakanow booking response.
+
+Persist normalized hold data and sanitized raw supplier data:
+
+```text
+supplier_booking_ref
+supplier_status
+hold_mode: hold_created | instant_purchase_required | hold_unavailable | unclear
+hold_expires_at
+amount_due
+currency
+payment_url
+route
+airline
+departure_at
+days_until_departure
+raw_status
+raw_reason
+```
+
+Do not call a hold "ticketed" or "issued". User-facing copy should distinguish reservation from ticket issuance:
+
+```text
+Reserved: I’ve reserved this fare until 6:40 PM. Pay before then so I can issue the ticket.
+Instant purchase: This flight requires instant purchase because the travel date is close. Once payment is confirmed, I’ll book and issue it immediately.
+Issued: Your ticket is booked and issued.
+```
 
 ### Audit Events
 
@@ -297,11 +333,56 @@ Owns customer-facing booking status transitions. It creates draft bookings, atta
 
 ### Payment Workflow
 
-Creates payment attempts, records proof or provider callbacks, confirms payment only through deterministic rules or manual operator action, and prevents supplier booking before payment confirmation.
+Creates payment attempts, records proof or provider callbacks, and confirms payment only through deterministic rules or manual operator action.
+
+Payment workflow supports two booking policies:
+
+- `hold_first`: supplier hold exists, payment must be confirmed before hold expiry, then ticketing continues.
+- `payment_first`: payment must be confirmed before supplier booking/ticketing is attempted.
+
+The workflow must not treat a user's "I've paid" tap as confirmed payment. It may move the payment attempt to `proof_uploaded` or `manual_review_required` until a trusted confirmation path verifies funds.
 
 ### Supplier Booking Workflow
 
-Calls Wakanow booking integration only when the booking is payment-confirmed. It handles supplier verification requirements, waits for OTP events from inbound email workflow, consumes OTPs once, and marks booking as issued only after supplier confirmation.
+Creates Wakanow holds only after the selected flight and passenger details are complete. It handles the hybrid hold-vs-instant-purchase decision from Wakanow's actual response, stores the hold expiry when available, waits for payment when a hold exists, waits for OTP events from inbound email workflow when supplier verification is required, consumes OTPs once, and marks booking as issued only after supplier confirmation.
+
+Normalized Wakanow hold result:
+
+```ts
+type SupplierHoldResult =
+  | {
+      kind: "hold_created";
+      supplier: "wakanow";
+      supplierBookingRef: string;
+      expiresAt: Date;
+      amountDue: number;
+      currency: "NGN";
+      paymentUrl?: string;
+      rawStatus: string;
+    }
+  | {
+      kind: "instant_purchase_required";
+      supplier: "wakanow";
+      reason: string;
+      amountDue: number;
+      currency: "NGN";
+      rawStatus: string;
+    }
+  | {
+      kind: "hold_unavailable";
+      supplier: "wakanow";
+      reason: string;
+      rawStatus: string;
+    }
+  | {
+      kind: "unclear";
+      supplier: "wakanow";
+      reason: string;
+      rawStatus: string;
+    };
+```
+
+If the result is `hold_created`, the booking moves to `awaiting_payment_for_hold` with an expiry timestamp. If the result is `instant_purchase_required` or `hold_unavailable`, the booking follows the payment-first path. If the result is `unclear`, the booking moves to manual review or the safer payment-first path.
 
 ### Inbound Email Workflow
 
@@ -323,7 +404,7 @@ The Resend adapter verifies webhook signatures, fetches full inbound email paylo
 
 ### Wakanow
 
-The Wakanow integration owns supplier API/browser automation details. It exposes typed search and booking operations to workflows and does not talk directly to WhatsApp or Resend.
+The Wakanow integration owns supplier API/browser automation details. It exposes typed search, hold, and ticketing operations to workflows and does not talk directly to WhatsApp or Resend. It must normalize Wakanow responses into explicit hold results and persist sanitized raw response details for later policy learning by airline, route, domestic/international classification, and days until departure.
 
 ### Payments
 
@@ -366,6 +447,8 @@ Required test groups:
 - Workflow tests for conversation state transitions.
 - Workflow tests for booking status transitions.
 - Workflow tests proving payment confirmation gates supplier booking.
+- Workflow tests proving hold-first bookings can reserve before payment and cannot ticket before payment confirmation.
+- Workflow tests proving instant-purchase bookings require payment confirmation before supplier ticketing.
 - Workflow tests proving OTPs are consumed once.
 - Integration-style route tests for WhatsApp and Resend webhooks using fake workflow dependencies.
 - Contract tests for Wakanow normalization and booking result handling.
@@ -388,8 +471,14 @@ Expected: workflow does not ask a separate optimization question before search; 
 RED: booking is created from selected option.
 Expected: booking alias is generated and persisted.
 
-RED: supplier booking is requested before payment confirmation.
-Expected: workflow refuses transition.
+RED: Wakanow returns hold_created.
+Expected: booking stores supplier reference and expiry, then moves to awaiting_payment_for_hold.
+
+RED: Wakanow returns instant_purchase_required.
+Expected: booking follows payment-first path and does not attempt ticketing before payment confirmation.
+
+RED: held booking expires before payment confirmation.
+Expected: booking moves to hold_expired and user is prompted to search again.
 
 RED: Resend receives OTP email for booking alias.
 Expected: inbound email is persisted, classified, and emits OTP-received supplier event without logging code.
