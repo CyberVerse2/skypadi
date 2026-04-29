@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import { mapUiIntentToWhatsAppMessage } from "./whatsapp.mapper.js";
 import type { WhatsAppClient } from "./whatsapp.client.js";
+import type { Passenger } from "../../schemas/flight-booking.js";
 import { handleConversationEvent } from "../../workflows/conversation.workflow.js";
 import {
   findOrCreateConversation,
@@ -45,6 +46,13 @@ export type BookingSelectionHandler = {
     phoneNumber: string;
     selectedFlightOptionId: string;
   }): Promise<UiIntent>;
+  collectPassengerDetails?(input: {
+    userId: string;
+    conversationId: string;
+    phoneNumber: string;
+    text: string;
+    passenger?: Passenger;
+  }): Promise<UiIntent | undefined>;
 };
 
 type RawBodyRequest = FastifyRequest & { rawBody?: string | Buffer };
@@ -55,10 +63,11 @@ type WhatsAppInboundMessage = {
   timestamp?: string;
   type: string;
   text?: { body?: string };
-  interactive?: {
-    type?: "button_reply" | "list_reply";
+    interactive?: {
+    type?: "button_reply" | "list_reply" | "nfm_reply";
     button_reply?: { id: string; title?: string };
     list_reply?: { id: string; title?: string };
+    nfm_reply?: { response_json?: string; body?: string };
   };
 };
 
@@ -144,6 +153,16 @@ async function processMessages(
       continue;
     }
 
+    const bookingIntent = await passengerDetailsIntentFromMessage(message, conversation, options);
+    if (bookingIntent) {
+      await options.whatsappClient.sendMessage({
+        to: message.from,
+        message: mapUiIntentToWhatsAppMessage(bookingIntent),
+      });
+      request.log.info({ providerMessageId: message.id, resultKind: "booking_passenger_details" }, "Processed WhatsApp booking message");
+      continue;
+    }
+
     const event = normalizeConversationEvent(message, now);
     if (!event) continue;
 
@@ -159,6 +178,50 @@ async function processMessages(
     });
     request.log.info({ providerMessageId: message.id, resultKind: result.kind }, "Processed WhatsApp message");
   }
+}
+
+async function passengerDetailsIntentFromMessage(
+  message: WhatsAppInboundMessage,
+  conversation: PersistedInboundMessage["conversation"],
+  options: WhatsAppRoutesOptions
+): Promise<UiIntent | undefined> {
+  if (!conversation.userId) return undefined;
+  const text = message.type === "text" ? message.text?.body : undefined;
+  const passenger = passengerFromFlowReply(message);
+  if (!text && !passenger) return undefined;
+  return options.bookingHandler?.collectPassengerDetails?.({
+    userId: conversation.userId,
+    conversationId: conversation.id,
+    phoneNumber: message.from,
+    text: text ?? "",
+    passenger,
+  });
+}
+
+function passengerFromFlowReply(message: WhatsAppInboundMessage): Passenger | undefined {
+  if (message.type !== "interactive" || message.interactive?.type !== "nfm_reply") return undefined;
+  const responseJson = message.interactive.nfm_reply?.response_json;
+  if (!responseJson) return undefined;
+  try {
+    const data = JSON.parse(responseJson) as Record<string, unknown>;
+    return {
+      title: stringValue(data.title) as Passenger["title"],
+      firstName: stringValue(data.firstName) ?? stringValue(data.first_name) ?? "",
+      middleName: stringValue(data.middleName) ?? stringValue(data.middle_name),
+      lastName: stringValue(data.lastName) ?? stringValue(data.last_name) ?? "",
+      dateOfBirth: stringValue(data.dateOfBirth) ?? stringValue(data.date_of_birth) ?? "",
+      nationality: stringValue(data.nationality) ?? "Nigerian",
+      gender: stringValue(data.gender) as Passenger["gender"],
+      phone: stringValue(data.phone) ?? stringValue(data.phoneNumber) ?? stringValue(data.phone_number) ?? "",
+      email: stringValue(data.email) ?? "",
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function normalizeConversationEvent(message: WhatsAppInboundMessage, now: Date) {

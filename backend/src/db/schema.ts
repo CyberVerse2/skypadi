@@ -338,6 +338,7 @@ export const inboundEmails = skypadi.table(
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
     classification: inboundEmailClassificationEnum("classification").notNull().default("other"),
     extractedOtp: text("extracted_otp"),
+    otpClaimedAt: timestamp("otp_claimed_at", { withTimezone: true }),
     otpConsumedAt: timestamp("otp_consumed_at", { withTimezone: true }),
     processedAt: timestamp("processed_at", { withTimezone: true }),
     raw: jsonb("raw").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),

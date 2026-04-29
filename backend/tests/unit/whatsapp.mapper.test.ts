@@ -53,6 +53,20 @@ assert.deepEqual(documentMessage, {
   },
 });
 
+const passengerFlow = mapUiIntentToWhatsAppMessage({
+  type: "passenger_details_flow",
+  body: "Great choice. I need the passenger details to continue.",
+  buttonText: "Enter details",
+  flowId: "flow_123",
+  flowToken: "booking_123",
+  data: { bookingId: "booking_123" },
+});
+
+assert.equal(passengerFlow.type, "interactive");
+assert.equal(passengerFlow.interactive.type, "flow");
+assert.equal(passengerFlow.interactive.action.parameters.flow_id, "flow_123");
+assert.equal(passengerFlow.interactive.action.parameters.flow_token, "booking_123");
+
 assert.throws(
   () =>
     mapUiIntentToWhatsAppMessage({

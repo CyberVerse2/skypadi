@@ -140,6 +140,7 @@ CREATE TABLE "skypadi_whatsapp"."inbound_emails" (
 	"received_at" timestamp with time zone NOT NULL,
 	"classification" "skypadi_whatsapp"."inbound_email_classification" DEFAULT 'other' NOT NULL,
 	"extracted_otp" text,
+	"otp_claimed_at" timestamp with time zone,
 	"otp_consumed_at" timestamp with time zone,
 	"processed_at" timestamp with time zone,
 	"raw" jsonb DEFAULT '{}'::jsonb NOT NULL,

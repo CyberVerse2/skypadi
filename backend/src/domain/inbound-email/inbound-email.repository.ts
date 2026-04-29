@@ -26,6 +26,11 @@ export type SaveInboundEmailInput = {
 export type InboundEmailRepository = {
   findActiveAliasByEmail(emailAddress: string): Promise<BookingEmailAliasRecord | undefined>;
   saveInboundEmail(input: SaveInboundEmailInput): Promise<InboundEmailRecord>;
+  claimNextUnconsumedOtp(input: {
+    bookingId: string;
+    claimedAt: Date;
+    claimExpiresBefore: Date;
+  }): Promise<{ inboundEmailId: string; otp: string } | undefined>;
   consumeOtp(input: { inboundEmailId: string; consumedAt: Date }): Promise<void>;
   recordSupplierEvent(input: {
     bookingId: string;
@@ -91,6 +96,30 @@ export function createDrizzleInboundEmailRepository(db: DbClient): InboundEmailR
       `);
       const row = result.rows[0] as { id: string; was_created: boolean };
       return { id: row.id, wasCreated: row.was_created };
+    },
+    async claimNextUnconsumedOtp(input) {
+      const result = await db.execute(sql`
+        with next_otp as (
+          select id
+          from skypadi_whatsapp.inbound_emails
+          where booking_id = ${input.bookingId}
+            and classification = 'verification_code'
+            and extracted_otp is not null
+            and otp_consumed_at is null
+            and (otp_claimed_at is null or otp_claimed_at < ${input.claimExpiresBefore})
+          order by received_at asc
+          limit 1
+          for update skip locked
+        )
+        update skypadi_whatsapp.inbound_emails
+        set otp_claimed_at = ${input.claimedAt}
+        from next_otp
+        where inbound_emails.id = next_otp.id
+        returning inbound_emails.id, inbound_emails.extracted_otp
+      `);
+      const row = result.rows[0] as { id: string; extracted_otp: string | null } | undefined;
+      if (!row?.extracted_otp) return undefined;
+      return { inboundEmailId: row.id, otp: row.extracted_otp };
     },
     async consumeOtp(input) {
       await db.execute(sql`

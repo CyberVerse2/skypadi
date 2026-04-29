@@ -5,6 +5,7 @@ import {
   handleInboundEmail,
   handleInboundEmailForClassificationOnly,
   consumeInboundEmailOtp,
+  waitForInboundEmailOtp,
 } from "../../src/workflows/inbound-email.workflow.js";
 
 const classified = classifyInboundEmail({
@@ -56,6 +57,9 @@ const handled = await handleInboundEmail({
       assert.equal(input.extractedOtp, "493821");
       return { id: "inbound_123", wasCreated: true };
     },
+    async claimNextUnconsumedOtp() {
+      throw new Error("find OTP is not part of inbound handling");
+    },
     async consumeOtp() {
       throw new Error("consume is not part of inbound handling");
     },
@@ -88,6 +92,9 @@ const unknownAlias = await handleInboundEmail({
     async saveInboundEmail() {
       throw new Error("should not persist unknown aliases");
     },
+    async claimNextUnconsumedOtp() {
+      throw new Error("should not find OTP for unknown aliases");
+    },
     async consumeOtp() {
       throw new Error("should not consume unknown aliases");
     },
@@ -111,4 +118,45 @@ await consumeInboundEmailOtp({
   consumedAt: new Date("2026-04-29T10:05:00.000Z"),
 });
 assert.equal(consumedAt?.toISOString(), "2026-04-29T10:05:00.000Z");
+
+let pollAttempts = 0;
+let consumedOtpId: string | undefined;
+const waitedOtp = await waitForInboundEmailOtp({
+  bookingId: "book_123",
+  repository: {
+    async claimNextUnconsumedOtp(input) {
+      pollAttempts += 1;
+      assert.equal(input.bookingId, "book_123");
+      if (pollAttempts < 2) return undefined;
+      return { inboundEmailId: "inbound_otp_123", otp: "493821" };
+    },
+    async consumeOtp(input) {
+      consumedOtpId = input.inboundEmailId;
+    },
+  },
+  timeoutMs: 50,
+  pollMs: 1,
+});
+
+assert.equal(waitedOtp?.code, "493821");
+assert.equal(consumedOtpId, undefined);
+await waitedOtp?.consume();
+assert.equal(consumedOtpId, "inbound_otp_123");
+assert.equal(pollAttempts, 2);
+
+const timedOutOtp = await waitForInboundEmailOtp({
+  bookingId: "book_456",
+  repository: {
+    async claimNextUnconsumedOtp() {
+      return undefined;
+    },
+    async consumeOtp() {
+      throw new Error("should not consume missing OTP");
+    },
+  },
+  timeoutMs: 2,
+  pollMs: 1,
+});
+
+assert.equal(timedOutOtp, undefined);
 console.log("inbound email workflow tests passed");

@@ -7,6 +7,7 @@ import type {
 } from "../../src/domain/conversation/conversation.service.js";
 
 const sentMessages: unknown[] = [];
+let passengerDetailsCollected = false;
 const persistedMessages = new Set<string>();
 const conversations = new Map<string, ConversationRecord>();
 const savedConversationId = "11111111-1111-4111-8111-111111111111";
@@ -64,6 +65,16 @@ const app = buildServer({
       return {
         type: "text",
         body: "Booking created. Please send passenger details.",
+      };
+    },
+    async collectPassengerDetails(input) {
+      if (input.text !== "Celestine Ejiofor, male, 08012345678, celestine@email.com, 1990-04-12" && input.passenger?.email !== "celestine@email.com") return undefined;
+      assert.equal(input.userId, "22222222-2222-4222-8222-222222222222");
+      assert.equal(input.conversationId, savedConversationId);
+      passengerDetailsCollected = true;
+      return {
+        type: "text",
+        body: "Wakanow hold created. Continue to payment.",
       };
     },
   },
@@ -220,5 +231,78 @@ const selected = await app.inject({
 assert.equal(selected.statusCode, 200);
 await new Promise((resolve) => setTimeout(resolve, 20));
 assert.equal(sentMessages.length, 5);
+
+const passengerDetails = await app.inject({
+  method: "POST",
+  url: "/webhooks/whatsapp",
+  payload: {
+    entry: [
+      {
+        changes: [
+          {
+            value: {
+              messages: [
+                {
+                  id: "wamid.6",
+                  from: "2348012345678",
+                  timestamp: "1777449600",
+                  type: "text",
+                  text: { body: "Celestine Ejiofor, male, 08012345678, celestine@email.com, 1990-04-12" },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  },
+});
+assert.equal(passengerDetails.statusCode, 200);
+await new Promise((resolve) => setTimeout(resolve, 20));
+assert.equal(passengerDetailsCollected, true);
+assert.equal(sentMessages.length, 6);
+
+passengerDetailsCollected = false;
+const passengerFlowDetails = await app.inject({
+  method: "POST",
+  url: "/webhooks/whatsapp",
+  payload: {
+    entry: [
+      {
+        changes: [
+          {
+            value: {
+              messages: [
+                {
+                  id: "wamid.7",
+                  from: "2348012345678",
+                  timestamp: "1777449600",
+                  type: "interactive",
+                  interactive: {
+                    type: "nfm_reply",
+                    nfm_reply: {
+                      response_json: JSON.stringify({
+                        title: "Mr",
+                        firstName: "Celestine",
+                        lastName: "Ejiofor",
+                        dateOfBirth: "1990-04-12",
+                        gender: "Male",
+                        phone: "08012345678",
+                        email: "celestine@email.com",
+                      }),
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  },
+});
+assert.equal(passengerFlowDetails.statusCode, 200);
+await new Promise((resolve) => setTimeout(resolve, 20));
+assert.equal(passengerDetailsCollected, true);
 await app.close();
 console.log("whatsapp route tests passed");

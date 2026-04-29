@@ -12,6 +12,7 @@ const envSchema = z.object({
   WHATSAPP_PHONE_NUMBER_ID: z.string().min(1).optional(),
   WHATSAPP_VERIFY_TOKEN: z.string().min(1).optional(),
   WHATSAPP_APP_SECRET: z.string().min(1).optional(),
+  WHATSAPP_PASSENGER_DETAILS_FLOW_ID: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
   WAKANOW_BASE_URL: z.string().url().default("https://www.wakanow.com"),
   WAKANOW_LOCALE: z.string().default("en-NG"),

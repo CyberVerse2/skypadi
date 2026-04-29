@@ -86,6 +86,42 @@ export async function consumeInboundEmailOtp(input: {
   });
 }
 
+export async function waitForInboundEmailOtp(input: {
+  bookingId: string;
+  repository: Pick<InboundEmailRepository, "claimNextUnconsumedOtp" | "consumeOtp">;
+  timeoutMs?: number;
+  pollMs?: number;
+  claimTimeoutMs?: number;
+  now?: () => Date;
+}): Promise<{ code: string; consume: () => Promise<void> } | undefined> {
+  const timeoutMs = input.timeoutMs ?? 90_000;
+  const pollMs = input.pollMs ?? 2_000;
+  const claimTimeoutMs = input.claimTimeoutMs ?? 5 * 60_000;
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() <= deadline) {
+    const claimedAt = input.now?.() ?? new Date();
+    const otp = await input.repository.claimNextUnconsumedOtp({
+      bookingId: input.bookingId,
+      claimedAt,
+      claimExpiresBefore: new Date(claimedAt.getTime() - claimTimeoutMs),
+    });
+    if (otp) {
+      return {
+        code: otp.otp,
+        consume: () => input.repository.consumeOtp({
+          inboundEmailId: otp.inboundEmailId,
+          consumedAt: input.now?.() ?? new Date(),
+        }),
+      };
+    }
+
+    await sleep(pollMs);
+  }
+
+  return undefined;
+}
+
 function normalizeRecipients(to: string | string[]): string[] {
   const values = Array.isArray(to) ? to : [to];
   return values.map(normalizeAddress);
@@ -104,4 +140,8 @@ async function findFirstActiveAlias(recipients: string[], repository: InboundEma
   }
 
   return undefined;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

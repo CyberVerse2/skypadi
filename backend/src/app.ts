@@ -14,9 +14,12 @@ import {
 } from "./domain/conversation/conversation.repository.js";
 import type { ConversationRepository } from "./domain/conversation/conversation.service.js";
 import { createFlightSearchPresentationHandler } from "./workflows/flight-search.workflow.js";
-import { createBookingFromSelectedOption } from "./workflows/booking.workflow.js";
+import { collectPassengerDetailsAndCreateSupplierHold, createBookingFromSelectedOption } from "./workflows/booking.workflow.js";
 import { createDrizzleBookingRepository } from "./domain/booking/booking.repository.js";
 import type { BookingSelectionHandler, FlightSearchHandler } from "./channels/whatsapp/whatsapp.routes.js";
+import { createDrizzleSupplierBookingRepository } from "./workflows/supplier-booking.workflow.js";
+import { createWakanowBrowserHoldClient, type WakanowHoldClient } from "./integrations/wakanow/wakanow.booking.js";
+import type { UiIntent } from "./channels/whatsapp/whatsapp.types.js";
 
 export type BuildServerOptions = {
   whatsappVerifyToken?: string;
@@ -27,6 +30,7 @@ export type BuildServerOptions = {
   whatsappClient?: WhatsAppClient;
   flightSearchHandler?: FlightSearchHandler;
   bookingHandler?: BookingSelectionHandler;
+  supplierClient?: WakanowHoldClient;
 };
 
 export function buildServer(options: BuildServerOptions = {}) {
@@ -48,7 +52,7 @@ export function buildServer(options: BuildServerOptions = {}) {
       whatsappClient,
       appSecret: options.whatsappAppSecret ?? env.WHATSAPP_APP_SECRET,
       flightSearchHandler: options.flightSearchHandler ?? createLiveFlightSearchHandler(),
-      bookingHandler: options.bookingHandler ?? createLiveBookingHandler(),
+      bookingHandler: options.bookingHandler ?? createLiveBookingHandler(options.supplierClient),
     });
   }
   const resendWebhookSecret = options.resendWebhookSecret ?? env.RESEND_WEBHOOK_SECRET;
@@ -103,7 +107,7 @@ function createLiveFlightSearchHandler(): FlightSearchHandler {
   });
 }
 
-function createLiveBookingHandler(): BookingSelectionHandler {
+function createLiveBookingHandler(supplierClient?: WakanowHoldClient): BookingSelectionHandler {
   return {
     async createFromFlightSelection(input) {
       if (!env.RESEND_INBOUND_DOMAIN) {
@@ -122,7 +126,59 @@ function createLiveBookingHandler(): BookingSelectionHandler {
         return { type: "text", body: "I could not create that booking yet. Please try another flight." };
       }
 
+      if (env.WHATSAPP_PASSENGER_DETAILS_FLOW_ID) {
+        return {
+          type: "passenger_details_flow",
+          body: "Great choice. I need the passenger details to continue.",
+          buttonText: "Enter details",
+          flowId: env.WHATSAPP_PASSENGER_DETAILS_FLOW_ID,
+          flowToken: result.value.id,
+          data: {
+            bookingId: result.value.id,
+            selectedFlightOptionId: result.value.selectedFlightOptionId,
+          },
+        };
+      }
+
       return { type: "text", body: "Booking created. Please send passenger details." };
+    },
+    async collectPassengerDetails(input) {
+      const result = await collectPassengerDetailsAndCreateSupplierHold({
+        userId: input.userId,
+        conversationId: input.conversationId,
+        passengerText: input.text,
+        passenger: input.passenger,
+        repository: createDrizzleBookingRepository(db),
+        supplierClient: supplierClient ?? createWakanowBrowserHoldClient({ db }),
+        supplierRepository: createDrizzleSupplierBookingRepository(db),
+      });
+
+      if (result.kind === "needs_user_input") return result.ui as UiIntent;
+      if (result.kind === "needs_manual_review") {
+        return {
+          type: "text",
+          body: "I could not confirm the supplier booking automatically. I have moved it to manual review.",
+        };
+      }
+      if (result.kind !== "ok") return undefined;
+
+      const decision = result.value;
+      if (decision.status === "awaiting_payment_for_hold") {
+        return {
+          type: "text",
+          body: `Wakanow hold created. Reference: ${decision.supplierBookingRef}. Hold expires at ${decision.holdExpiresAt?.toLocaleString("en-NG", { timeZone: env.WAKANOW_TIMEZONE })}.`,
+        };
+      }
+      if (decision.status === "payment_pending") {
+        return {
+          type: "text",
+          body: "This flight requires payment before ticketing. I have saved the booking details.",
+        };
+      }
+      return {
+        type: "text",
+        body: "I could not confirm the supplier booking automatically. I have moved it to manual review.",
+      };
     },
   };
 }

@@ -2,11 +2,13 @@ import type {
   DocumentIntent,
   FlightListIntent,
   OriginListIntent,
+  PassengerDetailsFlowIntent,
   ReplyButtonsIntent,
   TextIntent,
   UiIntent,
   WhatsAppDocumentMessage,
   WhatsAppInteractiveButtonMessage,
+  WhatsAppInteractiveFlowMessage,
   WhatsAppInteractiveListMessage,
   WhatsAppMessagePayload,
   WhatsAppTextMessage,
@@ -30,6 +32,7 @@ export function mapUiIntentToWhatsAppMessage(intent: FlightListIntent): WhatsApp
 export function mapUiIntentToWhatsAppMessage(intent: ReplyButtonsIntent): WhatsAppInteractiveButtonMessage;
 export function mapUiIntentToWhatsAppMessage(intent: TextIntent): WhatsAppTextMessage;
 export function mapUiIntentToWhatsAppMessage(intent: DocumentIntent): WhatsAppDocumentMessage;
+export function mapUiIntentToWhatsAppMessage(intent: PassengerDetailsFlowIntent): WhatsAppInteractiveFlowMessage;
 export function mapUiIntentToWhatsAppMessage(intent: UiIntent): WhatsAppMessagePayload;
 export function mapUiIntentToWhatsAppMessage(intent: UiIntent): WhatsAppMessagePayload {
   switch (intent.type) {
@@ -58,6 +61,33 @@ export function mapUiIntentToWhatsAppMessage(intent: UiIntent): WhatsAppMessageP
           link: intent.documentUrl,
           filename: intent.filename,
           caption: intent.body,
+        },
+      };
+    case "passenger_details_flow":
+      assertInteractiveBody(intent.body);
+      assertPresent(intent.buttonText, "flow CTA button text");
+      assertMaxLength(intent.buttonText, MAX_LIST_CTA_BUTTON_TEXT_LENGTH, "flow CTA button text");
+      assertPresent(intent.flowId, "flow id");
+      assertPresent(intent.flowToken, "flow token");
+      return {
+        type: "interactive",
+        interactive: {
+          type: "flow",
+          body: { text: intent.body },
+          action: {
+            name: "flow",
+            parameters: {
+              flow_message_version: "3",
+              flow_id: intent.flowId,
+              flow_token: intent.flowToken,
+              flow_cta: intent.buttonText,
+              flow_action: "navigate",
+              flow_action_payload: {
+                screen: "PASSENGER_DETAILS",
+                data: intent.data,
+              },
+            },
+          },
         },
       };
   }
