@@ -25,6 +25,7 @@
     "ai": "^6.0.156",
     "axios": "^1.15.0",
     "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.45.2",
     "fastify": "^5.0.0",
     "fastify-raw-body": "^5.0.0",
     "fingerprint-generator": "^2.1.82",
@@ -40,6 +41,7 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/pg": "^8.20.0",
+    "drizzle-kit": "^0.31.10",
     "tsx": "^4.19.1",
     "typescript": "^5.8.3"
   }
