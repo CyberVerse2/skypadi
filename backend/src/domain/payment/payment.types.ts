@@ -8,3 +8,16 @@ export type PaymentStatus =
   | "manual_review_required";
 
 export type PaymentMethod = "transfer" | "card";
+
+export type PaymentAttempt = {
+  id: string;
+  bookingId: string;
+  method: PaymentMethod;
+  status: PaymentStatus;
+  amount: number;
+  currency: "NGN";
+  providerReference?: string;
+  createdAt: Date;
+};
+
+export type TrustedPaymentConfirmationSource = "bank_transfer_reconciliation" | "admin";
