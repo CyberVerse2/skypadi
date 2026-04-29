@@ -37,30 +37,40 @@ export type BuildServerOptions = {
 
 export function buildServer(options: BuildServerOptions = {}) {
   const app = Fastify({ logger: true });
-  app.register(fastifyRawBody, {
-    field: "rawBody",
-    global: false,
-    encoding: "utf8",
-    runFirst: true
-  });
   const conversationRepository = options.conversationRepository ?? createDrizzleConversationRepository(db);
   const whatsappVerifyToken = options.whatsappVerifyToken ?? env.WHATSAPP_VERIFY_TOKEN;
-  if (whatsappVerifyToken) {
-    const whatsappClient = options.whatsappClient ?? configuredWhatsAppClient();
-    registerWhatsAppWorkflowRoutes(app, {
-      verifyToken: whatsappVerifyToken,
-      conversationRepository,
-      messageRepository: options.messageRepository ?? messageRepositoryFromConversationRepository(conversationRepository),
-      whatsappClient,
-      intentExtractor: options.intentExtractor ?? createLiveIntentExtractor(),
-      appSecret: options.whatsappAppSecret ?? env.WHATSAPP_APP_SECRET,
-      flightSearchHandler: options.flightSearchHandler ?? createLiveFlightSearchHandler(),
-      bookingHandler: options.bookingHandler ?? createLiveBookingHandler(options.supplierClient),
-    });
-  }
   const resendWebhookSecret = options.resendWebhookSecret ?? env.RESEND_WEBHOOK_SECRET;
-  if (resendWebhookSecret) {
-    registerResendWebhookRoutes(app, { webhookSecret: resendWebhookSecret, resendApiKey: env.RESEND_API_KEY });
+
+  if (whatsappVerifyToken || resendWebhookSecret) {
+    app.register(async (webhookRoutes) => {
+      await webhookRoutes.register(fastifyRawBody, {
+        field: "rawBody",
+        global: false,
+        encoding: "utf8",
+        runFirst: true,
+      });
+
+      if (whatsappVerifyToken) {
+        const whatsappClient = options.whatsappClient ?? configuredWhatsAppClient();
+        registerWhatsAppWorkflowRoutes(webhookRoutes, {
+          verifyToken: whatsappVerifyToken,
+          conversationRepository,
+          messageRepository: options.messageRepository ?? messageRepositoryFromConversationRepository(conversationRepository),
+          whatsappClient,
+          intentExtractor: options.intentExtractor ?? createLiveIntentExtractor(),
+          appSecret: options.whatsappAppSecret ?? env.WHATSAPP_APP_SECRET,
+          flightSearchHandler: options.flightSearchHandler ?? createLiveFlightSearchHandler(),
+          bookingHandler: options.bookingHandler ?? createLiveBookingHandler(options.supplierClient),
+        });
+      }
+
+      if (resendWebhookSecret) {
+        registerResendWebhookRoutes(webhookRoutes, {
+          webhookSecret: resendWebhookSecret,
+          resendApiKey: env.RESEND_API_KEY,
+        });
+      }
+    });
   }
 
   app.get("/health", async () => ({

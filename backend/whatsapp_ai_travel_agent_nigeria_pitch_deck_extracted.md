@@ -11,9 +11,9 @@ Extraction format: slide-by-slide transcript of all visible text boxes, followed
 - Skypadi
 - Skypadi
 - Need cheapest Lagos → Abuja tomorrow morning
-- The WhatsApp-native AI travel agent for modern flyers
+- Compare flights. Book faster. All from WhatsApp.
 - I found 5 live options. Cheapest: 7:45am, ₦118k. Best value: 9:10am, ₦124k with 20kg bag.
-- Search fares. Pay securely. Get ticketed. Get support. All in one chat.
+- Say the trip once. Compare options. Pay securely. Get ticketed. All in one chat.
 - Book best value. Pay by transfer.
 - Done. Secure payment link sent. Ticket + PNR will arrive here after confirmation.
 - Pitch deck
@@ -23,39 +23,39 @@ Extraction format: slide-by-slide transcript of all visible text boxes, followed
 
 ### Speaker notes
 
-Opening thesis: this is not a generic chatbot. It is a WhatsApp-first travel desk for high-friction travel markets, starting with Nigeria, where the high-ticket booking experience needs speed, local payment compatibility, and trust.
+Opening thesis: this is not a generic chatbot. It is a WhatsApp-first flight booking assistant for high-friction travel markets, starting with Nigeria, where travellers lose time repeating searches and forms across multiple booking sites.
 
-## Slide 2 — Flight booking is still too high-friction
+## Slide 2 — Finding and booking the right flight takes too much work
 
 ### Visible slide text
 
-- Flight booking is still too high-friction
-- Travellers want speed and reassurance, but today the journey is split across apps, calls, DMs, bank transfers, and support tickets.
-- Price anxiety
-- Fragmented checkout
-- Trust gap
-- Post-booking pain
-- Fares change quickly. Customers need confidence they are seeing the right option before making a high-value purchase.
-- Search in one place, pay elsewhere, call someone for confirmation, then keep checking email for a PNR.
-- A flight ticket is not a casual purchase. Many travellers still want an agent who can explain baggage, refunds, and changes.
-- Delays, cancellations, refunds, rebooking, airport changes, and passenger mistakes often happen after payment.
+- Finding and booking the right flight takes too much work
+- Travellers want the best option for their time and budget, but today they have to repeat the same search and booking steps across multiple sites.
+- Repeated search
+- Price comparison fatigue
+- Re-entered forms
+- Post-booking follow-up
+- To find a better fare or departure time, customers often check several airline and OTA websites one by one.
+- Every search starts over: route, date, time window, passenger count, baggage preference, and contact details.
+- Once they choose a flight, booking still means another round of passenger forms, payment steps, confirmation checks, and emails.
+- After payment, itinerary, PNR, changes, receipts, and support often live outside the original search flow.
 - The wedge:
-- The traveller does not want another app. They want a responsive travel agent in the channel they already use.
-- Skypadi makes flight search feel like messaging a trusted agent — while automating the repetitive work behind the scenes.
+- The traveller does not want to fill the same travel forms again and again. They want to say the trip once, compare options fast, and book from one familiar thread.
+- Skypadi makes flight search feel like messaging a capable travel assistant — while automating the repetitive work behind the scenes.
 - Market context and examples sourced from DataReportal, NCAA/BusinessDay, NBS-reported Transport Fare Watch, WhatsApp Business, Paystack, Wakanow, and Travelstart.
-- Skypadi NG
+- Skypadi
 - Problem
 
 ### Speaker notes
 
-Problem framing: high-ticket purchase plus fragmented support. The point is not that OTAs do not exist; it is that many travellers still want guided assistance and post-booking confidence.
+Problem framing: convenience first. The point is not that flight websites do not exist; it is that comparing prices and completing bookings across multiple sites forces travellers to repeat the same intent and passenger details over and over.
 
 ## Slide 3 — Why WhatsApp is the right travel storefront
 
 ### Visible slide text
 
 - Why WhatsApp is the right travel storefront
-- The channel solves distribution, trust, reminders, and support in one familiar thread.
+- The channel removes repeated search, repeated forms, and scattered follow-up in one familiar thread.
 - 165M
 - 109M
 - 47.8M
@@ -64,40 +64,40 @@ Problem framing: high-ticket purchase plus fragmented support. The point is not 
 - internet users in Nigeria in Oct 2025
 - active social media user identities in Oct 2025
 - WhatsApp Flows can create in-chat experiences without external downloads
-- Meet customers where they already are
-- Keep the booking history in one place
+- Start where customers already chat
+- Reuse trip and passenger details
 - Support local payment habits
-- Escalate only when needed
+- Keep follow-up in one thread
 - 1
 - 2
 - 3
 - 4
-- WhatsApp Business positions the platform for customer engagement, commerce, notifications, and care.
-- Quotes, payment proof, itinerary, PNR, schedule changes, and refund status live in the same thread.
+- WhatsApp Business gives Skypadi a familiar surface for search, checkout, notifications, and care.
+- Trip request, shortlist, passenger details, payment proof, itinerary, PNR, schedule changes, and refund status live in the same thread.
 - Send secure payment links or transfer instructions; do not collect full card or account numbers in chat.
 - AI handles search and FAQs; humans step in for exceptions, refunds, fraud checks, or VIP customers.
 - Sources: DataReportal Digital 2026 Nigeria; WhatsApp Business Platform and Flows; WhatsApp Business Policy; Paystack payment channels.
-- Skypadi NG
+- Skypadi
 - Why WhatsApp
 
 ### Speaker notes
 
 Use this slide to connect digital adoption to the channel choice. WhatsApp is not only a messaging surface; the Business Platform supports commerce, support, notifications, and custom flows.
 
-## Slide 4 — A travel agent that replies instantly — and stays with the customer
+## Slide 4 — Say the trip once. Skypadi handles the repeated work.
 
 ### Visible slide text
 
-- A travel agent that replies instantly — and stays with the customer
+- Say the trip once. Skypadi handles the repeated work.
 - Skypadi combines conversational AI, live inventory, secure payment, ticketing operations, and human escalation.
 - Fare search & compare
 - Guided checkout
 - ✓
 - ✓
 - Core promise
-- AI translates plain-language requests into live flight searches, including baggage and restrictions.
-- Collects passenger details, confirms fare rules, and sends secure payment link or transfer flow.
-- “Tell us where you’re going. We’ll find the best option, explain it clearly, take secure payment, issue your ticket, and support you after booking.”
+- AI turns one plain-language request into comparable flight options, including timing, fare, baggage, and restrictions.
+- Collects passenger details once, confirms fare rules, and sends secure payment link or transfer flow.
+- “Tell us your trip once. We’ll search across options, explain the tradeoffs, reuse your details, and help you complete the booking in WhatsApp.”
 - Ticketing + records
 - After-sales support
 - ✓
@@ -112,12 +112,12 @@ Use this slide to connect digital adoption to the channel choice. WhatsApp is no
 - Supports voice-note intent capture and expansion to Pidgin, Hausa, Yoruba, and Igbo playbooks.
 - Routes edge cases, fraud flags, VIP requests, and sensitive refund work to trained agents.
 - Product concept informed by WhatsApp Business Platform capabilities and local travel agency / OTA service patterns.
-- Skypadi NG
+- Skypadi
 - Solution
 
 ### Speaker notes
 
-Solution slide: keep the message simple. The AI automates intent capture, comparison, FAQs, and fulfilment handoffs. The user experiences it as a trusted travel concierge.
+Solution slide: keep the message simple. The AI automates repeated search, comparison, passenger-detail collection, FAQs, and fulfilment handoffs. The user experiences less form-filling and faster booking from one chat.
 
 ## Slide 5 — From chat request to ticketed itinerary
 
@@ -125,9 +125,9 @@ Solution slide: keep the message simple. The AI automates intent capture, compar
 
 - From chat request to ticketed itinerary
 - The customer sees a simple conversation; the business runs a controlled booking workflow behind it.
-- Ask
+- Ask once
 - Compare
-- Confirm
+- Reuse details
 - Pay
 - Ticket
 - Support
@@ -139,7 +139,7 @@ Solution slide: keep the message simple. The AI automates intent capture, compar
 - 6
 - “Cheapest Lagos to Abuja tomorrow morning”
 - Live fares, baggage, timing, change/refund rules
-- Passenger details + fare rules accepted
+- Saved passenger details + fare rules accepted
 - Secure link, bank transfer, USSD, or card checkout
 - PNR, receipt, itinerary, calendar-ready summary
 - Alerts, changes, refunds, human takeover
@@ -150,13 +150,13 @@ Solution slide: keep the message simple. The AI automates intent capture, compar
 - Payments + reconciliation
 - CRM + human agents
 - Structured forms, templates, confirmations, support thread
-- Intent, fare explanation, policy answers, multilingual/voice routing
+- Intent, saved traveller details, fare explanation, policy answers, multilingual/voice routing
 - Airline / OTA / GDS / NDC content with fare-rule validation
 - Secure payment page, transfer verification, receipts
 - Queue exceptions, refunds, reissues, SLA tracking
 - Safety rule: never ask for full card / bank account numbers in chat. Push sensitive payment to a secure provider flow.
 - Sources: WhatsApp Business Platform / Flows; WhatsApp Business Policy; Paystack payment channels.
-- Skypadi NG
+- Skypadi
 - Product flow
 
 ### Speaker notes
@@ -182,10 +182,10 @@ Demo talk track: the customer only sees a natural chat. Behind the scenes, the a
 - bookings create post-sale needs: changes, refunds, delays, and receipts
 - 2023
 - 2029 projected
-- Implication: the winner is not only the cheapest quote — it is the fastest trusted path from intent → ticket → support.
+- Implication: the winner is not only the cheapest quote — it is the fastest path from intent → comparison → booking → support.
 - ≈8.3% implied CAGR from 2023 to 2029
 - Sources: BusinessDay reporting NCAA projection; Vanguard reporting NBS Transport Fare Watch, February 2026. CAGR calculated from cited figures.
-- Skypadi NG
+- Skypadi
 - Market timing
 
 ### Speaker notes
@@ -214,7 +214,7 @@ Market timing: cite 15.89M to 25.7M passenger projection and the high airfare le
 - Travel agents / sub-agents
 - “Let my agents serve more chats without missing details.”
 - Route examples and travel behaviour informed by Travelstart domestic flight page and local OTA service patterns.
-- Skypadi NG
+- Skypadi
 - Customers
 
 ### Speaker notes
@@ -226,12 +226,12 @@ Customer prioritization: start with repeated domestic usage and high-friction su
 ### Visible slide text
 
 - Revenue stack: service fees first, ancillaries second, B2B later
-- Keep the monetization transparent so trust compounds instead of eroding.
+- Keep the convenience fee transparent so customers understand what time and effort Skypadi saves.
 - Booking service fee
 - Supplier commission / markup
 - Ancillary attach
 - SME travel desk
-- ₦1,000–₦3,500 domestic per ticket; higher for international or urgent reissue support.
+- ₦1,000–₦3,500 domestic per ticket for avoiding repeated searches and booking forms; higher for international or urgent reissue support.
 - Negotiated airline, OTA, GDS, or agency margin where permitted and transparent.
 - Baggage, seat choice, insurance, hotels, airport transfer, lounge, protocol, and visa-document support.
 - Monthly subscription for approval flows, receipts, team travel ledger, and consolidated support.
@@ -245,16 +245,16 @@ Customer prioritization: start with repeated domestic usage and high-friction su
 - falls with automation
 - post-booking thread
 - NBS-reported average specified-route airfare, Feb 2026
-- service fee + supplier / ancillary economics
-- AI handles quote/FAQ; humans handle exceptions
+- convenience fee + supplier / ancillary economics
+- AI handles repeated search/forms; humans handle exceptions
 - alerts, receipts, changes, family sharing
 - Ticket-value reference from Vanguard/NBS. Fees and take-rate ranges are model assumptions and should be replaced with live economics.
-- Skypadi NG
+- Skypadi
 - Business model
 
 ### Speaker notes
 
-Business model assumptions are intentionally transparent. Replace fee levels with tested willingness-to-pay and supplier economics.
+Business model assumptions are intentionally transparent. Replace fee levels with tested willingness-to-pay for convenience and supplier economics.
 
 ## Slide 9 — GTM: win the chat layer before expanding travel inventory
 
@@ -293,19 +293,19 @@ Business model assumptions are intentionally transparent. Replace fee levels wit
 - Human support SLAs
 - Corporate reporting + approvals
 - Pilot KPIs: quote-to-book conversion • payment success • average response time • human handoff rate • refund/reissue turnaround • repeat booking rate
-- Skypadi NG
+- Skypadi
 - Go-to-market
 
 ### Speaker notes
 
 GTM: start narrow. The product should prove conversion and fulfilment quality on high-volume domestic routes before expanding to more complex international travel.
 
-## Slide 10 — Positioning: the trusted chat layer on top of travel inventory
+## Slide 10 — Positioning: the convenience layer on top of travel inventory
 
 ### Visible slide text
 
-- Positioning: the trusted chat layer on top of travel inventory
-- Existing players prove demand for online travel and assisted support; Skypadi focuses on WhatsApp-native automation and after-sales.
+- Positioning: the convenience layer on top of travel inventory
+- Existing players prove demand for online travel; Skypadi focuses on WhatsApp-native comparison, saved details, booking automation, and after-sales.
 - Option
 - Best at
 - Weakness
@@ -325,41 +325,41 @@ GTM: start narrow. The product should prove conversion and fulfilment quality on
 - varies
 - varies
 - Offline agents
-- Trust + bespoke service
+- Personal service
 - Slow, manual, hard to scale
 - ✓
 - ✓
 - ✓
-- Skypadi NG
-- Chat-first booking + support automation
-- Needs supplier integrations and trust-building
+- Skypadi
+- Chat-first comparison + booking automation
+- Needs supplier integrations and operational reliability
 - ✓
 - ✓
 - ✓
-- Competitive read: Wakanow and Travelstart show the market wants online booking plus assisted travel help. Skypadi compresses that into a WhatsApp-first workflow.
+- Competitive read: Wakanow and Travelstart show the market wants online booking and travel support. Skypadi compresses comparison, details, checkout, and follow-up into a WhatsApp-first workflow.
 - Sources: Wakanow public service page; Travelstart domestic flights page.
-- Skypadi NG
+- Skypadi
 - Competition
 
 ### Speaker notes
 
-The purpose is not to claim no competitors. The wedge is a WhatsApp-native chat layer with workflow automation and human fulfilment, not a commodity fare search page.
+The purpose is not to claim no competitors. The wedge is a WhatsApp-native convenience layer with workflow automation and human fulfilment, not a commodity fare search page.
 
-## Slide 11 — The moat is not the chatbot. It is trusted fulfilment at scale.
+## Slide 11 — The moat is not the chatbot. It is booking workflow automation.
 
 ### Visible slide text
 
-- The moat is not the chatbot. It is trusted fulfilment at scale.
-- AI makes the interface fast. Operations, data, policies, and trust make the product defensible.
-- Verified trust layer
+- The moat is not the chatbot. It is booking workflow automation.
+- AI makes the interface fast. Saved traveller context, supplier workflows, policies, and operations make the product defensible.
+- Saved traveller context
 - Local travel knowledge
 - Customer memory
-- Verified business number, clear terms, receipts, agent identity, and support history.
+- Repeat routes, passenger profiles, preferences, documents, receipts, and support history.
 - Airline policy playbooks, baggage rules, refund scripts, route patterns, and airport friction.
-- Consent-based profiles: traveller names, preferences, receipts, repeat routes, and family sharing.
+- Consent-based profiles reduce repeated form-filling across future bookings and family travel.
 - Ops feedback loop
 - Distribution partnerships
-- Every exception improves prompts, guardrails, handoff triggers, and supplier decisioning.
+- Every booking and exception improves prompts, saved-field logic, guardrails, handoff triggers, and supplier decisioning.
 - SMEs, student groups, religious travel, agents, influencers, and diaspora community channels.
 - Risk controls built into the product
 - Hallucinated fares
@@ -371,19 +371,19 @@ The purpose is not to claim no competitors. The wedge is a WhatsApp-native chat 
 - Save rules, timestamps, acceptance, receipts, and handoff notes.
 - Route low-confidence, complex, or angry users to humans immediately.
 - Risk-control payment rule based on WhatsApp Business Policy and PSP payment-channel model.
-- Skypadi NG
+- Skypadi
 - Moat + risk
 
 ### Speaker notes
 
-Investors will worry about hallucinations and trust. The answer is constrained inventory, auditable workflows, secure payments, and human handoff.
+Investors will worry about hallucinations, fulfilment, and operational reliability. The answer is constrained inventory, saved context, auditable workflows, secure payments, and human handoff.
 
 ## Slide 12 — WhatsApp demo → traction proof
 
 ### Visible slide text
 
 - WhatsApp demo → traction proof
-- The first proof is not a funding ask. It is a working WhatsApp booking flow that shows customers can move from intent to ticket-ready checkout in chat.
+- The first proof is a working WhatsApp booking flow that shows customers can move from intent to ticket-ready checkout in chat.
 - Demo scope
 - Customer starts in WhatsApp
 - AI returns ranked flight options
@@ -393,11 +393,11 @@ Investors will worry about hallucinations and trust. The answer is constrained i
 - PNR / itinerary / support thread remains in WhatsApp
 - What the demo proves
 - Demand signal
-- Product trust
+- Product convenience
 - Operational readiness
 - Repeatable workflow
 - Users are willing to state real routes, dates, budgets, and passenger needs inside WhatsApp.
-- Customers understand the quote, baggage, restrictions, and next step without calling an agent.
+- Customers understand the options, baggage, restrictions, and next step without re-entering the same details on multiple sites.
 - The workflow can separate automation from human handoff before payment or ticketing risk.
 - The same conversation model can support domestic routes first, then expand to regional and international travel.
 - Traction metrics to show
@@ -412,7 +412,7 @@ Investors will worry about hallucinations and trust. The answer is constrained i
 
 ### Speaker notes
 
-Use this slide to show concrete product progress before fundraising. The goal is to prove customers understand and trust the WhatsApp flow, even before full automation and supplier depth are complete.
+Use this slide to show concrete product progress before fundraising. The goal is to prove customers can state a trip once, compare options, and move toward booking without repeating the same forms across multiple sites.
 
 ## Slide 13 — Sources and modelling assumptions
 
@@ -435,9 +435,9 @@ Use this slide to show concrete product progress before fundraising. The goal is
 - WhatsApp Business Platform + Flows
 - Model assumptions
 - Commerce, notifications, customer care, custom interactive in-chat experiences.
-- Fees, take-rate ranges, 90-day pilot targets, and raise amount are illustrative until validated.
-- Next validation: run a 90-day pilot and replace this slide with conversion, repeat booking, refund SLA, and unit-economics data.
-- Skypadi NG
+- Fees, take-rate ranges, and demo traction metrics are illustrative until validated.
+- Next validation: run the WhatsApp demo with real travellers and replace this slide with conversion, repeat booking, refund SLA, and unit-economics data.
+- Skypadi
 - Sources
 
 ### Speaker notes

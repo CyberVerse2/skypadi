@@ -156,6 +156,23 @@ const signedStatus = await signedApp.inject({
 });
 assert.equal(signedStatus.statusCode, 200);
 assert.deepEqual(JSON.parse(signedStatus.body), { ok: true, received: 0 });
+
+const prettySignedStatusPayload = JSON.stringify(
+  { entry: [{ changes: [{ value: { statuses: [{ id: "wamid.pretty-status" }] } }] }] },
+  null,
+  2
+);
+const prettySignedStatus = await signedApp.inject({
+  method: "POST",
+  url: "/webhooks/whatsapp",
+  headers: {
+    "content-type": "application/json",
+    "x-hub-signature-256": metaSignature("test-app-secret", prettySignedStatusPayload),
+  },
+  payload: prettySignedStatusPayload,
+});
+assert.equal(prettySignedStatus.statusCode, 200);
+assert.deepEqual(JSON.parse(prettySignedStatus.body), { ok: true, received: 0 });
 await signedApp.close();
 
 const inbound = await app.inject({
