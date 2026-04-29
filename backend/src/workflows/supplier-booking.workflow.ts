@@ -1,5 +1,7 @@
 import type { BookingStatus } from "../domain/booking/booking.types.js";
+import type { DbClient } from "../db/client.js";
 import type { SupplierBookingPolicy, SupplierHoldResult } from "../integrations/wakanow/wakanow.types.js";
+import { sql, type SQL } from "drizzle-orm";
 
 export type SupplierHoldWorkflowInput = {
   bookingId: string;
@@ -46,6 +48,50 @@ export type SupplierEventRepository = {
     observedAt: Date;
   }): Promise<void>;
 };
+
+export function createDrizzleSupplierBookingRepository(db: DbClient): SupplierBookingRepository {
+  return {
+    async applySupplierDecision(input) {
+      const result = await db.execute(sql`
+        with updated_booking as (
+          update skypadi_whatsapp.bookings
+          set
+            status = ${input.status},
+            supplier = ${input.supplier},
+            supplier_booking_reference = ${input.supplierBookingRef},
+            supplier_hold_expires_at = ${input.holdExpiresAt},
+            amount = ${input.amountDue},
+            currency = coalesce(${input.currency}, currency),
+            failure_reason = ${input.failureReason},
+            updated_at = ${input.observedAt}
+          where id = ${input.bookingId}
+          returning id
+        )
+        insert into skypadi_whatsapp.supplier_events (
+          booking_id,
+          supplier,
+          event_type,
+          supplier_reference,
+          payload,
+          observed_at
+        )
+        select
+          updated_booking.id,
+          ${input.supplier},
+          ${input.eventType},
+          ${input.supplierBookingRef},
+          ${jsonb(input.eventPayload)},
+          ${input.observedAt}
+        from updated_booking
+        returning booking_id
+      `);
+      const rowCount = "rowCount" in result && typeof result.rowCount === "number" ? result.rowCount : result.rows.length;
+      if (rowCount === 0) {
+        throw new Error("Supplier decision could not be applied to booking");
+      }
+    },
+  };
+}
 
 export function handleSupplierHoldResult(input: SupplierHoldWorkflowInput): SupplierHoldDecision {
   const base = {
@@ -139,4 +185,8 @@ function sanitizeSupplierDecision(decision: SupplierHoldDecision): Record<string
     reason: decision.reason,
     rawStatus: decision.rawStatus,
   };
+}
+
+function jsonb(value: Record<string, unknown>): SQL {
+  return sql`${JSON.stringify(value)}::jsonb`;
 }

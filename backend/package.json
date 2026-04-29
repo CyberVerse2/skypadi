@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "typecheck:test": "tsc -p tsconfig.test.json",
     "smoke:stealth": "tsx scripts/smoke-stealth.ts",
-    "test:unit": "tsx tests/unit/test-harness.test.ts && tsx tests/unit/schema.test.ts && tsx tests/unit/domain-types.test.ts && tsx tests/unit/whatsapp.mapper.test.ts && tsx tests/unit/flight-ranking.test.ts && tsx tests/unit/no-legacy-surfaces.test.ts",
+    "test:unit": "tsx tests/unit/test-harness.test.ts && tsx tests/unit/schema.test.ts && tsx tests/unit/domain-types.test.ts && tsx tests/unit/whatsapp.mapper.test.ts && tsx tests/unit/flight-ranking.test.ts && tsx tests/unit/resend.client.test.ts && tsx tests/unit/no-legacy-surfaces.test.ts",
     "test:workflow": "tsx tests/workflow/conversation.workflow.test.ts && tsx tests/workflow/booking.workflow.test.ts && tsx tests/workflow/supplier-booking.workflow.test.ts && tsx tests/workflow/payment.workflow.test.ts && tsx tests/workflow/inbound-email.workflow.test.ts",
     "test:integration": "tsx tests/integration/whatsapp.routes.test.ts",
     "test:all": "npm run test:unit && npm run test:workflow && npm run test:integration && npm run typecheck:test",

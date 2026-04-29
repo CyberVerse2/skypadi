@@ -13,6 +13,10 @@ import {
   type WhatsAppMessageRepository,
 } from "./domain/conversation/conversation.repository.js";
 import type { ConversationRepository } from "./domain/conversation/conversation.service.js";
+import { createFlightSearchPresentationHandler } from "./workflows/flight-search.workflow.js";
+import { createBookingFromSelectedOption } from "./workflows/booking.workflow.js";
+import { createDrizzleBookingRepository } from "./domain/booking/booking.repository.js";
+import type { BookingSelectionHandler, FlightSearchHandler } from "./channels/whatsapp/whatsapp.routes.js";
 
 export type BuildServerOptions = {
   whatsappVerifyToken?: string;
@@ -21,6 +25,8 @@ export type BuildServerOptions = {
   conversationRepository?: ConversationRepository;
   messageRepository?: WhatsAppMessageRepository;
   whatsappClient?: WhatsAppClient;
+  flightSearchHandler?: FlightSearchHandler;
+  bookingHandler?: BookingSelectionHandler;
 };
 
 export function buildServer(options: BuildServerOptions = {}) {
@@ -41,11 +47,13 @@ export function buildServer(options: BuildServerOptions = {}) {
       messageRepository: options.messageRepository ?? messageRepositoryFromConversationRepository(conversationRepository),
       whatsappClient,
       appSecret: options.whatsappAppSecret ?? env.WHATSAPP_APP_SECRET,
+      flightSearchHandler: options.flightSearchHandler ?? createLiveFlightSearchHandler(),
+      bookingHandler: options.bookingHandler ?? createLiveBookingHandler(),
     });
   }
   const resendWebhookSecret = options.resendWebhookSecret ?? env.RESEND_WEBHOOK_SECRET;
   if (resendWebhookSecret) {
-    registerResendWebhookRoutes(app, { webhookSecret: resendWebhookSecret });
+    registerResendWebhookRoutes(app, { webhookSecret: resendWebhookSecret, resendApiKey: env.RESEND_API_KEY });
   }
 
   app.get("/health", async () => ({
@@ -83,6 +91,40 @@ export function buildServer(options: BuildServerOptions = {}) {
   }));
 
   return app;
+}
+
+function createLiveFlightSearchHandler(): FlightSearchHandler {
+  return createFlightSearchPresentationHandler({
+    db,
+    provider: {
+      search: searchFlightsApi,
+    },
+    displayTimeZone: env.WAKANOW_TIMEZONE,
+  });
+}
+
+function createLiveBookingHandler(): BookingSelectionHandler {
+  return {
+    async createFromFlightSelection(input) {
+      if (!env.RESEND_INBOUND_DOMAIN) {
+        return { type: "text", body: "Booking email aliases are not configured yet." };
+      }
+
+      const result = await createBookingFromSelectedOption({
+        userId: input.userId,
+        conversationId: input.conversationId,
+        selectedFlightOptionId: input.selectedFlightOptionId,
+        inboundDomain: env.RESEND_INBOUND_DOMAIN,
+        repository: createDrizzleBookingRepository(db),
+      });
+
+      if (result.kind !== "ok") {
+        return { type: "text", body: "I could not create that booking yet. Please try another flight." };
+      }
+
+      return { type: "text", body: "Booking created. Please send passenger details." };
+    },
+  };
 }
 
 function configuredWhatsAppClient(): WhatsAppClient {

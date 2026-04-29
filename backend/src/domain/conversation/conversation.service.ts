@@ -14,6 +14,7 @@ export type ConversationDraft = {
 
 export type ConversationRecord = {
   id: string;
+  userId?: string;
   phoneNumber: string;
   draft: ConversationDraft;
   updatedAt: Date;

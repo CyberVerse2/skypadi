@@ -19,7 +19,7 @@ export function createDrizzleConversationRepository(db: DbClient): ConversationR
   return {
     async findByPhoneNumber(phoneNumber) {
       const result = await db.execute(sql`
-        select c.id, wc.phone_number, c.metadata, c.updated_at
+        select c.id, c.user_id, wc.phone_number, c.metadata, c.updated_at
         from skypadi_whatsapp.conversations c
         inner join skypadi_whatsapp.whatsapp_contacts wc on wc.id = c.whatsapp_contact_id
         where wc.phone_number = ${phoneNumber}
@@ -27,7 +27,7 @@ export function createDrizzleConversationRepository(db: DbClient): ConversationR
         limit 1
       `);
       const row = result.rows[0] as
-        | { id: string; phone_number: string; metadata: unknown; updated_at: Date | string }
+        | { id: string; user_id: string; phone_number: string; metadata: unknown; updated_at: Date | string }
         | undefined;
       if (!row) return undefined;
       const metadata = isRecord(row.metadata) ? row.metadata : {};
@@ -35,6 +35,7 @@ export function createDrizzleConversationRepository(db: DbClient): ConversationR
 
       return {
         id: row.id,
+        userId: row.user_id,
         phoneNumber: row.phone_number,
         draft,
         updatedAt: new Date(row.updated_at),
@@ -46,18 +47,19 @@ export function createDrizzleConversationRepository(db: DbClient): ConversationR
       const conversationId = isUuid(conversation.id) ? conversation.id : randomUUID();
 
       await db.execute(sql`
-        with user_row as (
+        with existing_contact as (
+          select id, user_id from skypadi_whatsapp.whatsapp_contacts where phone_number = ${conversation.phoneNumber}
+        ),
+        user_row as (
           insert into skypadi_whatsapp.users (id, last_seen_at, created_at, updated_at)
-          values (${userId}, ${conversation.updatedAt}, ${conversation.updatedAt}, ${conversation.updatedAt})
+          select ${userId}, ${conversation.updatedAt}, ${conversation.updatedAt}, ${conversation.updatedAt}
+          where not exists (select 1 from existing_contact)
           on conflict do nothing
           returning id
         ),
-        existing_contact as (
-          select id, user_id from skypadi_whatsapp.whatsapp_contacts where phone_number = ${conversation.phoneNumber}
-        ),
         contact_row as (
           insert into skypadi_whatsapp.whatsapp_contacts (id, user_id, phone_number, created_at, updated_at)
-          select ${contactId}, coalesce((select id from user_row), ${userId}), ${conversation.phoneNumber}, ${conversation.updatedAt}, ${conversation.updatedAt}
+          select ${contactId}, (select id from user_row), ${conversation.phoneNumber}, ${conversation.updatedAt}, ${conversation.updatedAt}
           where not exists (select 1 from existing_contact)
           returning id, user_id
         ),
@@ -93,7 +95,8 @@ export function createDrizzleConversationRepository(db: DbClient): ConversationR
               last_message_at = excluded.last_message_at
       `);
 
-      return { ...conversation, id: conversationId, draft: { ...conversation.draft } };
+      const saved = await this.findByPhoneNumber(conversation.phoneNumber);
+      return saved ?? { ...conversation, id: conversationId, draft: { ...conversation.draft } };
     },
     async recordInboundMessage(input) {
       const result = await db.execute(sql`

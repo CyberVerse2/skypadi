@@ -1,5 +1,6 @@
 import type {
   DocumentIntent,
+  FlightListIntent,
   OriginListIntent,
   ReplyButtonsIntent,
   TextIntent,
@@ -25,6 +26,7 @@ const MAX_DOCUMENT_CAPTION_LENGTH = 1024;
 const LIST_CTA_BUTTON_TEXT = "Choose city";
 
 export function mapUiIntentToWhatsAppMessage(intent: OriginListIntent): WhatsAppInteractiveListMessage;
+export function mapUiIntentToWhatsAppMessage(intent: FlightListIntent): WhatsAppInteractiveListMessage;
 export function mapUiIntentToWhatsAppMessage(intent: ReplyButtonsIntent): WhatsAppInteractiveButtonMessage;
 export function mapUiIntentToWhatsAppMessage(intent: TextIntent): WhatsAppTextMessage;
 export function mapUiIntentToWhatsAppMessage(intent: DocumentIntent): WhatsAppDocumentMessage;
@@ -33,6 +35,8 @@ export function mapUiIntentToWhatsAppMessage(intent: UiIntent): WhatsAppMessageP
   switch (intent.type) {
     case "origin_list":
       return mapOriginList(intent);
+    case "flight_list":
+      return mapFlightList(intent);
     case "reply_buttons":
       return mapReplyButtons(intent);
     case "text":
@@ -57,6 +61,43 @@ export function mapUiIntentToWhatsAppMessage(intent: UiIntent): WhatsAppMessageP
         },
       };
   }
+}
+
+function mapFlightList(intent: FlightListIntent): WhatsAppInteractiveListMessage {
+  assertInteractiveBody(intent.body);
+  assertPresent(intent.buttonText, "list CTA button text");
+  assertMaxLength(intent.buttonText, MAX_LIST_CTA_BUTTON_TEXT_LENGTH, "list CTA button text");
+
+  if (intent.rows.length < 1) {
+    throw new Error("WhatsApp list messages require at least 1 row");
+  }
+
+  if (intent.rows.length > MAX_LIST_ROWS) {
+    throw new Error(`WhatsApp list messages support at most ${MAX_LIST_ROWS} rows`);
+  }
+
+  for (const [index, row] of intent.rows.entries()) {
+    const label = `list row ${index + 1}`;
+    assertPresent(row.id, `${label} id`);
+    assertMaxLength(row.id, MAX_INTERACTIVE_ID_LENGTH, `${label} id`);
+    assertPresent(row.title, `${label} title`);
+    assertMaxLength(row.title, MAX_LIST_ROW_TITLE_LENGTH, `${label} title`);
+    if (row.description !== undefined) {
+      assertMaxLength(row.description, MAX_LIST_ROW_DESCRIPTION_LENGTH, `${label} description`);
+    }
+  }
+
+  return {
+    type: "interactive",
+    interactive: {
+      type: "list",
+      body: { text: intent.body },
+      action: {
+        button: intent.buttonText,
+        sections: [{ rows: intent.rows }],
+      },
+    },
+  };
 }
 
 function mapOriginList(intent: OriginListIntent): WhatsAppInteractiveListMessage {

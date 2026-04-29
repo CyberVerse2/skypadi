@@ -17,6 +17,34 @@ export type WhatsAppRoutesOptions = {
   messageRepository?: WhatsAppMessageRepository;
   whatsappClient: WhatsAppClient;
   appSecret?: string;
+  flightSearchHandler?: FlightSearchHandler;
+  bookingHandler?: BookingSelectionHandler;
+};
+
+export type FlightSearchHandler = {
+  searchAndPresent(input: {
+    userId: string;
+    conversationId: string;
+    phoneNumber: string;
+    search: {
+      origin: string;
+      destination: string;
+      departureDate: string;
+      departureWindow: string;
+      tripType: "one_way" | "return";
+      returnDate?: string;
+      adults: number;
+    };
+  }): Promise<UiIntent>;
+};
+
+export type BookingSelectionHandler = {
+  createFromFlightSelection(input: {
+    userId: string;
+    conversationId: string;
+    phoneNumber: string;
+    selectedFlightOptionId: string;
+  }): Promise<UiIntent>;
 };
 
 type RawBodyRequest = FastifyRequest & { rawBody?: string | Buffer };
@@ -75,6 +103,7 @@ async function handleWebhook(request: RawBodyRequest, reply: FastifyReply, optio
 type PersistedInboundMessage = {
   message: WhatsAppInboundMessage;
   now: Date;
+  conversation: Awaited<ReturnType<ConversationRepository["save"]>>;
 };
 
 async function persistInboundMessages(
@@ -86,9 +115,10 @@ async function persistInboundMessages(
   for (const message of messages) {
     const now = message.timestamp ? new Date(Number(message.timestamp) * 1000) : new Date();
     const conversation = await findOrCreateConversation(options.conversationRepository, message.from, now);
+    const savedConversation = await options.conversationRepository.save({ ...conversation, updatedAt: now });
     const record = await options.messageRepository?.recordInboundMessage({
       phoneNumber: message.from,
-      conversationId: conversation.id,
+      conversationId: savedConversation.id,
       providerMessageId: message.id,
       textBody: message.text?.body,
       payload: message as unknown as Record<string, unknown>,
@@ -96,7 +126,7 @@ async function persistInboundMessages(
     });
 
     if (record && !record.wasCreated) continue;
-    persistedMessages.push({ message, now });
+    persistedMessages.push({ message, now, conversation: savedConversation });
   }
 
   return persistedMessages;
@@ -107,14 +137,20 @@ async function processMessages(
   options: WhatsAppRoutesOptions,
   request: FastifyRequest
 ): Promise<void> {
-  for (const { message, now } of persistedMessages) {
+  for (const { message, now, conversation } of persistedMessages) {
+    const selectedFlightOptionId = selectedFlightOptionIdFromMessage(message);
+    if (selectedFlightOptionId) {
+      await sendBookingSelectionReply(selectedFlightOptionId, conversation, message, options);
+      continue;
+    }
+
     const event = normalizeConversationEvent(message, now);
     if (!event) continue;
 
     const result = await handleConversationEvent(event, {
       conversationRepository: options.conversationRepository,
     });
-    const intent = uiIntentFromWorkflowResult(result);
+    const intent = await uiIntentFromWorkflowResult(result, conversation, message, options);
     if (!intent) continue;
 
     await options.whatsappClient.sendMessage({
@@ -150,16 +186,66 @@ function normalizeConversationEvent(message: WhatsAppInboundMessage, now: Date) 
   return undefined;
 }
 
-function uiIntentFromWorkflowResult(result: Awaited<ReturnType<typeof handleConversationEvent>>): UiIntent | undefined {
+async function uiIntentFromWorkflowResult(
+  result: Awaited<ReturnType<typeof handleConversationEvent>>,
+  conversation: PersistedInboundMessage["conversation"],
+  message: WhatsAppInboundMessage,
+  options: WhatsAppRoutesOptions
+): Promise<UiIntent | undefined> {
   if (result.kind === "needs_user_input") {
     return result.ui as UiIntent;
   }
 
   if (result.kind === "ok") {
-    return { type: "text", body: "I have enough details to search flights now." };
+    if (!options.flightSearchHandler || !conversation.userId) {
+      return { type: "text", body: "I have enough details to search flights now." };
+    }
+
+    return options.flightSearchHandler.searchAndPresent({
+      userId: conversation.userId,
+      conversationId: conversation.id,
+      phoneNumber: message.from,
+      search: result.value.search,
+    });
   }
 
   return { type: "text", body: "I could not process that yet. Please try again." };
+}
+
+async function sendBookingSelectionReply(
+  selectedFlightOptionId: string,
+  conversation: PersistedInboundMessage["conversation"],
+  message: WhatsAppInboundMessage,
+  options: WhatsAppRoutesOptions
+): Promise<void> {
+  if (!options.bookingHandler || !conversation.userId) {
+    await options.whatsappClient.sendMessage({
+      to: message.from,
+      message: mapUiIntentToWhatsAppMessage({
+        type: "text",
+        body: "I found that flight. I need a little more setup before I can create the booking.",
+      }),
+    });
+    return;
+  }
+
+  const intent = await options.bookingHandler.createFromFlightSelection({
+    userId: conversation.userId,
+    conversationId: conversation.id,
+    phoneNumber: message.from,
+    selectedFlightOptionId,
+  });
+  await options.whatsappClient.sendMessage({
+    to: message.from,
+    message: mapUiIntentToWhatsAppMessage(intent),
+  });
+}
+
+function selectedFlightOptionIdFromMessage(message: WhatsAppInboundMessage): string | undefined {
+  const replyId = message.interactive?.button_reply?.id ?? message.interactive?.list_reply?.id;
+  const prefix = "flight_option:";
+  if (!replyId?.startsWith(prefix)) return undefined;
+  return replyId.slice(prefix.length);
 }
 
 function extractMessages(payload: unknown): WhatsAppInboundMessage[] {

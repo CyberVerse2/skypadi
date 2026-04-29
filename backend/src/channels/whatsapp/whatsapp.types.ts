@@ -5,6 +5,12 @@ export type UiIntent =
       rows: Array<{ id: string; title: string; description?: string }>;
     }
   | {
+      type: "flight_list";
+      body: string;
+      buttonText: string;
+      rows: Array<{ id: string; title: string; description?: string }>;
+    }
+  | {
       type: "reply_buttons";
       body: string;
       buttons: Array<{ id: string; title: string }>;
@@ -21,6 +27,7 @@ export type UiIntent =
     };
 
 export type OriginListIntent = Extract<UiIntent, { type: "origin_list" }>;
+export type FlightListIntent = Extract<UiIntent, { type: "flight_list" }>;
 export type ReplyButtonsIntent = Extract<UiIntent, { type: "reply_buttons" }>;
 export type TextIntent = Extract<UiIntent, { type: "text" }>;
 export type DocumentIntent = Extract<UiIntent, { type: "document" }>;
