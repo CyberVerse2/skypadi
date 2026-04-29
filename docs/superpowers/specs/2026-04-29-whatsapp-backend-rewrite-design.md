@@ -16,7 +16,8 @@ Rewrite the Skypadi backend internals around a WhatsApp-first, workflow-driven t
 - Resend inbound email aliases are first-class booking infrastructure.
 - The rewrite does not preserve backward compatibility with the current Postgres schema.
 - Drizzle owns schema definitions, migrations, and normal typed repository queries.
-- Raw `pg` SQL is allowed for explicit transactions, row locks, complex supplier/payment state transitions, reporting queries, and any path where exact SQL is clearer or more performant.
+- Drizzle raw SQL is preferred for flight search/result queries where filtering, sorting, deduping, ranking, or recommendation logic is clearer as SQL.
+- Direct raw `pg` SQL is reserved as an escape hatch for cases Drizzle cannot express cleanly.
 - Existing external behavior should be preserved where it matters to the product: users can search, compare, book, pay, receive ticket updates, and recover from supplier email/OTP flows through WhatsApp.
 - AI does language work only. Deterministic workflows decide and execute business actions.
 
@@ -148,7 +149,9 @@ backend/src/
 
 Use Drizzle as the default persistence layer for schema, migrations, and ordinary repository reads/writes. This gives the rewrite type-safe table definitions, safer refactors, and a clean migration history without adopting a heavy ORM.
 
-Use raw `pg` SQL where the query itself is part of the business guarantee. Booking and payment state transitions may use explicit SQL transactions, `select ... for update`, conditional updates, and idempotency guards so concurrent webhook retries or WhatsApp messages cannot double-confirm payments, double-consume OTPs, or double-submit supplier bookings.
+Use Drizzle raw SQL where the query itself is part of the business guarantee or product ranking logic. Booking and payment state transitions may use explicit SQL transactions, `select ... for update`, conditional updates, and idempotency guards so concurrent webhook retries or WhatsApp messages cannot double-confirm payments, double-consume OTPs, or double-submit supplier bookings.
+
+Flight search repositories may use raw SQL by default for stored flight option lookups, filtering, sorting, deduplication, and recommendation ranking. This keeps price, departure time, baggage, airline, stop count, and "best value" comparisons visible and tunable as SQL rather than hiding ranking behavior inside application loops.
 
 Repository functions should hide whether a query uses Drizzle or raw SQL. Workflow code should call domain repositories and services rather than importing Drizzle tables or SQL strings directly.
 
@@ -259,7 +262,7 @@ It decides the next prompt based on missing required fields:
 
 ### Flight Search Workflow
 
-Validates that the trip request is search-ready, calls the Wakanow search integration, normalizes results, persists option snapshots, ranks options as cheapest, earliest, and best value, and returns a recommendation.
+Validates that the trip request is search-ready, calls the Wakanow search integration, normalizes results, persists option snapshots, ranks options as cheapest, earliest, and best value, and returns a recommendation. Stored flight option querying and ranking should use raw SQL through Drizzle where it makes the filtering and scoring logic easier to inspect and tune.
 
 ### Booking Workflow
 
@@ -385,4 +388,4 @@ This rewrite does not support backward-compatible reads from the current schema.
 
 - Placeholder scan: no TBD/TODO placeholders.
 - Scope check: this is a backend rewrite spec, not an implementation plan. It intentionally excludes admin UI, refunds, and multi-supplier expansion.
-- Consistency check: WhatsApp is the only channel throughout; AI does not execute irreversible actions; clean schema has no backward-compatible requirement; persistence uses Drizzle by default with raw SQL for exact transactional guarantees.
+- Consistency check: WhatsApp is the only channel throughout; AI does not execute irreversible actions; clean schema has no backward-compatible requirement; persistence uses Drizzle by default with raw SQL for exact transactional guarantees and flight search ranking.
