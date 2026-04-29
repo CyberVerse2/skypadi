@@ -58,11 +58,11 @@ export function createDrizzleSupplierBookingRepository(db: DbClient): SupplierBo
           set
             status = ${input.status},
             supplier = ${input.supplier},
-            supplier_booking_reference = ${input.supplierBookingRef},
-            supplier_hold_expires_at = ${input.holdExpiresAt},
-            amount = ${input.amountDue},
-            currency = coalesce(${input.currency}, currency),
-            failure_reason = ${input.failureReason},
+            supplier_booking_reference = ${input.supplierBookingRef ?? null},
+            supplier_hold_expires_at = ${input.holdExpiresAt ?? null},
+            amount = ${input.amountDue ?? null},
+            currency = coalesce(${input.currency ?? null}, currency),
+            failure_reason = ${input.failureReason ?? null},
             updated_at = ${input.observedAt}
           where id = ${input.bookingId}
           returning id
@@ -79,7 +79,7 @@ export function createDrizzleSupplierBookingRepository(db: DbClient): SupplierBo
           updated_booking.id,
           ${input.supplier},
           ${input.eventType},
-          ${input.supplierBookingRef},
+          ${input.supplierBookingRef ?? null},
           ${jsonb(input.eventPayload)},
           ${input.observedAt}
         from updated_booking

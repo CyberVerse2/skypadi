@@ -52,7 +52,7 @@ export function createDrizzlePaymentRepository(db: DbClient): PaymentRepository 
             ${input.bookingId},
             ${input.method},
             'skypadi',
-            ${input.providerReference},
+            ${input.providerReference ?? null},
             'pending',
             ${input.amount},
             ${input.currency},

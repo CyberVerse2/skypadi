@@ -47,7 +47,7 @@ export async function createStoredFlightSearchFromWakanow(input: {
       ${request.origin},
       ${request.destination},
       ${request.departureDate},
-      ${request.returnDate},
+      ${request.returnDate ?? null},
       1,
       'NGN',
       ${JSON.stringify(request)}::jsonb,

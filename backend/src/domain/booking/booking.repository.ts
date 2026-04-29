@@ -200,7 +200,7 @@ export function createDrizzleBookingRepository(db: DbClient): BookingRepository 
               'Primary passenger',
               ${input.passenger.title},
               ${input.passenger.firstName},
-              ${input.passenger.middleName},
+              ${input.passenger.middleName ?? null},
               ${input.passenger.lastName},
               ${input.passenger.dateOfBirth},
               ${input.passenger.gender},
