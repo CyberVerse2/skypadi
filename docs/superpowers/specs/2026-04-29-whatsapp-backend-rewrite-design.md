@@ -15,6 +15,8 @@ Rewrite the Skypadi backend internals around a WhatsApp-first, workflow-driven t
 - AgentMail is removed entirely.
 - Resend inbound email aliases are first-class booking infrastructure.
 - The rewrite does not preserve backward compatibility with the current Postgres schema.
+- Drizzle owns schema definitions, migrations, and normal typed repository queries.
+- Raw `pg` SQL is allowed for explicit transactions, row locks, complex supplier/payment state transitions, reporting queries, and any path where exact SQL is clearer or more performant.
 - Existing external behavior should be preserved where it matters to the product: users can search, compare, book, pay, receive ticket updates, and recover from supplier email/OTP flows through WhatsApp.
 - AI does language work only. Deterministic workflows decide and execute business actions.
 
@@ -130,7 +132,8 @@ backend/src/
   db/
     pool.ts
     migrate.ts
-    schema.sql
+    schema.ts
+    migrations/
     repositories/
 
   tests/
@@ -140,6 +143,14 @@ backend/src/
 ```
 
 ## Domain Model
+
+## Persistence Strategy
+
+Use Drizzle as the default persistence layer for schema, migrations, and ordinary repository reads/writes. This gives the rewrite type-safe table definitions, safer refactors, and a clean migration history without adopting a heavy ORM.
+
+Use raw `pg` SQL where the query itself is part of the business guarantee. Booking and payment state transitions may use explicit SQL transactions, `select ... for update`, conditional updates, and idempotency guards so concurrent webhook retries or WhatsApp messages cannot double-confirm payments, double-consume OTPs, or double-submit supplier bookings.
+
+Repository functions should hide whether a query uses Drizzle or raw SQL. Workflow code should call domain repositories and services rather than importing Drizzle tables or SQL strings directly.
 
 ### Users And Contacts
 
@@ -367,7 +378,6 @@ This rewrite does not support backward-compatible reads from the current schema.
 
 ## Open Questions
 
-- Which migration tool should be used for the clean schema: raw SQL migration runner, Drizzle, Prisma, or another tool?
 - Which payment confirmation paths are required for the first production cut: bank transfer only, card only, or both?
 - Should manual review actions be CLI-only initially, or should we add a minimal operator route/API?
 
@@ -375,4 +385,4 @@ This rewrite does not support backward-compatible reads from the current schema.
 
 - Placeholder scan: no TBD/TODO placeholders.
 - Scope check: this is a backend rewrite spec, not an implementation plan. It intentionally excludes admin UI, refunds, and multi-supplier expansion.
-- Consistency check: WhatsApp is the only channel throughout; AI does not execute irreversible actions; clean schema has no backward-compatible requirement.
+- Consistency check: WhatsApp is the only channel throughout; AI does not execute irreversible actions; clean schema has no backward-compatible requirement; persistence uses Drizzle by default with raw SQL for exact transactional guarantees.
