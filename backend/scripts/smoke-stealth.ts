@@ -7,7 +7,7 @@
  *   HEADLESS=false npx tsx scripts/smoke-stealth.ts
  */
 import "dotenv/config";
-import { launchStealthBrowser, createStealthContext } from "../src/services/wakanow/stealth.js";
+import { launchStealthBrowser, createStealthContext } from "../src/integrations/wakanow/stealth.js";
 
 async function main() {
   const headless = process.env.HEADLESS !== "false";
