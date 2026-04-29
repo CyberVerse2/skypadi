@@ -10,6 +10,7 @@ import {
   type ConversationRepository,
 } from "../../domain/conversation/conversation.service.js";
 import type { WhatsAppMessageRepository } from "../../domain/conversation/conversation.repository.js";
+import type { IntentExtractor } from "../../agent/intent-extractor.js";
 import type { UiIntent } from "./whatsapp.types.js";
 
 export type WhatsAppRoutesOptions = {
@@ -17,9 +18,10 @@ export type WhatsAppRoutesOptions = {
   conversationRepository: ConversationRepository;
   messageRepository?: WhatsAppMessageRepository;
   whatsappClient: WhatsAppClient;
+  intentExtractor: IntentExtractor;
   appSecret?: string;
-  flightSearchHandler?: FlightSearchHandler;
-  bookingHandler?: BookingSelectionHandler;
+  flightSearchHandler: FlightSearchHandler;
+  bookingHandler: BookingSelectionHandler;
 };
 
 export type FlightSearchHandler = {
@@ -46,7 +48,7 @@ export type BookingSelectionHandler = {
     phoneNumber: string;
     selectedFlightOptionId: string;
   }): Promise<UiIntent>;
-  collectPassengerDetails?(input: {
+  collectPassengerDetails(input: {
     userId: string;
     conversationId: string;
     phoneNumber: string;
@@ -168,6 +170,7 @@ async function processMessages(
 
     const result = await handleConversationEvent(event, {
       conversationRepository: options.conversationRepository,
+      intentExtractor: options.intentExtractor,
     });
     const intent = await uiIntentFromWorkflowResult(result, conversation, message, options);
     if (!intent) continue;
@@ -185,15 +188,16 @@ async function passengerDetailsIntentFromMessage(
   conversation: PersistedInboundMessage["conversation"],
   options: WhatsAppRoutesOptions
 ): Promise<UiIntent | undefined> {
-  if (!conversation.userId) return undefined;
-  const text = message.type === "text" ? message.text?.body : undefined;
+  if (!conversation.userId) {
+    throw new Error("Persisted WhatsApp conversation is missing userId");
+  }
   const passenger = passengerFromFlowReply(message);
-  if (!text && !passenger) return undefined;
-  return options.bookingHandler?.collectPassengerDetails?.({
+  if (!passenger) return undefined;
+  return options.bookingHandler.collectPassengerDetails({
     userId: conversation.userId,
     conversationId: conversation.id,
     phoneNumber: message.from,
-    text: text ?? "",
+    text: "",
     passenger,
   });
 }
@@ -260,8 +264,8 @@ async function uiIntentFromWorkflowResult(
   }
 
   if (result.kind === "ok") {
-    if (!options.flightSearchHandler || !conversation.userId) {
-      return { type: "text", body: "I have enough details to search flights now." };
+    if (!conversation.userId) {
+      throw new Error("Persisted WhatsApp conversation is missing userId");
     }
 
     return options.flightSearchHandler.searchAndPresent({
@@ -281,15 +285,8 @@ async function sendBookingSelectionReply(
   message: WhatsAppInboundMessage,
   options: WhatsAppRoutesOptions
 ): Promise<void> {
-  if (!options.bookingHandler || !conversation.userId) {
-    await options.whatsappClient.sendMessage({
-      to: message.from,
-      message: mapUiIntentToWhatsAppMessage({
-        type: "text",
-        body: "I found that flight. I need a little more setup before I can create the booking.",
-      }),
-    });
-    return;
+  if (!conversation.userId) {
+    throw new Error("Persisted WhatsApp conversation is missing userId");
   }
 
   const intent = await options.bookingHandler.createFromFlightSelection({

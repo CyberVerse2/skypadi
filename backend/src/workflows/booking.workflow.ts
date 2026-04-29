@@ -26,7 +26,6 @@ export async function createBookingFromSelectedOption(
 export async function collectPassengerDetailsAndCreateSupplierHold(input: {
   userId: string;
   conversationId: string;
-  passengerText?: string;
   passenger?: Passenger;
   repository?: BookingRepository;
   supplierClient?: WakanowHoldClient;
@@ -51,7 +50,7 @@ export async function collectPassengerDetailsAndCreateSupplierHold(input: {
     return { kind: "permanent_failure", reason: "no active priced booking found for passenger collection" };
   }
 
-  const passenger = input.passenger ? validatePassenger(input.passenger) : parsePassengerDetails(input.passengerText ?? "");
+  const passenger = input.passenger ? validatePassenger(input.passenger) : invalidPassenger("Passenger details must be submitted through the WhatsApp Flow.");
   if (!passenger.ok) {
     return {
       kind: "needs_user_input",
@@ -100,64 +99,15 @@ export async function collectPassengerDetailsAndCreateSupplierHold(input: {
 
 type PassengerParseResult = { ok: true; value: Passenger } | { ok: false; message: string };
 
-function parsePassengerDetails(text: string): PassengerParseResult {
-  const parts = text.split(",").map((part) => part.trim()).filter(Boolean);
-  if (parts.length < 5) {
-    return {
-      ok: false,
-      message: "Please send passenger details as: full name, gender, phone number, email, date of birth YYYY-MM-DD.",
-    };
-  }
-
-  const [fullName, rawGender, phone, email, dateOfBirth] = parts;
-  const nameParts = fullName.split(/\s+/).filter(Boolean);
-  if (nameParts.length < 2) {
-    return {
-      ok: false,
-      message: "Please include the passenger's first and last name as it appears on their ID.",
-    };
-  }
-
-  const gender = normalizeGender(rawGender);
-  const firstName = nameParts[0] ?? "";
-  const lastName = nameParts[nameParts.length - 1] ?? "";
-  const middleName = nameParts.length > 2 ? nameParts.slice(1, -1).join(" ") : undefined;
-  const parsed = passengerSchema.safeParse({
-    title: gender === "Female" ? "Ms" : "Mr",
-    firstName,
-    middleName,
-    lastName,
-    dateOfBirth,
-    nationality: "Nigerian",
-    gender,
-    phone,
-    email,
-  });
-
-  if (!parsed.success) {
-    return {
-      ok: false,
-      message: "I could not read those passenger details. Please send: full name, gender, phone number, email, date of birth YYYY-MM-DD.",
-    };
-  }
-
-  return { ok: true, value: parsed.data };
-}
-
 function validatePassenger(passenger: Passenger): PassengerParseResult {
   const parsed = passengerSchema.safeParse(passenger);
   if (!parsed.success) {
-    return {
-      ok: false,
-      message: "I could not read those passenger details. Please submit the passenger form again.",
-    };
+    return invalidPassenger("I could not read those passenger details. Please submit the passenger form again.");
   }
 
   return { ok: true, value: parsed.data };
 }
 
-function normalizeGender(value: string | undefined): "Male" | "Female" | undefined {
-  if (/^m(ale)?$/i.test(value ?? "")) return "Male";
-  if (/^f(emale)?$/i.test(value ?? "")) return "Female";
-  return undefined;
+function invalidPassenger(message: string): PassengerParseResult {
+  return { ok: false, message };
 }

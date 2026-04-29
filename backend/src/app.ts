@@ -20,6 +20,7 @@ import type { BookingSelectionHandler, FlightSearchHandler } from "./channels/wh
 import { createDrizzleSupplierBookingRepository } from "./workflows/supplier-booking.workflow.js";
 import { createWakanowBrowserHoldClient, type WakanowHoldClient } from "./integrations/wakanow/wakanow.booking.js";
 import type { UiIntent } from "./channels/whatsapp/whatsapp.types.js";
+import { createOpenAIIntentExtractor, type IntentExtractor } from "./agent/intent-extractor.js";
 
 export type BuildServerOptions = {
   whatsappVerifyToken?: string;
@@ -28,6 +29,7 @@ export type BuildServerOptions = {
   conversationRepository?: ConversationRepository;
   messageRepository?: WhatsAppMessageRepository;
   whatsappClient?: WhatsAppClient;
+  intentExtractor?: IntentExtractor;
   flightSearchHandler?: FlightSearchHandler;
   bookingHandler?: BookingSelectionHandler;
   supplierClient?: WakanowHoldClient;
@@ -50,6 +52,7 @@ export function buildServer(options: BuildServerOptions = {}) {
       conversationRepository,
       messageRepository: options.messageRepository ?? messageRepositoryFromConversationRepository(conversationRepository),
       whatsappClient,
+      intentExtractor: options.intentExtractor ?? createLiveIntentExtractor(),
       appSecret: options.whatsappAppSecret ?? env.WHATSAPP_APP_SECRET,
       flightSearchHandler: options.flightSearchHandler ?? createLiveFlightSearchHandler(),
       bookingHandler: options.bookingHandler ?? createLiveBookingHandler(options.supplierClient),
@@ -97,6 +100,17 @@ export function buildServer(options: BuildServerOptions = {}) {
   return app;
 }
 
+function createLiveIntentExtractor(): IntentExtractor {
+  if (!env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY is required when WhatsApp routes are enabled");
+  }
+
+  return createOpenAIIntentExtractor({
+    apiKey: env.OPENAI_API_KEY,
+    model: env.OPENAI_INTENT_MODEL,
+  });
+}
+
 function createLiveFlightSearchHandler(): FlightSearchHandler {
   return createFlightSearchPresentationHandler({
     db,
@@ -108,17 +122,24 @@ function createLiveFlightSearchHandler(): FlightSearchHandler {
 }
 
 function createLiveBookingHandler(supplierClient?: WakanowHoldClient): BookingSelectionHandler {
+  if (!env.RESEND_INBOUND_DOMAIN) {
+    throw new Error("RESEND_INBOUND_DOMAIN is required when WhatsApp booking is enabled");
+  }
+
+  if (!env.WHATSAPP_PASSENGER_DETAILS_FLOW_ID) {
+    throw new Error("WHATSAPP_PASSENGER_DETAILS_FLOW_ID is required when WhatsApp booking is enabled");
+  }
+
+  const inboundDomain = env.RESEND_INBOUND_DOMAIN;
+  const passengerDetailsFlowId = env.WHATSAPP_PASSENGER_DETAILS_FLOW_ID;
+
   return {
     async createFromFlightSelection(input) {
-      if (!env.RESEND_INBOUND_DOMAIN) {
-        return { type: "text", body: "Booking email aliases are not configured yet." };
-      }
-
       const result = await createBookingFromSelectedOption({
         userId: input.userId,
         conversationId: input.conversationId,
         selectedFlightOptionId: input.selectedFlightOptionId,
-        inboundDomain: env.RESEND_INBOUND_DOMAIN,
+        inboundDomain,
         repository: createDrizzleBookingRepository(db),
       });
 
@@ -126,27 +147,22 @@ function createLiveBookingHandler(supplierClient?: WakanowHoldClient): BookingSe
         return { type: "text", body: "I could not create that booking yet. Please try another flight." };
       }
 
-      if (env.WHATSAPP_PASSENGER_DETAILS_FLOW_ID) {
-        return {
-          type: "passenger_details_flow",
-          body: "Great choice. I need the passenger details to continue.",
-          buttonText: "Enter details",
-          flowId: env.WHATSAPP_PASSENGER_DETAILS_FLOW_ID,
-          flowToken: result.value.id,
-          data: {
-            bookingId: result.value.id,
-            selectedFlightOptionId: result.value.selectedFlightOptionId,
-          },
-        };
-      }
-
-      return { type: "text", body: "Booking created. Please send passenger details." };
+      return {
+        type: "passenger_details_flow",
+        body: "Great choice. I need the passenger details to continue.",
+        buttonText: "Enter details",
+        flowId: passengerDetailsFlowId,
+        flowToken: result.value.id,
+        data: {
+          bookingId: result.value.id,
+          selectedFlightOptionId: result.value.selectedFlightOptionId,
+        },
+      };
     },
     async collectPassengerDetails(input) {
       const result = await collectPassengerDetailsAndCreateSupplierHold({
         userId: input.userId,
         conversationId: input.conversationId,
-        passengerText: input.text,
         passenger: input.passenger,
         repository: createDrizzleBookingRepository(db),
         supplierClient: supplierClient ?? createWakanowBrowserHoldClient({ db }),

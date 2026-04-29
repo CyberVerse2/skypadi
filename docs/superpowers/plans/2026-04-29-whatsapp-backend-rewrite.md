@@ -786,9 +786,9 @@ export type IntentExtractor = {
 };
 ```
 
-Add `createRuleBasedIntentExtractor()` as a deterministic local fallback. It may handle only the current known phrases: Abuja, tomorrow, morning, `next week`, ISO dates, and numeric passenger counts. This fallback exists for local determinism; the production AI implementation can replace it behind the same interface.
+Replace the temporary rule-based extractor with the production AI intent extractor. Tests should inject deterministic fake extractors; production workflow code must not silently fall back to local phrase rules.
 
-Modify `handleConversationEvent` so inbound text calls the injected/default extractor and merges returned safe fields into the draft. Workflow code still owns prompts, expected-field state, stale reply behavior, and search readiness. `interactive_reply` must not call the extractor.
+Modify `handleConversationEvent` so inbound text calls the injected extractor and merges returned safe fields into the draft. Workflow code still owns prompts, expected-field state, stale reply behavior, and search readiness. `interactive_reply` must not call the extractor.
 
 - [ ] **Step 4: Verify green**
 

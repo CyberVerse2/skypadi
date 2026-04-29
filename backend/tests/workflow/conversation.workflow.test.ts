@@ -6,8 +6,43 @@ import type { IntentExtractor } from "../../src/agent/intent-extractor.js";
 import { handleConversationEvent } from "../../src/workflows/conversation.workflow.js";
 
 const repository = createInMemoryConversationRepository();
-const dependencies = { conversationRepository: repository };
+const defaultIntentExtractor: IntentExtractor = {
+  async extractTripIntent(input) {
+    if (input.expectedField === "return_date") {
+      return input.text.toLowerCase().includes("next week") ? { returnDate: "2026-05-06" } : {};
+    }
+
+    if (input.expectedField === "passenger_count") {
+      return /^\d+$/.test(input.text.trim()) ? { adults: Number.parseInt(input.text.trim(), 10) } : {};
+    }
+
+    return input.text.toLowerCase().includes("abuja")
+      ? {
+          destination: "Abuja",
+          departureDate: "2026-04-30",
+          departureWindow: "morning",
+        }
+      : {};
+  },
+};
+const dependencies = { conversationRepository: repository, intentExtractor: defaultIntentExtractor };
 const contact = { phoneNumber: "2348012345678" };
+
+const missingIntentExtractor = await handleConversationEvent(
+  {
+    type: "inbound_text",
+    contact: { phoneNumber: "2348000000000" },
+    text: "I need a flight to Abuja tomorrow morning",
+    providerMessageId: "wamid.missing-ai.1",
+    now: new Date("2026-04-29T08:00:00.000Z"),
+  },
+  {
+    conversationRepository: createInMemoryConversationRepository(),
+  }
+);
+
+assert.equal(missingIntentExtractor.kind, "temporary_failure");
+assert.equal(missingIntentExtractor.reason, "intent extractor dependency is required");
 
 const fakeNaturalLanguageRepository = createInMemoryConversationRepository();
 const fakeNaturalLanguageExtractor: IntentExtractor = {
@@ -477,7 +512,7 @@ assert.equal(
 );
 
 const labelReplyRepository = createInMemoryConversationRepository();
-const labelReplyDependencies = { conversationRepository: labelReplyRepository };
+const labelReplyDependencies = { conversationRepository: labelReplyRepository, intentExtractor: defaultIntentExtractor };
 
 await handleConversationEvent(
   {
@@ -509,7 +544,7 @@ const labelReplyConversation = await labelReplyRepository.findByPhoneNumber("234
 assert.equal(labelReplyConversation?.draft.origin, undefined);
 
 const staleReplyRepository = createInMemoryConversationRepository();
-const staleReplyDependencies = { conversationRepository: staleReplyRepository };
+const staleReplyDependencies = { conversationRepository: staleReplyRepository, intentExtractor: defaultIntentExtractor };
 
 await handleConversationEvent(
   {
@@ -541,7 +576,7 @@ const staleReplyConversation = await staleReplyRepository.findByPhoneNumber("234
 assert.equal(staleReplyConversation?.draft.tripType, undefined);
 
 const abvRepository = createInMemoryConversationRepository();
-const abvDependencies = { conversationRepository: abvRepository };
+const abvDependencies = { conversationRepository: abvRepository, intentExtractor: defaultIntentExtractor };
 const abvContact = { phoneNumber: "2348077777777" };
 
 await handleConversationEvent(
@@ -595,7 +630,7 @@ assert.equal(abvPassengerSelected.kind, "ok");
 assert.equal(abvPassengerSelected.value.search.origin, "ABV");
 
 const returnTripRepository = createInMemoryConversationRepository();
-const returnTripDependencies = { conversationRepository: returnTripRepository };
+const returnTripDependencies = { conversationRepository: returnTripRepository, intentExtractor: defaultIntentExtractor };
 const returnTripContact = { phoneNumber: "2348066666666" };
 
 await handleConversationEvent(
@@ -707,7 +742,7 @@ assert.deepEqual(returnPassengerSelected.value, {
 });
 
 const morePassengersRepository = createInMemoryConversationRepository();
-const morePassengersDependencies = { conversationRepository: morePassengersRepository };
+const morePassengersDependencies = { conversationRepository: morePassengersRepository, intentExtractor: defaultIntentExtractor };
 const morePassengersContact = { phoneNumber: "2348055555555" };
 
 await handleConversationEvent(

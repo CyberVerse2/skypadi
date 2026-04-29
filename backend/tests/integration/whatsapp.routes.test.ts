@@ -45,6 +45,15 @@ const app = buildServer({
       sentMessages.push(input);
     },
   },
+  intentExtractor: {
+    async extractTripIntent() {
+      return {
+        destination: "Abuja",
+        departureDate: "2026-04-30",
+        departureWindow: "morning",
+      };
+    },
+  },
   flightSearchHandler: {
     async searchAndPresent(input) {
       assert.equal(input.conversationId, savedConversationId);
@@ -232,37 +241,6 @@ assert.equal(selected.statusCode, 200);
 await new Promise((resolve) => setTimeout(resolve, 20));
 assert.equal(sentMessages.length, 5);
 
-const passengerDetails = await app.inject({
-  method: "POST",
-  url: "/webhooks/whatsapp",
-  payload: {
-    entry: [
-      {
-        changes: [
-          {
-            value: {
-              messages: [
-                {
-                  id: "wamid.6",
-                  from: "2348012345678",
-                  timestamp: "1777449600",
-                  type: "text",
-                  text: { body: "Celestine Ejiofor, male, 08012345678, celestine@email.com, 1990-04-12" },
-                },
-              ],
-            },
-          },
-        ],
-      },
-    ],
-  },
-});
-assert.equal(passengerDetails.statusCode, 200);
-await new Promise((resolve) => setTimeout(resolve, 20));
-assert.equal(passengerDetailsCollected, true);
-assert.equal(sentMessages.length, 6);
-
-passengerDetailsCollected = false;
 const passengerFlowDetails = await app.inject({
   method: "POST",
   url: "/webhooks/whatsapp",

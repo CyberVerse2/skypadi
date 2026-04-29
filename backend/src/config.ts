@@ -14,6 +14,7 @@ const envSchema = z.object({
   WHATSAPP_APP_SECRET: z.string().min(1).optional(),
   WHATSAPP_PASSENGER_DETAILS_FLOW_ID: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
+  OPENAI_INTENT_MODEL: z.string().min(1).default("gpt-5.4-mini"),
   WAKANOW_BASE_URL: z.string().url().default("https://www.wakanow.com"),
   WAKANOW_LOCALE: z.string().default("en-NG"),
   WAKANOW_CURRENCY: z.string().default("NGN"),

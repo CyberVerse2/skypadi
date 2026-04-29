@@ -140,7 +140,16 @@ assert.equal(supplierCalls.length, 1);
 const invalidPassengerDetails = await collectPassengerDetailsAndCreateSupplierHold({
   userId: "user_123",
   conversationId: "conv_123",
-  passengerText: "Celestine Ejiofor, male, 08012345678, celestine@email.com",
+  passenger: {
+    title: "Mr",
+    firstName: "Celestine",
+    lastName: "Ejiofor",
+    dateOfBirth: "",
+    nationality: "Nigerian",
+    gender: "Male",
+    phone: "08012345678",
+    email: "not-an-email",
+  },
   repository,
   supplierClient: {
     async createHold() {
@@ -160,7 +169,16 @@ let manualReviewRecorded = false;
 const supplierFailure = await collectPassengerDetailsAndCreateSupplierHold({
   userId: "user_123",
   conversationId: "conv_123",
-  passengerText: "Celestine Ejiofor, male, 08012345678, celestine@email.com, 1990-04-12",
+  passenger: {
+    title: "Mr",
+    firstName: "Celestine",
+    lastName: "Ejiofor",
+    dateOfBirth: "1990-04-12",
+    nationality: "Nigerian",
+    gender: "Male",
+    phone: "08012345678",
+    email: "celestine@email.com",
+  },
   repository,
   supplierClient: {
     async createHold() {

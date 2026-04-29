@@ -1,9 +1,5 @@
 import type { UiIntent } from "../channels/whatsapp/whatsapp.types.js";
-import {
-  createRuleBasedIntentExtractor,
-  type IntentExtractor,
-  type TripIntentExtraction,
-} from "../agent/intent-extractor.js";
+import type { IntentExtractor, TripIntentExtraction } from "../agent/intent-extractor.js";
 import {
   type ConversationExpectedField,
   type ConversationDraft,
@@ -58,7 +54,11 @@ export async function handleConversationEvent(
     return { kind: "temporary_failure", reason: "conversation repository dependency is required" };
   }
 
-  const intentExtractor = dependencies.intentExtractor ?? createRuleBasedIntentExtractor();
+  if (!dependencies.intentExtractor) {
+    return { kind: "temporary_failure", reason: "intent extractor dependency is required" };
+  }
+
+  const intentExtractor = dependencies.intentExtractor;
   const conversation = await findOrCreateConversation(
     dependencies.conversationRepository,
     event.contact.phoneNumber,
