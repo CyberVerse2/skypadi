@@ -65,6 +65,7 @@ tests/                      # TypeScript tests
 scripts/                    # operator/debug scripts
 ```
 
+Run `npm run verify` before shipping backend changes.
 Run `npm run test:all` for the focused backend tests.
 Run `npm run typecheck:test` when changing tests or test-only imports.
 

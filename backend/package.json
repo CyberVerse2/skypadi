@@ -7,6 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
+    "verify": "npm run typecheck && npm run typecheck:test && npm run test:all && npm run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "typecheck:test": "tsc -p tsconfig.test.json",
     "smoke:stealth": "tsx scripts/smoke-stealth.ts",
