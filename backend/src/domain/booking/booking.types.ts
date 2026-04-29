@@ -18,6 +18,16 @@ export const bookingStatuses = [
 
 export type BookingStatus = (typeof bookingStatuses)[number];
 
+export type BookingDraft = {
+  id: string;
+  userId: string;
+  conversationId: string;
+  selectedFlightOptionId: string;
+  status: BookingStatus;
+  bookingEmailAlias: string;
+  createdAt: Date;
+};
+
 const terminalBookingStatuses = new Set<BookingStatus>([
   "issued",
   "hold_expired",
