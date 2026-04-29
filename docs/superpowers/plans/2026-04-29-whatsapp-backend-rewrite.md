@@ -697,6 +697,123 @@ git commit -m "feat: add whatsapp conversation workflow"
 
 ---
 
+## Task 5A: AI Intent Extractor Seam
+
+**Files:**
+- Create: `backend/src/agent/intent-extractor.ts`
+- Modify: `backend/src/workflows/conversation.workflow.ts`
+- Modify: `backend/tests/workflow/conversation.workflow.test.ts`
+
+- [ ] **Step 1: Write failing extractor-seam tests**
+
+Add tests to `backend/tests/workflow/conversation.workflow.test.ts` proving:
+
+```ts
+const fakeExtractor = {
+  calls: 0,
+  async extractTripIntent() {
+    this.calls++;
+    return {
+      origin: "PHC",
+      destination: "KAN",
+      departureDate: "2026-05-06",
+      adults: 3,
+    };
+  },
+};
+
+const result = await handleConversationEvent(
+  {
+    type: "inbound_text",
+    contact: { phoneNumber: "2348044444444" },
+    text: "Book me PH to Kano next week for 3 adults",
+    providerMessageId: "wamid.extract.1",
+    now: new Date("2026-04-29T08:00:00.000Z"),
+  },
+  {
+    conversationRepository: createInMemoryConversationRepository(),
+    intentExtractor: fakeExtractor,
+  }
+);
+
+assert.equal(result.kind, "needs_user_input");
+assert.equal(result.field, "trip_type");
+assert.equal(fakeExtractor.calls, 1);
+```
+
+Also add tests that:
+
+- `expectedField: "passenger_count"` can be filled from text through the extractor.
+- `interactive_reply` events do not call the extractor.
+- Existing first-time flow tests still pass.
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run:
+
+```bash
+cd backend
+npx tsx tests/workflow/conversation.workflow.test.ts
+```
+
+Expected: FAIL because `intentExtractor` dependency and `agent/intent-extractor.ts` do not exist.
+
+- [ ] **Step 3: Implement extractor seam**
+
+Create `backend/src/agent/intent-extractor.ts`:
+
+```ts
+import type { ConversationDraft, ConversationExpectedField } from "../domain/conversation/conversation.service.js";
+
+export type TripIntentExtraction = {
+  origin?: string;
+  destination?: string;
+  departureDate?: string;
+  departureWindow?: string;
+  returnDate?: string;
+  adults?: number;
+};
+
+export type IntentExtractionInput = {
+  text: string;
+  now: Date;
+  expectedField?: ConversationExpectedField;
+  currentDraft: ConversationDraft;
+};
+
+export type IntentExtractor = {
+  extractTripIntent(input: IntentExtractionInput): Promise<TripIntentExtraction>;
+};
+```
+
+Add `createRuleBasedIntentExtractor()` as a deterministic local fallback. It may handle only the current known phrases: Abuja, tomorrow, morning, `next week`, ISO dates, and numeric passenger counts. This fallback exists for local determinism; the production AI implementation can replace it behind the same interface.
+
+Modify `handleConversationEvent` so inbound text calls the injected/default extractor and merges returned safe fields into the draft. Workflow code still owns prompts, expected-field state, stale reply behavior, and search readiness. `interactive_reply` must not call the extractor.
+
+- [ ] **Step 4: Verify green**
+
+Run:
+
+```bash
+cd backend
+npx tsx tests/workflow/conversation.workflow.test.ts
+npm run test:workflow
+npm run test:all
+npm run typecheck
+npm run typecheck:test
+```
+
+Expected: all commands pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add backend/src/agent/intent-extractor.ts backend/src/workflows/conversation.workflow.ts backend/tests/workflow/conversation.workflow.test.ts docs/superpowers/plans/2026-04-29-whatsapp-backend-rewrite.md
+git commit -m "feat: add conversation intent extractor seam"
+```
+
+---
+
 ## Task 6: Flight Search Repository And Ranking SQL
 
 **Files:**

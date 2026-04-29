@@ -1,5 +1,10 @@
 import type { UiIntent } from "../channels/whatsapp/whatsapp.types.js";
 import {
+  createRuleBasedIntentExtractor,
+  type IntentExtractor,
+  type TripIntentExtraction,
+} from "../agent/intent-extractor.js";
+import {
   type ConversationExpectedField,
   type ConversationDraft,
   type ConversationRepository,
@@ -29,6 +34,7 @@ export type ConversationWorkflowEvent =
 
 export type ConversationWorkflowDependencies = {
   conversationRepository: ConversationRepository;
+  intentExtractor?: IntentExtractor;
 };
 
 export type SearchReadyPayload = {
@@ -52,6 +58,7 @@ export async function handleConversationEvent(
     return { kind: "temporary_failure", reason: "conversation repository dependency is required" };
   }
 
+  const intentExtractor = dependencies.intentExtractor ?? createRuleBasedIntentExtractor();
   const conversation = await findOrCreateConversation(
     dependencies.conversationRepository,
     event.contact.phoneNumber,
@@ -60,19 +67,13 @@ export async function handleConversationEvent(
   const draft = { ...conversation.draft };
 
   if (event.type === "inbound_text") {
-    if (draft.expectedField === "passenger_count") {
-      const adults = parsePassengerCount(event.text);
-      if (adults) {
-        draft.adults = adults;
-      }
-    } else if (draft.expectedField === "return_date") {
-      const returnDate = parseReturnDate(event.text, event.now);
-      if (returnDate) {
-        draft.returnDate = returnDate;
-      }
-    } else {
-      Object.assign(draft, extractTripDetails(event.text, event.now));
-    }
+    const extraction = await intentExtractor.extractTripIntent({
+      text: event.text,
+      now: event.now,
+      expectedField: draft.expectedField,
+      currentDraft: { ...draft },
+    });
+    mergeTripIntentExtraction(draft, extraction);
 
     const result = nextPromptOrReady(draft);
     await dependencies.conversationRepository.save({ ...conversation, draft, updatedAt: event.now });
@@ -97,23 +98,46 @@ export async function handleConversationEvent(
   return result;
 }
 
-function extractTripDetails(text: string, now: Date): ConversationDraft {
-  const lowerText = text.toLowerCase();
-  const draft: ConversationDraft = {};
-
-  if (lowerText.includes("abuja")) {
-    draft.destination = "Abuja";
+function mergeTripIntentExtraction(draft: ConversationDraft, extraction: TripIntentExtraction): void {
+  if (draft.expectedField === "passenger_count") {
+    assignPositiveInteger(draft, extraction.adults);
+    return;
   }
 
-  if (lowerText.includes("tomorrow")) {
-    draft.departureDate = toIsoDate(addDays(now, 1));
+  if (draft.expectedField === "return_date") {
+    assignMissingNonEmptyString(draft, "returnDate", extraction.returnDate);
+    return;
   }
 
-  if (lowerText.includes("morning")) {
-    draft.departureWindow = "morning";
-  }
+  assignMissingNonEmptyString(draft, "origin", extraction.origin);
+  assignMissingNonEmptyString(draft, "destination", extraction.destination);
+  assignMissingNonEmptyString(draft, "departureDate", extraction.departureDate);
+  assignMissingNonEmptyString(draft, "departureWindow", extraction.departureWindow);
+  assignMissingNonEmptyString(draft, "returnDate", extraction.returnDate);
+  assignMissingPositiveInteger(draft, extraction.adults);
+}
 
-  return draft;
+function assignPositiveInteger(draft: ConversationDraft, adults: number | undefined): void {
+  if (typeof adults === "number" && Number.isInteger(adults) && adults > 0) {
+    draft.adults = adults;
+  }
+}
+
+function assignMissingPositiveInteger(draft: ConversationDraft, adults: number | undefined): void {
+  if (!draft.adults) {
+    assignPositiveInteger(draft, adults);
+  }
+}
+
+function assignMissingNonEmptyString(
+  draft: ConversationDraft,
+  field: "origin" | "destination" | "departureDate" | "departureWindow" | "returnDate",
+  value: string | undefined
+): void {
+  const trimmedValue = value?.trim();
+  if (!draft[field] && trimmedValue) {
+    draft[field] = trimmedValue;
+  }
 }
 
 function applyReplyId(draft: ConversationDraft, replyId: string): boolean {
@@ -305,39 +329,4 @@ function passengerCountTextIntent(): UiIntent {
     type: "text",
     body: "Please type the number of adults travelling.",
   };
-}
-
-function parsePassengerCount(text: string): number | undefined {
-  const trimmedText = text.trim();
-  if (!/^\d+$/.test(trimmedText)) {
-    return undefined;
-  }
-
-  const count = Number.parseInt(trimmedText, 10);
-  return count > 0 ? count : undefined;
-}
-
-function parseReturnDate(text: string, now: Date): string | undefined {
-  const lowerText = text.toLowerCase();
-  if (lowerText.includes("next week")) {
-    return toIsoDate(addDays(now, 7));
-  }
-
-  const isoDate = /\b\d{4}-\d{2}-\d{2}\b/.exec(text)?.[0];
-  if (!isoDate) {
-    return undefined;
-  }
-
-  const parsedDate = new Date(`${isoDate}T00:00:00.000Z`);
-  return Number.isNaN(parsedDate.getTime()) ? undefined : isoDate;
-}
-
-function addDays(date: Date, days: number): Date {
-  const next = new Date(date);
-  next.setUTCDate(next.getUTCDate() + days);
-  return next;
-}
-
-function toIsoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
 }

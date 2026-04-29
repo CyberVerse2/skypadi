@@ -2,11 +2,391 @@ import assert from "node:assert/strict";
 
 import type { ReplyButtonsIntent, TextIntent } from "../../src/channels/whatsapp/whatsapp.types.js";
 import { createInMemoryConversationRepository } from "../../src/domain/conversation/conversation.service.js";
+import type { IntentExtractor } from "../../src/agent/intent-extractor.js";
 import { handleConversationEvent } from "../../src/workflows/conversation.workflow.js";
 
 const repository = createInMemoryConversationRepository();
 const dependencies = { conversationRepository: repository };
 const contact = { phoneNumber: "2348012345678" };
+
+const fakeNaturalLanguageRepository = createInMemoryConversationRepository();
+const fakeNaturalLanguageExtractor: IntentExtractor = {
+  async extractTripIntent() {
+    return {
+      origin: "PHC",
+      destination: "KAN",
+      departureDate: "2026-05-06",
+      adults: 3,
+    };
+  },
+};
+
+const fakeNaturalLanguageResult = await handleConversationEvent(
+  {
+    type: "inbound_text",
+    contact: { phoneNumber: "2348011111111" },
+    text: "Book me PH to Kano next week for 3 adults",
+    providerMessageId: "wamid.fake.nl.1",
+    now: new Date("2026-04-29T08:00:00.000Z"),
+  },
+  {
+    conversationRepository: fakeNaturalLanguageRepository,
+    intentExtractor: fakeNaturalLanguageExtractor,
+  }
+);
+
+assert.equal(fakeNaturalLanguageResult.kind, "needs_user_input");
+assert.equal(fakeNaturalLanguageResult.field, "trip_type");
+
+const broadAdultsOverwriteRepository = createInMemoryConversationRepository();
+const broadAdultsOverwriteContact = { phoneNumber: "2348012222222" };
+const broadAdultsOverwriteExtractor: IntentExtractor = {
+  async extractTripIntent(input) {
+    if (input.currentDraft.adults) {
+      return {
+        destination: "Kano",
+        departureDate: "2099-01-01",
+        adults: 9,
+      };
+    }
+
+    return {
+      destination: "Abuja",
+      departureDate: "2026-04-30",
+      departureWindow: "morning",
+    };
+  },
+};
+
+await handleConversationEvent(
+  {
+    type: "inbound_text",
+    contact: broadAdultsOverwriteContact,
+    text: "I need a flight to Abuja tomorrow morning",
+    providerMessageId: "wamid.fake.broad-adults.1",
+    now: new Date("2026-04-29T08:00:00.000Z"),
+  },
+  {
+    conversationRepository: broadAdultsOverwriteRepository,
+    intentExtractor: broadAdultsOverwriteExtractor,
+  }
+);
+await handleConversationEvent(
+  {
+    type: "interactive_reply",
+    contact: broadAdultsOverwriteContact,
+    replyId: "origin:LOS",
+    providerMessageId: "wamid.fake.broad-adults.2",
+    now: new Date("2026-04-29T08:01:00.000Z"),
+  },
+  {
+    conversationRepository: broadAdultsOverwriteRepository,
+    intentExtractor: broadAdultsOverwriteExtractor,
+  }
+);
+await handleConversationEvent(
+  {
+    type: "interactive_reply",
+    contact: broadAdultsOverwriteContact,
+    replyId: "trip_type:one_way",
+    providerMessageId: "wamid.fake.broad-adults.3",
+    now: new Date("2026-04-29T08:02:00.000Z"),
+  },
+  {
+    conversationRepository: broadAdultsOverwriteRepository,
+    intentExtractor: broadAdultsOverwriteExtractor,
+  }
+);
+const broadAdultsInitialReady = await handleConversationEvent(
+  {
+    type: "interactive_reply",
+    contact: broadAdultsOverwriteContact,
+    replyId: "passengers:2",
+    providerMessageId: "wamid.fake.broad-adults.4",
+    now: new Date("2026-04-29T08:03:00.000Z"),
+  },
+  {
+    conversationRepository: broadAdultsOverwriteRepository,
+    intentExtractor: broadAdultsOverwriteExtractor,
+  }
+);
+
+assert.equal(broadAdultsInitialReady.kind, "ok");
+assert.equal(broadAdultsInitialReady.value.search.adults, 2);
+
+const broadAdultsFollowUp = await handleConversationEvent(
+  {
+    type: "inbound_text",
+    contact: broadAdultsOverwriteContact,
+    text: "actually keep going",
+    providerMessageId: "wamid.fake.broad-adults.5",
+    now: new Date("2026-04-29T08:04:00.000Z"),
+  },
+  {
+    conversationRepository: broadAdultsOverwriteRepository,
+    intentExtractor: broadAdultsOverwriteExtractor,
+  }
+);
+
+assert.equal(broadAdultsFollowUp.kind, "ok");
+assert.equal(broadAdultsFollowUp.value.search.adults, 2);
+assert.equal((await broadAdultsOverwriteRepository.findByPhoneNumber(broadAdultsOverwriteContact.phoneNumber))?.draft.adults, 2);
+
+const fakePassengerCountRepository = createInMemoryConversationRepository();
+const fakePassengerCountContact = { phoneNumber: "2348022222222" };
+const fakePassengerCountExtractor: IntentExtractor = {
+  async extractTripIntent(input) {
+    if (input.expectedField === "passenger_count") {
+      return {
+        origin: "ABV",
+        destination: "Kano",
+        departureDate: "2099-01-01",
+        adults: 4,
+      };
+    }
+
+    return {
+      destination: "Abuja",
+      departureDate: "2026-04-30",
+      departureWindow: "morning",
+    };
+  },
+};
+
+await handleConversationEvent(
+  {
+    type: "inbound_text",
+    contact: fakePassengerCountContact,
+    text: "I need a flight to Abuja tomorrow morning",
+    providerMessageId: "wamid.fake.passengers.1",
+    now: new Date("2026-04-29T08:00:00.000Z"),
+  },
+  {
+    conversationRepository: fakePassengerCountRepository,
+    intentExtractor: fakePassengerCountExtractor,
+  }
+);
+await handleConversationEvent(
+  {
+    type: "interactive_reply",
+    contact: fakePassengerCountContact,
+    replyId: "origin:LOS",
+    providerMessageId: "wamid.fake.passengers.2",
+    now: new Date("2026-04-29T08:01:00.000Z"),
+  },
+  {
+    conversationRepository: fakePassengerCountRepository,
+    intentExtractor: fakePassengerCountExtractor,
+  }
+);
+await handleConversationEvent(
+  {
+    type: "interactive_reply",
+    contact: fakePassengerCountContact,
+    replyId: "trip_type:one_way",
+    providerMessageId: "wamid.fake.passengers.3",
+    now: new Date("2026-04-29T08:02:00.000Z"),
+  },
+  {
+    conversationRepository: fakePassengerCountRepository,
+    intentExtractor: fakePassengerCountExtractor,
+  }
+);
+await handleConversationEvent(
+  {
+    type: "interactive_reply",
+    contact: fakePassengerCountContact,
+    replyId: "passengers:more",
+    providerMessageId: "wamid.fake.passengers.4",
+    now: new Date("2026-04-29T08:03:00.000Z"),
+  },
+  {
+    conversationRepository: fakePassengerCountRepository,
+    intentExtractor: fakePassengerCountExtractor,
+  }
+);
+
+const fakePassengerCountResult = await handleConversationEvent(
+  {
+    type: "inbound_text",
+    contact: fakePassengerCountContact,
+    text: "we are four",
+    providerMessageId: "wamid.fake.passengers.5",
+    now: new Date("2026-04-29T08:04:00.000Z"),
+  },
+  {
+    conversationRepository: fakePassengerCountRepository,
+    intentExtractor: fakePassengerCountExtractor,
+  }
+);
+
+assert.equal(fakePassengerCountResult.kind, "ok");
+assert.deepEqual(fakePassengerCountResult.value, {
+  status: "search_ready",
+  search: {
+    origin: "LOS",
+    destination: "Abuja",
+    departureDate: "2026-04-30",
+    departureWindow: "morning",
+    tripType: "one_way",
+    adults: 4,
+  },
+});
+
+const fakeReturnDateRepository = createInMemoryConversationRepository();
+const fakeReturnDateContact = { phoneNumber: "2348044444444" };
+const fakeReturnDateExtractor: IntentExtractor = {
+  async extractTripIntent(input) {
+    if (input.expectedField === "return_date") {
+      return {
+        origin: "ABV",
+        destination: "Kano",
+        departureDate: "2099-01-01",
+        returnDate: "2026-05-06",
+        adults: 9,
+      };
+    }
+
+    return {
+      destination: "Abuja",
+      departureDate: "2026-04-30",
+      departureWindow: "morning",
+    };
+  },
+};
+
+await handleConversationEvent(
+  {
+    type: "inbound_text",
+    contact: fakeReturnDateContact,
+    text: "I need a flight to Abuja tomorrow morning",
+    providerMessageId: "wamid.fake.return.1",
+    now: new Date("2026-04-29T08:00:00.000Z"),
+  },
+  {
+    conversationRepository: fakeReturnDateRepository,
+    intentExtractor: fakeReturnDateExtractor,
+  }
+);
+await handleConversationEvent(
+  {
+    type: "interactive_reply",
+    contact: fakeReturnDateContact,
+    replyId: "origin:LOS",
+    providerMessageId: "wamid.fake.return.2",
+    now: new Date("2026-04-29T08:01:00.000Z"),
+  },
+  {
+    conversationRepository: fakeReturnDateRepository,
+    intentExtractor: fakeReturnDateExtractor,
+  }
+);
+const fakeReturnTripSelected = await handleConversationEvent(
+  {
+    type: "interactive_reply",
+    contact: fakeReturnDateContact,
+    replyId: "trip_type:return",
+    providerMessageId: "wamid.fake.return.3",
+    now: new Date("2026-04-29T08:02:00.000Z"),
+  },
+  {
+    conversationRepository: fakeReturnDateRepository,
+    intentExtractor: fakeReturnDateExtractor,
+  }
+);
+
+assert.equal(fakeReturnTripSelected.kind, "needs_user_input");
+assert.equal(fakeReturnTripSelected.field, "return_date");
+
+const fakeReturnDateResult = await handleConversationEvent(
+  {
+    type: "inbound_text",
+    contact: fakeReturnDateContact,
+    text: "next week",
+    providerMessageId: "wamid.fake.return.4",
+    now: new Date("2026-04-29T08:03:00.000Z"),
+  },
+  {
+    conversationRepository: fakeReturnDateRepository,
+    intentExtractor: fakeReturnDateExtractor,
+  }
+);
+
+assert.equal(fakeReturnDateResult.kind, "needs_user_input");
+assert.equal(fakeReturnDateResult.field, "passengers");
+
+const fakeReturnPassengerSelected = await handleConversationEvent(
+  {
+    type: "interactive_reply",
+    contact: fakeReturnDateContact,
+    replyId: "passengers:1",
+    providerMessageId: "wamid.fake.return.5",
+    now: new Date("2026-04-29T08:04:00.000Z"),
+  },
+  {
+    conversationRepository: fakeReturnDateRepository,
+    intentExtractor: fakeReturnDateExtractor,
+  }
+);
+
+assert.equal(fakeReturnPassengerSelected.kind, "ok");
+assert.deepEqual(fakeReturnPassengerSelected.value, {
+  status: "search_ready",
+  search: {
+    origin: "LOS",
+    destination: "Abuja",
+    departureDate: "2026-04-30",
+    departureWindow: "morning",
+    tripType: "return",
+    returnDate: "2026-05-06",
+    adults: 1,
+  },
+});
+
+const interactiveExtractorRepository = createInMemoryConversationRepository();
+const interactiveExtractorContact = { phoneNumber: "2348033333333" };
+let interactiveExtractorCallCount = 0;
+const interactiveCallCountingExtractor: IntentExtractor = {
+  async extractTripIntent() {
+    interactiveExtractorCallCount += 1;
+    return {
+      destination: "Abuja",
+      departureDate: "2026-04-30",
+      departureWindow: "morning",
+    };
+  },
+};
+
+await handleConversationEvent(
+  {
+    type: "inbound_text",
+    contact: interactiveExtractorContact,
+    text: "I need a flight to Abuja tomorrow morning",
+    providerMessageId: "wamid.fake.interactive.1",
+    now: new Date("2026-04-29T08:00:00.000Z"),
+  },
+  {
+    conversationRepository: interactiveExtractorRepository,
+    intentExtractor: interactiveCallCountingExtractor,
+  }
+);
+interactiveExtractorCallCount = 0;
+
+await handleConversationEvent(
+  {
+    type: "interactive_reply",
+    contact: interactiveExtractorContact,
+    replyId: "origin:LOS",
+    providerMessageId: "wamid.fake.interactive.2",
+    now: new Date("2026-04-29T08:01:00.000Z"),
+  },
+  {
+    conversationRepository: interactiveExtractorRepository,
+    intentExtractor: interactiveCallCountingExtractor,
+  }
+);
+
+assert.equal(interactiveExtractorCallCount, 0);
 
 const firstMessage = await handleConversationEvent(
   {
