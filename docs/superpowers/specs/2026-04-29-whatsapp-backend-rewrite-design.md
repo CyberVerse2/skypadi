@@ -132,6 +132,7 @@ backend/src/
 
   db/
     pool.ts
+    client.ts
     migrate.ts
     schema.ts
     migrations/
@@ -149,11 +150,17 @@ backend/src/
 
 Use Drizzle as the default persistence layer for schema, migrations, and ordinary repository reads/writes. This gives the rewrite type-safe table definitions, safer refactors, and a clean migration history without adopting a heavy ORM.
 
-Use Drizzle raw SQL where the query itself is part of the business guarantee or product ranking logic. Booking and payment state transitions may use explicit SQL transactions, `select ... for update`, conditional updates, and idempotency guards so concurrent webhook retries or WhatsApp messages cannot double-confirm payments, double-consume OTPs, or double-submit supplier bookings.
+Generate SQL migrations from `schema.ts` with Drizzle Kit and apply those migrations intentionally. Do not use schema push for production changes.
+
+Use Drizzle raw SQL through the `sql` template where the query itself is part of the business guarantee or product ranking logic. Booking and payment state transitions may use explicit SQL transactions, `select ... for update`, conditional updates, and idempotency guards so concurrent webhook retries or WhatsApp messages cannot double-confirm payments, double-consume OTPs, or double-submit supplier bookings.
 
 Flight search repositories may use raw SQL by default for stored flight option lookups, filtering, sorting, deduplication, and recommendation ranking. This keeps price, departure time, baggage, airline, stop count, and "best value" comparisons visible and tunable as SQL rather than hiding ranking behavior inside application loops.
 
-Repository functions should hide whether a query uses Drizzle or raw SQL. Workflow code should call domain repositories and services rather than importing Drizzle tables or SQL strings directly.
+Use Drizzle transactions for workflow transitions that must be atomic. Nested workflow operations may use Drizzle savepoints when a sub-step can fail without aborting the whole outer operation.
+
+Use Drizzle indexes, unique constraints, check constraints, enums, and foreign keys in `schema.ts` so idempotency and state-machine guarantees are enforced by Postgres, not only by application code.
+
+Repository functions should hide whether a query uses Drizzle's typed query builder or Drizzle raw SQL. Workflow code should call domain repositories and services rather than importing Drizzle tables or SQL strings directly. Direct `pg` access should be rare and documented at the call site.
 
 ### Users And Contacts
 
