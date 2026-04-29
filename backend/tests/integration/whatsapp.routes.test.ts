@@ -29,6 +29,7 @@ const conversationRepository: ConversationRepository = {
 
 const app = buildServer({
   whatsappVerifyToken: "verify-token",
+  whatsappAppSecret: "",
   conversationRepository,
   messageRepository: {
     async recordInboundMessage(input) {

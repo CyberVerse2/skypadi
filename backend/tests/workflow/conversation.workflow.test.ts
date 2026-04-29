@@ -44,6 +44,34 @@ const missingIntentExtractor = await handleConversationEvent(
 assert.equal(missingIntentExtractor.kind, "temporary_failure");
 assert.equal(missingIntentExtractor.reason, "intent extractor dependency is required");
 
+const greetingRepository = createInMemoryConversationRepository();
+const greetingResult = await handleConversationEvent(
+  {
+    type: "inbound_text",
+    contact: { phoneNumber: "2348000000001" },
+    text: "Hi",
+    providerMessageId: "wamid.greeting.1",
+    now: new Date("2026-04-29T08:00:00.000Z"),
+  },
+  {
+    conversationRepository: greetingRepository,
+    intentExtractor: {
+      async extractTripIntent() {
+        return {
+          kind: "general_chat",
+          reply: "Hi, I’m Skypadi. I can help you find and book flights on WhatsApp. Tell me where you want to travel when you’re ready.",
+        };
+      },
+    },
+  }
+);
+
+assert.equal(greetingResult.kind, "needs_user_input");
+assert.equal(greetingResult.field, "general_chat");
+assert.equal((greetingResult.ui as TextIntent).type, "text");
+assert.match((greetingResult.ui as TextIntent).body, /find and book flights/i);
+assert.equal((await greetingRepository.findByPhoneNumber("2348000000001"))?.draft.expectedField, undefined);
+
 const fakeNaturalLanguageRepository = createInMemoryConversationRepository();
 const fakeNaturalLanguageExtractor: IntentExtractor = {
   async extractTripIntent() {

@@ -8,6 +8,8 @@ import type {
 } from "../domain/conversation/conversation.service.js";
 
 export type TripIntentExtraction = {
+  kind?: "flight_search" | "general_chat";
+  reply?: string;
   origin?: string;
   destination?: string;
   departureDate?: string;
@@ -28,19 +30,23 @@ export type IntentExtractor = {
 };
 
 const tripIntentSchema = z.object({
-  origin: z.string().trim().min(1).optional(),
-  destination: z.string().trim().min(1).optional(),
-  departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  departureWindow: z.string().trim().min(1).optional(),
-  returnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  adults: z.number().int().positive().optional(),
+  kind: z.enum(["flight_search", "general_chat"]),
+  reply: z.string().trim().min(1).nullable(),
+  origin: z.string().trim().min(1).nullable(),
+  destination: z.string().trim().min(1).nullable(),
+  departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  departureWindow: z.string().trim().min(1).nullable(),
+  returnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  adults: z.number().int().positive().nullable(),
 });
+
+type TripIntentObject = z.infer<typeof tripIntentSchema>;
 
 type GenerateObjectForIntent = (input: {
   model: unknown;
   schema: typeof tripIntentSchema;
   prompt: string;
-}) => Promise<{ object: TripIntentExtraction }>;
+}) => Promise<{ object: TripIntentObject }>;
 
 export type OpenAIIntentExtractorOptions = {
   apiKey: string;
@@ -71,16 +77,34 @@ export function createOpenAIIntentExtractor(options: OpenAIIntentExtractorOption
         prompt: buildTripIntentPrompt(input),
       });
 
-      return result.object;
+      return compactTripIntent(result.object);
     },
   };
+}
+
+function compactTripIntent(object: TripIntentObject): TripIntentExtraction {
+  const extraction: TripIntentExtraction = {};
+
+  extraction.kind = object.kind;
+  if (object.reply) extraction.reply = object.reply;
+  if (object.origin) extraction.origin = object.origin;
+  if (object.destination) extraction.destination = object.destination;
+  if (object.departureDate) extraction.departureDate = object.departureDate;
+  if (object.departureWindow) extraction.departureWindow = object.departureWindow;
+  if (object.returnDate) extraction.returnDate = object.returnDate;
+  if (object.adults) extraction.adults = object.adults;
+
+  return extraction;
 }
 
 function buildTripIntentPrompt(input: IntentExtractionInput): string {
   const currentDate = input.now.toISOString().slice(0, 10);
   return [
     "Extract flight-search intent from this WhatsApp message for Skypadi.",
-    "Return only fields explicitly stated or strongly implied by the message and conversation context.",
+    "Classify the message as flight_search only when the user is asking to search, compare, price, or book travel.",
+    "Classify greetings, capability questions, payment questions, support questions, and casual messages as general_chat.",
+    "For general_chat, reply with one short helpful Skypadi response and leave all travel fields null.",
+    "For flight_search, set reply to null and return only travel fields explicitly stated or strongly implied by the message and conversation context.",
     "Use IATA airport codes for origin when the user names a departure city or airport.",
     "Use city names for destination when an IATA code is not explicit.",
     "Resolve relative dates against the current date.",

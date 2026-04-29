@@ -73,6 +73,11 @@ export async function handleConversationEvent(
       expectedField: draft.expectedField,
       currentDraft: { ...draft },
     });
+    if (extraction.kind === "general_chat") {
+      const result = makeNeedsUserInput("general_chat", generalChatTextIntent(extraction.reply));
+      await dependencies.conversationRepository.save({ ...conversation, draft, updatedAt: event.now });
+      return result;
+    }
     mergeTripIntentExtraction(draft, extraction);
 
     const result = nextPromptOrReady(draft);
@@ -328,5 +333,12 @@ function passengerCountTextIntent(): UiIntent {
   return {
     type: "text",
     body: "Please type the number of adults travelling.",
+  };
+}
+
+function generalChatTextIntent(reply: string | undefined): UiIntent {
+  return {
+    type: "text",
+    body: reply?.trim() || "Hi, I’m Skypadi. I can help you find and book flights on WhatsApp. Tell me where you want to travel when you’re ready.",
   };
 }
