@@ -97,8 +97,19 @@ async function verifyWebhook(request: FastifyRequest, reply: FastifyReply, verif
 }
 
 async function handleWebhook(request: RawBodyRequest, reply: FastifyReply, options: WhatsAppRoutesOptions) {
-  if (options.appSecret && !isValidMetaSignature(request, options.appSecret)) {
-    return reply.status(401).send({ error: "invalid_signature" });
+  if (options.appSecret) {
+    const signature = validateMetaSignature(request, options.appSecret);
+    if (!signature.ok) {
+      request.log.warn(
+        {
+          reason: signature.reason,
+          hasRawBody: signature.hasRawBody,
+          hasSignature: signature.hasSignature,
+        },
+        "WhatsApp webhook signature verification failed"
+      );
+      return reply.status(401).send({ error: "invalid_signature", reason: signature.reason });
+    }
   }
 
   const messages = extractMessages(request.body);
@@ -330,22 +341,45 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function isValidMetaSignature(request: RawBodyRequest, appSecret: string): boolean {
+type MetaSignatureValidation =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: "missing_signature" | "invalid_signature_format" | "signature_mismatch";
+      hasRawBody: boolean;
+      hasSignature: boolean;
+    };
+
+function validateMetaSignature(request: RawBodyRequest, appSecret: string): MetaSignatureValidation {
   const signature = headerValue(request.headers["x-hub-signature-256"]);
-  if (!signature?.startsWith("sha256=")) return false;
+  const hasRawBody = request.rawBody !== undefined;
+  if (!signature) {
+    return { ok: false, reason: "missing_signature", hasRawBody, hasSignature: false };
+  }
+  if (!signature.startsWith("sha256=")) {
+    return { ok: false, reason: "invalid_signature_format", hasRawBody, hasSignature: true };
+  }
 
-  const raw = rawPayload(request);
-  const expected = `sha256=${createHmac("sha256", appSecret).update(raw).digest("hex")}`;
-  const signatureBuffer = Buffer.from(signature);
-  const expectedBuffer = Buffer.from(expected);
+  const digest = signature.slice("sha256=".length);
+  if (!/^[a-f0-9]{64}$/i.test(digest)) {
+    return { ok: false, reason: "invalid_signature_format", hasRawBody, hasSignature: true };
+  }
 
-  return signatureBuffer.length === expectedBuffer.length && timingSafeEqual(signatureBuffer, expectedBuffer);
+  const raw = rawPayloadBuffer(request);
+  const actual = Buffer.from(digest, "hex");
+  const expected = createHmac("sha256", appSecret).update(raw).digest();
+
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+    return { ok: false, reason: "signature_mismatch", hasRawBody, hasSignature: true };
+  }
+
+  return { ok: true };
 }
 
-function rawPayload(request: RawBodyRequest): string {
-  if (Buffer.isBuffer(request.rawBody)) return request.rawBody.toString("utf8");
-  if (typeof request.rawBody === "string") return request.rawBody;
-  return JSON.stringify(request.body ?? {});
+function rawPayloadBuffer(request: RawBodyRequest): Buffer {
+  if (Buffer.isBuffer(request.rawBody)) return request.rawBody;
+  if (typeof request.rawBody === "string") return Buffer.from(request.rawBody, "utf8");
+  return Buffer.from(JSON.stringify(request.body ?? {}), "utf8");
 }
 
 function headerValue(value: string | string[] | undefined): string | undefined {

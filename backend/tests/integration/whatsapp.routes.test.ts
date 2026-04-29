@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 
 import { buildServer } from "../../src/app.js";
 import type {
@@ -104,6 +105,58 @@ const badVerify = await app.inject({
 });
 
 assert.equal(badVerify.statusCode, 403);
+
+const signedApp = buildServer({
+  whatsappVerifyToken: "verify-token",
+  whatsappAppSecret: "test-app-secret",
+  conversationRepository,
+  whatsappClient: {
+    async sendMessage() {},
+  },
+  intentExtractor: {
+    async extractTripIntent() {
+      return {};
+    },
+  },
+  flightSearchHandler: {
+    async searchAndPresent() {
+      return { type: "text", body: "unused" };
+    },
+  },
+  bookingHandler: {
+    async createFromFlightSelection() {
+      return { type: "text", body: "unused" };
+    },
+    async collectPassengerDetails() {
+      return undefined;
+    },
+  },
+});
+
+const unsignedStatus = await signedApp.inject({
+  method: "POST",
+  url: "/webhooks/whatsapp",
+  payload: { entry: [{ changes: [{ value: { statuses: [{ id: "wamid.status" }] } }] }] },
+});
+assert.equal(unsignedStatus.statusCode, 401);
+assert.deepEqual(JSON.parse(unsignedStatus.body), {
+  error: "invalid_signature",
+  reason: "missing_signature",
+});
+
+const signedStatusPayload = JSON.stringify({ entry: [{ changes: [{ value: { statuses: [{ id: "wamid.status" }] } }] }] });
+const signedStatus = await signedApp.inject({
+  method: "POST",
+  url: "/webhooks/whatsapp",
+  headers: {
+    "content-type": "application/json",
+    "x-hub-signature-256": metaSignature("test-app-secret", signedStatusPayload),
+  },
+  payload: signedStatusPayload,
+});
+assert.equal(signedStatus.statusCode, 200);
+assert.deepEqual(JSON.parse(signedStatus.body), { ok: true, received: 0 });
+await signedApp.close();
 
 const inbound = await app.inject({
   method: "POST",
@@ -285,3 +338,7 @@ await new Promise((resolve) => setTimeout(resolve, 20));
 assert.equal(passengerDetailsCollected, true);
 await app.close();
 console.log("whatsapp route tests passed");
+
+function metaSignature(appSecret: string, payload: string): string {
+  return `sha256=${createHmac("sha256", appSecret).update(payload).digest("hex")}`;
+}
