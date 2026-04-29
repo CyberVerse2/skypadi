@@ -1,5 +1,13 @@
 export type TripType = "one_way" | "return";
-export type ConversationExpectedField = "origin" | "trip_type" | "passengers" | "return_date" | "passenger_count";
+export type ConversationExpectedField =
+  | "origin"
+  | "destination"
+  | "departure_date"
+  | "departure_window"
+  | "trip_type"
+  | "passengers"
+  | "return_date"
+  | "passenger_count";
 
 export type ConversationDraft = {
   origin?: string;

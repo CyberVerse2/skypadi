@@ -99,7 +99,150 @@ const fakeNaturalLanguageResult = await handleConversationEvent(
 );
 
 assert.equal(fakeNaturalLanguageResult.kind, "needs_user_input");
-assert.equal(fakeNaturalLanguageResult.field, "trip_type");
+assert.equal(fakeNaturalLanguageResult.field, "departure_window");
+
+const vagueBookingRepository = createInMemoryConversationRepository();
+const vagueBookingContact = { phoneNumber: "2348011111112" };
+const vagueBookingExtractor: IntentExtractor = {
+  async extractTripIntent(input) {
+    if (input.expectedField === "destination" && /abuja/i.test(input.text)) {
+      return { destination: "Abuja" };
+    }
+
+    if (input.expectedField === "departure_date" && /tomorrow/i.test(input.text)) {
+      return { departureDate: "2026-04-30" };
+    }
+
+    if (input.expectedField === "departure_window" && /morning/i.test(input.text)) {
+      return { departureWindow: "morning" };
+    }
+
+    return {};
+  },
+};
+
+const vagueBookingStarted = await handleConversationEvent(
+  {
+    type: "inbound_text",
+    contact: vagueBookingContact,
+    text: "I want to book a flight",
+    providerMessageId: "wamid.vague.1",
+    now: new Date("2026-04-29T08:00:00.000Z"),
+  },
+  {
+    conversationRepository: vagueBookingRepository,
+    intentExtractor: vagueBookingExtractor,
+  }
+);
+
+assert.equal(vagueBookingStarted.kind, "needs_user_input");
+assert.equal(vagueBookingStarted.field, "origin");
+
+const vagueBookingOrigin = await handleConversationEvent(
+  {
+    type: "interactive_reply",
+    contact: vagueBookingContact,
+    replyId: "origin:LOS",
+    providerMessageId: "wamid.vague.2",
+    now: new Date("2026-04-29T08:01:00.000Z"),
+  },
+  {
+    conversationRepository: vagueBookingRepository,
+    intentExtractor: vagueBookingExtractor,
+  }
+);
+
+assert.equal(vagueBookingOrigin.kind, "needs_user_input");
+assert.equal(vagueBookingOrigin.field, "destination");
+
+const vagueBookingDestination = await handleConversationEvent(
+  {
+    type: "inbound_text",
+    contact: vagueBookingContact,
+    text: "Abuja",
+    providerMessageId: "wamid.vague.3",
+    now: new Date("2026-04-29T08:02:00.000Z"),
+  },
+  {
+    conversationRepository: vagueBookingRepository,
+    intentExtractor: vagueBookingExtractor,
+  }
+);
+
+assert.equal(vagueBookingDestination.kind, "needs_user_input");
+assert.equal(vagueBookingDestination.field, "departure_date");
+
+const vagueBookingDepartureDate = await handleConversationEvent(
+  {
+    type: "inbound_text",
+    contact: vagueBookingContact,
+    text: "Tomorrow",
+    providerMessageId: "wamid.vague.4",
+    now: new Date("2026-04-29T08:03:00.000Z"),
+  },
+  {
+    conversationRepository: vagueBookingRepository,
+    intentExtractor: vagueBookingExtractor,
+  }
+);
+
+assert.equal(vagueBookingDepartureDate.kind, "needs_user_input");
+assert.equal(vagueBookingDepartureDate.field, "departure_window");
+
+const vagueBookingDepartureWindow = await handleConversationEvent(
+  {
+    type: "inbound_text",
+    contact: vagueBookingContact,
+    text: "Morning",
+    providerMessageId: "wamid.vague.5",
+    now: new Date("2026-04-29T08:04:00.000Z"),
+  },
+  {
+    conversationRepository: vagueBookingRepository,
+    intentExtractor: vagueBookingExtractor,
+  }
+);
+
+assert.equal(vagueBookingDepartureWindow.kind, "needs_user_input");
+assert.equal(vagueBookingDepartureWindow.field, "trip_type");
+
+await handleConversationEvent(
+  {
+    type: "interactive_reply",
+    contact: vagueBookingContact,
+    replyId: "trip_type:one_way",
+    providerMessageId: "wamid.vague.6",
+    now: new Date("2026-04-29T08:05:00.000Z"),
+  },
+  {
+    conversationRepository: vagueBookingRepository,
+    intentExtractor: vagueBookingExtractor,
+  }
+);
+
+const vagueBookingReady = await handleConversationEvent(
+  {
+    type: "interactive_reply",
+    contact: vagueBookingContact,
+    replyId: "passengers:1",
+    providerMessageId: "wamid.vague.7",
+    now: new Date("2026-04-29T08:06:00.000Z"),
+  },
+  {
+    conversationRepository: vagueBookingRepository,
+    intentExtractor: vagueBookingExtractor,
+  }
+);
+
+assert.equal(vagueBookingReady.kind, "ok");
+assert.deepEqual(vagueBookingReady.value.search, {
+  origin: "LOS",
+  destination: "Abuja",
+  departureDate: "2026-04-30",
+  departureWindow: "morning",
+  tripType: "one_way",
+  adults: 1,
+});
 
 const broadAdultsOverwriteRepository = createInMemoryConversationRepository();
 const broadAdultsOverwriteContact = { phoneNumber: "2348012222222" };

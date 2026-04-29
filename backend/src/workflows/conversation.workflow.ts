@@ -114,6 +114,21 @@ function mergeTripIntentExtraction(draft: ConversationDraft, extraction: TripInt
     return;
   }
 
+  if (draft.expectedField === "destination") {
+    assignMissingNonEmptyString(draft, "destination", extraction.destination);
+    return;
+  }
+
+  if (draft.expectedField === "departure_date") {
+    assignMissingNonEmptyString(draft, "departureDate", extraction.departureDate);
+    return;
+  }
+
+  if (draft.expectedField === "departure_window") {
+    assignMissingNonEmptyString(draft, "departureWindow", extraction.departureWindow);
+    return;
+  }
+
   assignMissingNonEmptyString(draft, "origin", extraction.origin);
   assignMissingNonEmptyString(draft, "destination", extraction.destination);
   assignMissingNonEmptyString(draft, "departureDate", extraction.departureDate);
@@ -187,6 +202,18 @@ function applyReplyId(draft: ConversationDraft, replyId: string): boolean {
 function nextPromptOrReady(draft: ConversationDraft): WorkflowResult<SearchReadyPayload> {
   if (!draft.origin) {
     return promptForField(draft, "origin");
+  }
+
+  if (!draft.destination) {
+    return promptForField(draft, "destination");
+  }
+
+  if (!draft.departureDate) {
+    return promptForField(draft, "departure_date");
+  }
+
+  if (!draft.departureWindow) {
+    return promptForField(draft, "departure_window");
   }
 
   if (!draft.tripType) {
@@ -273,6 +300,18 @@ function promptForField(
     return makeNeedsUserInput("origin", originListIntent());
   }
 
+  if (field === "destination") {
+    return makeNeedsUserInput("destination", destinationTextIntent());
+  }
+
+  if (field === "departure_date") {
+    return makeNeedsUserInput("departure_date", departureDateTextIntent());
+  }
+
+  if (field === "departure_window") {
+    return makeNeedsUserInput("departure_window", departureWindowTextIntent());
+  }
+
   if (field === "trip_type") {
     return makeNeedsUserInput("trip_type", tripTypeButtonsIntent());
   }
@@ -307,6 +346,27 @@ function tripTypeButtonsIntent(): UiIntent {
       { id: "trip_type:one_way", title: "One-way" },
       { id: "trip_type:return", title: "Return" },
     ],
+  };
+}
+
+function destinationTextIntent(): UiIntent {
+  return {
+    type: "text",
+    body: "Where are you flying to?",
+  };
+}
+
+function departureDateTextIntent(): UiIntent {
+  return {
+    type: "text",
+    body: "What date do you want to travel?",
+  };
+}
+
+function departureWindowTextIntent(): UiIntent {
+  return {
+    type: "text",
+    body: "What time of day works best?",
   };
 }
 
