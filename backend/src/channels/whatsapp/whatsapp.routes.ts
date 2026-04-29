@@ -1,0 +1,208 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+
+import { mapUiIntentToWhatsAppMessage } from "./whatsapp.mapper.js";
+import type { WhatsAppClient } from "./whatsapp.client.js";
+import { handleConversationEvent } from "../../workflows/conversation.workflow.js";
+import {
+  findOrCreateConversation,
+  type ConversationRepository,
+} from "../../domain/conversation/conversation.service.js";
+import type { WhatsAppMessageRepository } from "../../domain/conversation/conversation.repository.js";
+import type { UiIntent } from "./whatsapp.types.js";
+
+export type WhatsAppRoutesOptions = {
+  verifyToken: string;
+  conversationRepository: ConversationRepository;
+  messageRepository?: WhatsAppMessageRepository;
+  whatsappClient: WhatsAppClient;
+  appSecret?: string;
+};
+
+type RawBodyRequest = FastifyRequest & { rawBody?: string | Buffer };
+
+type WhatsAppInboundMessage = {
+  id: string;
+  from: string;
+  timestamp?: string;
+  type: string;
+  text?: { body?: string };
+  interactive?: {
+    type?: "button_reply" | "list_reply";
+    button_reply?: { id: string; title?: string };
+    list_reply?: { id: string; title?: string };
+  };
+};
+
+export function registerWhatsAppWorkflowRoutes(app: FastifyInstance, options: WhatsAppRoutesOptions): void {
+  app.get("/webhooks/whatsapp", (request, reply) => verifyWebhook(request, reply, options.verifyToken));
+  app.post(
+    "/webhooks/whatsapp",
+    { config: { rawBody: Boolean(options.appSecret) } },
+    (request, reply) => handleWebhook(request as RawBodyRequest, reply, options)
+  );
+}
+
+async function verifyWebhook(request: FastifyRequest, reply: FastifyReply, verifyToken: string) {
+  const query = request.query as Record<string, string | undefined>;
+
+  if (
+    query["hub.mode"] === "subscribe" &&
+    query["hub.verify_token"] === verifyToken &&
+    query["hub.challenge"]
+  ) {
+    return reply.type("text/plain").send(query["hub.challenge"]);
+  }
+
+  return reply.status(403).send({ error: "verification_failed" });
+}
+
+async function handleWebhook(request: RawBodyRequest, reply: FastifyReply, options: WhatsAppRoutesOptions) {
+  if (options.appSecret && !isValidMetaSignature(request, options.appSecret)) {
+    return reply.status(401).send({ error: "invalid_signature" });
+  }
+
+  const messages = extractMessages(request.body);
+  const persistedMessages = await persistInboundMessages(messages, options);
+
+  void processMessages(persistedMessages, options, request).catch((error) => {
+    request.log.error({ err: error }, "WhatsApp webhook processing failed");
+  });
+
+  return reply.send({ ok: true, received: persistedMessages.length });
+}
+
+type PersistedInboundMessage = {
+  message: WhatsAppInboundMessage;
+  now: Date;
+};
+
+async function persistInboundMessages(
+  messages: WhatsAppInboundMessage[],
+  options: WhatsAppRoutesOptions
+): Promise<PersistedInboundMessage[]> {
+  const persistedMessages: PersistedInboundMessage[] = [];
+
+  for (const message of messages) {
+    const now = message.timestamp ? new Date(Number(message.timestamp) * 1000) : new Date();
+    const conversation = await findOrCreateConversation(options.conversationRepository, message.from, now);
+    const record = await options.messageRepository?.recordInboundMessage({
+      phoneNumber: message.from,
+      conversationId: conversation.id,
+      providerMessageId: message.id,
+      textBody: message.text?.body,
+      payload: message as unknown as Record<string, unknown>,
+      receivedAt: now,
+    });
+
+    if (record && !record.wasCreated) continue;
+    persistedMessages.push({ message, now });
+  }
+
+  return persistedMessages;
+}
+
+async function processMessages(
+  persistedMessages: PersistedInboundMessage[],
+  options: WhatsAppRoutesOptions,
+  request: FastifyRequest
+): Promise<void> {
+  for (const { message, now } of persistedMessages) {
+    const event = normalizeConversationEvent(message, now);
+    if (!event) continue;
+
+    const result = await handleConversationEvent(event, {
+      conversationRepository: options.conversationRepository,
+    });
+    const intent = uiIntentFromWorkflowResult(result);
+    if (!intent) continue;
+
+    await options.whatsappClient.sendMessage({
+      to: message.from,
+      message: mapUiIntentToWhatsAppMessage(intent),
+    });
+    request.log.info({ providerMessageId: message.id, resultKind: result.kind }, "Processed WhatsApp message");
+  }
+}
+
+function normalizeConversationEvent(message: WhatsAppInboundMessage, now: Date) {
+  if (message.type === "text" && message.text?.body) {
+    return {
+      type: "inbound_text" as const,
+      contact: { phoneNumber: message.from },
+      text: message.text.body,
+      providerMessageId: message.id,
+      now,
+    };
+  }
+
+  const replyId = message.interactive?.button_reply?.id ?? message.interactive?.list_reply?.id;
+  if (message.type === "interactive" && replyId) {
+    return {
+      type: "interactive_reply" as const,
+      contact: { phoneNumber: message.from },
+      replyId,
+      providerMessageId: message.id,
+      now,
+    };
+  }
+
+  return undefined;
+}
+
+function uiIntentFromWorkflowResult(result: Awaited<ReturnType<typeof handleConversationEvent>>): UiIntent | undefined {
+  if (result.kind === "needs_user_input") {
+    return result.ui as UiIntent;
+  }
+
+  if (result.kind === "ok") {
+    return { type: "text", body: "I have enough details to search flights now." };
+  }
+
+  return { type: "text", body: "I could not process that yet. Please try again." };
+}
+
+function extractMessages(payload: unknown): WhatsAppInboundMessage[] {
+  if (!isRecord(payload) || !Array.isArray(payload.entry)) return [];
+
+  return payload.entry.flatMap((entry) => {
+    if (!isRecord(entry) || !Array.isArray(entry.changes)) return [];
+    return entry.changes.flatMap((change) => {
+      if (!isRecord(change)) return [];
+      const value = change.value;
+      if (!isRecord(value) || !Array.isArray(value.messages)) return [];
+      return value.messages.filter(isWhatsAppInboundMessage);
+    });
+  });
+}
+
+function isWhatsAppInboundMessage(value: unknown): value is WhatsAppInboundMessage {
+  return isRecord(value) && typeof value.id === "string" && typeof value.from === "string" && typeof value.type === "string";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isValidMetaSignature(request: RawBodyRequest, appSecret: string): boolean {
+  const signature = headerValue(request.headers["x-hub-signature-256"]);
+  if (!signature?.startsWith("sha256=")) return false;
+
+  const raw = rawPayload(request);
+  const expected = `sha256=${createHmac("sha256", appSecret).update(raw).digest("hex")}`;
+  const signatureBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+
+  return signatureBuffer.length === expectedBuffer.length && timingSafeEqual(signatureBuffer, expectedBuffer);
+}
+
+function rawPayload(request: RawBodyRequest): string {
+  if (Buffer.isBuffer(request.rawBody)) return request.rawBody.toString("utf8");
+  if (typeof request.rawBody === "string") return request.rawBody;
+  return JSON.stringify(request.body ?? {});
+}
+
+function headerValue(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) return value[0];
+  return value;
+}

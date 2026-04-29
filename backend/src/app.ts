@@ -4,12 +4,23 @@ import { ZodError } from "zod";
 import { env } from "./config.js";
 import { flightSearchRequestSchema } from "./schemas/flight-search.js";
 import { WakanowApiSearchError, searchFlightsApi } from "./integrations/wakanow/api-search.js";
-import { registerWhatsAppRoutes } from "./channels/whatsapp/index.js";
+import { createWhatsAppCloudClient, type WhatsAppClient } from "./channels/whatsapp/whatsapp.client.js";
+import { registerWhatsAppWorkflowRoutes } from "./channels/whatsapp/whatsapp.routes.js";
 import { registerResendWebhookRoutes } from "./integrations/resend/webhook.routes.js";
+import { db } from "./db/client.js";
+import {
+  createDrizzleConversationRepository,
+  type WhatsAppMessageRepository,
+} from "./domain/conversation/conversation.repository.js";
+import type { ConversationRepository } from "./domain/conversation/conversation.service.js";
 
 export type BuildServerOptions = {
   whatsappVerifyToken?: string;
   resendWebhookSecret?: string;
+  whatsappAppSecret?: string;
+  conversationRepository?: ConversationRepository;
+  messageRepository?: WhatsAppMessageRepository;
+  whatsappClient?: WhatsAppClient;
 };
 
 export function buildServer(options: BuildServerOptions = {}) {
@@ -20,7 +31,18 @@ export function buildServer(options: BuildServerOptions = {}) {
     encoding: "utf8",
     runFirst: true
   });
-  registerWhatsAppRoutes(app);
+  const conversationRepository = options.conversationRepository ?? createDrizzleConversationRepository(db);
+  const whatsappVerifyToken = options.whatsappVerifyToken ?? env.WHATSAPP_VERIFY_TOKEN;
+  if (whatsappVerifyToken) {
+    const whatsappClient = options.whatsappClient ?? configuredWhatsAppClient();
+    registerWhatsAppWorkflowRoutes(app, {
+      verifyToken: whatsappVerifyToken,
+      conversationRepository,
+      messageRepository: options.messageRepository ?? messageRepositoryFromConversationRepository(conversationRepository),
+      whatsappClient,
+      appSecret: options.whatsappAppSecret ?? env.WHATSAPP_APP_SECRET,
+    });
+  }
   const resendWebhookSecret = options.resendWebhookSecret ?? env.RESEND_WEBHOOK_SECRET;
   if (resendWebhookSecret) {
     registerResendWebhookRoutes(app, { webhookSecret: resendWebhookSecret });
@@ -61,4 +83,25 @@ export function buildServer(options: BuildServerOptions = {}) {
   }));
 
   return app;
+}
+
+function configuredWhatsAppClient(): WhatsAppClient {
+  if (!env.WHATSAPP_ACCESS_TOKEN || !env.WHATSAPP_PHONE_NUMBER_ID) {
+    throw new Error("WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID are required when WhatsApp routes are enabled");
+  }
+
+  return createWhatsAppCloudClient({
+    accessToken: env.WHATSAPP_ACCESS_TOKEN,
+    phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID,
+  });
+}
+
+function messageRepositoryFromConversationRepository(
+  repository: ConversationRepository
+): WhatsAppMessageRepository | undefined {
+  if ("recordInboundMessage" in repository && typeof repository.recordInboundMessage === "function") {
+    return repository as ConversationRepository & WhatsAppMessageRepository;
+  }
+
+  return undefined;
 }

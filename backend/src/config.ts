@@ -9,6 +9,10 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   PGSSLMODE: z.enum(["disable", "prefer", "require"]).default("prefer"),
   TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
+  WHATSAPP_ACCESS_TOKEN: z.string().min(1).optional(),
+  WHATSAPP_PHONE_NUMBER_ID: z.string().min(1).optional(),
+  WHATSAPP_VERIFY_TOKEN: z.string().min(1).optional(),
+  WHATSAPP_APP_SECRET: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
   WAKANOW_BASE_URL: z.string().url().default("https://www.wakanow.com"),
   WAKANOW_LOCALE: z.string().default("en-NG"),
@@ -26,8 +30,9 @@ const envSchema = z.object({
   WALLET_ENCRYPTION_KEY: z
     .string()
     .min(1, "WALLET_ENCRYPTION_KEY is required (32-byte key as hex or base64)"),
-  AGENTMAIL_API_KEY: z.string().optional(),
-  AGENTMAIL_INBOX_ID: z.string().optional()
+  RESEND_API_KEY: z.string().optional(),
+  RESEND_WEBHOOK_SECRET: z.string().optional(),
+  RESEND_INBOUND_DOMAIN: z.string().optional()
 });
 
 export const env = envSchema.parse(process.env);
