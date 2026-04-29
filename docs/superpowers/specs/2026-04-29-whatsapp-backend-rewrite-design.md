@@ -20,6 +20,9 @@ Rewrite the Skypadi backend internals around a WhatsApp-first, workflow-driven t
 - Direct raw `pg` SQL is reserved as an escape hatch for cases Drizzle cannot express cleanly.
 - Existing external behavior should be preserved where it matters to the product: users can search, compare, book, pay, receive ticket updates, and recover from supplier email/OTP flows through WhatsApp.
 - AI does language work only. Deterministic workflows decide and execute business actions.
+- Skypadi always asks for origin when the user does not explicitly provide it. Origin should not be silently defaulted.
+- User travel preferences should be learned over time from confirmed choices and reused as suggestions, not hard-coded first-run assumptions.
+- WhatsApp interactive reply buttons are a first-class conversation primitive for short decisions.
 
 ## Core Principle
 
@@ -170,6 +173,8 @@ Repository functions should hide whether a query uses Drizzle's typed query buil
 
 `conversations` track the active booking conversation for a WhatsApp contact. `conversation_messages` store inbound and outbound messages with provider IDs, normalized text, timestamps, and metadata.
 
+`user_preferences` stores learned customer preferences such as preferred departure windows, airline tendencies, baggage sensitivity, payment method, and "cheapest vs low-stress" behavior. Preferences are updated from confirmed choices over time. They may be used to recommend defaults, but the first-time flow must not invent important travel details such as origin.
+
 Conversation state:
 
 ```text
@@ -267,6 +272,21 @@ It decides the next prompt based on missing required fields:
 - passenger details
 - payment method
 
+Origin is always an explicit required field. If a user says "I need a flight to Abuja tomorrow morning" without origin, the next prompt asks where they are flying from. The prompt may use WhatsApp interactive reply buttons for likely origins, but it must not silently assume Lagos.
+
+Optimization preference can be inferred from learned user preferences after enough history exists, but the workflow should still make the recommendation easy to override. For first-time users, Skypadi should show cheapest, best value, and earliest options without requiring a separate preference question.
+
+Use WhatsApp interactive reply buttons for short, bounded choices:
+
+- suggested origin choices when origin is missing
+- one-way vs return
+- choose between up to three highlighted flight options
+- transfer vs card
+- "I've paid" vs change payment method
+- continue vs change details
+
+Use WhatsApp list messages or Flows when the choice has more than three options or requires structured form data.
+
 ### Flight Search Workflow
 
 Validates that the trip request is search-ready, calls the Wakanow search integration, normalizes results, persists option snapshots, ranks options as cheapest, earliest, and best value, and returns a recommendation. Stored flight option querying and ranking should use raw SQL through Drizzle where it makes the filtering and scoring logic easier to inspect and tune.
@@ -295,7 +315,7 @@ Builds outbound WhatsApp messages from workflow outcomes and sends them through 
 
 ### WhatsApp
 
-The WhatsApp adapter verifies Meta webhooks, maps inbound messages to internal events, sends outbound text/messages, and stores provider message IDs. It does not own conversation state or booking logic.
+The WhatsApp adapter verifies Meta webhooks, maps inbound messages to internal events, sends outbound text/messages, sends interactive reply buttons/lists/Flows when requested by workflows, and stores provider message IDs. It does not own conversation state or booking logic.
 
 ### Resend
 
@@ -354,10 +374,16 @@ Representative red-green tests:
 
 ```text
 RED: first-time WhatsApp user asks for Abuja tomorrow morning.
-Expected: conversation asks whether the origin is Lagos.
+Expected: conversation asks for origin and may offer likely origin buttons.
 
-RED: user confirms origin and one-way trip.
+RED: user selects or types origin and one-way trip.
 Expected: conversation stores trip details and asks passenger count.
+
+RED: returning user has learned low-stress preference.
+Expected: search result recommendation uses learned preference as a suggestion while still showing cheapest, best value, and earliest options.
+
+RED: first-time user has no learned preference.
+Expected: workflow does not ask a separate optimization question before search; it shows cheapest, best value, and earliest options.
 
 RED: booking is created from selected option.
 Expected: booking alias is generated and persisted.
