@@ -15,25 +15,28 @@ import {
   users,
   whatsappContacts,
 } from "../../src/db/schema";
+import { test } from "vitest";
 
-const tables = [
-  users,
-  whatsappContacts,
-  conversations,
-  conversationMessages,
-  passengers,
-  flightSearches,
-  flightOptions,
-  bookings,
-  paymentAttempts,
-  bookingEmailAliases,
-  inboundEmails,
-  supplierEvents,
-  auditEvents,
-];
+test("schema", async () => {
+  const tables = [
+    users,
+    whatsappContacts,
+    conversations,
+    conversationMessages,
+    passengers,
+    flightSearches,
+    flightOptions,
+    bookings,
+    paymentAttempts,
+    bookingEmailAliases,
+    inboundEmails,
+    supplierEvents,
+    auditEvents,
+  ];
 
-assert.equal(tables.length, 13);
-assert.equal(bookings.status.enumValues.includes("awaiting_payment_for_hold"), true);
-assert.equal(paymentAttempts.status.enumValues.includes("proof_uploaded"), true);
-assert.equal(inboundEmails.classification.enumValues.includes("verification_code"), true);
-console.log("schema tests passed");
+  assert.equal(tables.length, 13);
+  assert.equal(bookings.status.enumValues.includes("awaiting_payment_for_hold"), true);
+  assert.equal(paymentAttempts.status.enumValues.includes("proof_uploaded"), true);
+  assert.equal(inboundEmails.classification.enumValues.includes("verification_code"), true);
+  console.log("schema tests passed");
+});

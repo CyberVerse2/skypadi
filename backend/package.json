@@ -16,11 +16,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "typecheck:test": "tsc -p tsconfig.test.json",
     "smoke:stealth": "tsx scripts/smoke-stealth.ts",
-    "test:unit": "tsx tests/unit/test-harness.test.ts && tsx tests/unit/schema.test.ts && tsx tests/unit/domain-types.test.ts && tsx tests/unit/whatsapp.mapper.test.ts && tsx tests/unit/airport-catalog.test.ts && tsx tests/unit/flight-ranking.test.ts && tsx tests/unit/resend.client.test.ts && tsx tests/unit/ai-intent-extractor.test.ts && tsx tests/unit/conversation.repository.test.ts && tsx tests/unit/booking-job.repository.test.ts && tsx tests/unit/booking-queue.test.ts && tsx tests/unit/booking-job-notifier.test.ts && tsx tests/unit/booking-summary.test.ts && tsx tests/unit/raw-sql-nullability.test.ts && tsx tests/unit/no-legacy-surfaces.test.ts && tsx tests/unit/chat-agent.test.ts && tsx tests/unit/chat-tools.test.ts",
-    "test:workflow": "tsx tests/workflow/conversation.workflow.test.ts && tsx tests/workflow/booking.workflow.test.ts && tsx tests/workflow/supplier-booking.workflow.test.ts && tsx tests/workflow/supplier-booking-task.workflow.test.ts && tsx tests/workflow/booking-job.workflow.test.ts && tsx tests/workflow/payment.workflow.test.ts && tsx tests/workflow/inbound-email.workflow.test.ts",
-    "test:integration": "tsx tests/integration/whatsapp.tool-routes.test.ts",
+    "test:unit": "vitest run tests/unit",
+    "test:workflow": "vitest run tests/workflow",
+    "test:integration": "vitest run tests/integration",
     "test:all": "npm run test:unit && npm run test:workflow && npm run test:integration && npm run typecheck:test",
-    "test:resend-inbound": "tsx tests/resend-inbound-classification.test.ts",
+    "test:resend-inbound": "vitest run tests/resend-inbound-classification.test.ts",
     "trace:analyze": "tsx scripts/analyze-trace.ts"
   },
   "dependencies": {
@@ -48,6 +48,7 @@
     "drizzle-kit": "^0.31.10",
     "esbuild": "^0.27.7",
     "tsx": "^4.19.1",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.5"
   }
 }

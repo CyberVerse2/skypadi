@@ -2,20 +2,23 @@ import assert from "node:assert/strict";
 
 import { isTerminalBookingStatus } from "../../src/domain/booking/booking.types";
 import { makeNeedsUserInput, makeOk } from "../../src/workflows/workflow-result";
+import { test } from "vitest";
 
-assert.equal(isTerminalBookingStatus("issued"), true);
-assert.equal(isTerminalBookingStatus("hold_expired"), true);
-assert.equal(isTerminalBookingStatus("payment_pending"), false);
+test("domain types", async () => {
+  assert.equal(isTerminalBookingStatus("issued"), true);
+  assert.equal(isTerminalBookingStatus("hold_expired"), true);
+  assert.equal(isTerminalBookingStatus("payment_pending"), false);
 
-assert.deepEqual(makeOk({ message: "ready" }), {
-  kind: "ok",
-  value: { message: "ready" },
+  assert.deepEqual(makeOk({ message: "ready" }), {
+    kind: "ok",
+    value: { message: "ready" },
+  });
+
+  assert.deepEqual(makeNeedsUserInput("origin", { type: "origin_list" }), {
+    kind: "needs_user_input",
+    field: "origin",
+    ui: { type: "origin_list" },
+  });
+
+  console.log("domain type tests passed");
 });
-
-assert.deepEqual(makeNeedsUserInput("origin", { type: "origin_list" }), {
-  kind: "needs_user_input",
-  field: "origin",
-  ui: { type: "origin_list" },
-});
-
-console.log("domain type tests passed");
