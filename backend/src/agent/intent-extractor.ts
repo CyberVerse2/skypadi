@@ -5,7 +5,7 @@ import { z } from "zod";
 import type {
   ConversationDraft,
   ConversationExpectedField,
-} from "../domain/conversation/conversation.service.js";
+} from "../domain/conversation/conversation.types";
 
 export type TripIntentExtraction = {
   kind?: "flight_search" | "general_chat";

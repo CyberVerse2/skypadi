@@ -1,54 +1,24 @@
 import { sql, type SQL } from "drizzle-orm";
 
-import type { DbClient } from "../../db/client.js";
-import type { BookingDraft, BookingStatus } from "./booking.types.js";
-import type { Passenger } from "../../schemas/flight-booking.js";
+import type { DbClient } from "../../db/client";
+import type {
+  BookingPassengerRepository,
+  BookingRepository,
+  BookingStatus,
+  PassengerRepository,
+} from "./booking.types";
 
-export type CreateBookingDraftRecord = {
-  id: string;
-  userId: string;
-  conversationId: string;
-  selectedFlightOptionId: string;
-  status: BookingStatus;
-  bookingEmailAlias: string;
-  aliasLocalPart: string;
-  aliasDomain: string;
-  createdAt: Date;
-};
+export type DrizzleBookingRepository =
+  & BookingRepository
+  & PassengerRepository
+  & BookingPassengerRepository;
 
-export type BookingRepository = {
-  createDraft(input: CreateBookingDraftRecord): Promise<BookingDraft>;
-  findActiveBookingForPassengerCollection(input: {
-    userId: string;
-    conversationId: string;
-  }): Promise<ActiveBookingForPassengerCollection | undefined>;
-  collectPassengerDetails(input: CollectedPassengerDetails): Promise<void>;
-};
-
-export type ActiveBookingForPassengerCollection = {
-  id: string;
-  userId: string;
-  conversationId: string;
-  selectedFlightOptionId: string;
-  bookingEmailAlias: string;
-  status: BookingStatus;
-};
-
-export type CollectedPassengerDetails = {
-  bookingId: string;
-  userId: string;
-  conversationId: string;
-  passenger: Passenger;
-  supplierContactEmail: string;
-  collectedAt: Date;
-};
-
-export function createDrizzleBookingRepository(db: DbClient): BookingRepository {
+export function createDrizzleBookingRepository(db: DbClient): DrizzleBookingRepository {
   return {
     async createDraft(input) {
       const result = await db.execute(sql`
         with selected_option as (
-          select fo.id
+          select fo.id, fo.supplier_option_id, fo.supplier_payload
           from skypadi_whatsapp.flight_options fo
           inner join skypadi_whatsapp.flight_searches fs on fs.id = fo.flight_search_id
           where fo.id = ${input.selectedFlightOptionId}
@@ -112,12 +82,15 @@ export function createDrizzleBookingRepository(db: DbClient): BookingRepository 
           inserted_booking.id,
           'booking.created',
           'system',
-          ${jsonb({
-            selectedFlightOptionId: input.selectedFlightOptionId,
-            bookingEmailAlias: input.bookingEmailAlias,
-          })},
+          jsonb_build_object(
+            'selectedFlightOptionId', ${input.selectedFlightOptionId},
+            'bookingEmailAlias', ${input.bookingEmailAlias},
+            'supplierOptionId', selected_option.supplier_option_id,
+            'searchKey', selected_option.supplier_payload->>'searchKey',
+            'deeplink', selected_option.supplier_payload->>'deeplink'
+          ),
           ${input.createdAt}
-        from inserted_booking
+        from inserted_booking, selected_option
         returning booking_id
       `);
       const rowCount = "rowCount" in result && typeof result.rowCount === "number" ? result.rowCount : result.rows.length;
@@ -134,6 +107,60 @@ export function createDrizzleBookingRepository(db: DbClient): BookingRepository 
         status: input.status,
         bookingEmailAlias: input.bookingEmailAlias,
         createdAt: input.createdAt,
+      };
+    },
+    async findDefaultPassengerForUser(userId) {
+        const result = await db.execute(sql`
+          select
+            id,
+            title,
+            first_name,
+            middle_name,
+            last_name,
+            date_of_birth,
+            gender,
+            phone_number,
+            email
+          from skypadi_whatsapp.passengers
+          where user_id = ${userId}
+            and is_default = true
+            and title is not null
+            and date_of_birth is not null
+            and gender is not null
+            and phone_number is not null
+            and email is not null
+          order by updated_at desc
+          limit 1
+        `);
+        const row = result.rows[0] as
+          | {
+              id: string;
+              title: "Mr" | "Ms" | "Mrs" | "Miss" | "Sir" | "Dr";
+              first_name: string;
+              middle_name: string | null;
+              last_name: string;
+              date_of_birth: Date | string;
+              gender: "Male" | "Female";
+              phone_number: string;
+              email: string;
+            }
+          | undefined;
+
+        if (!row) return undefined;
+
+        return {
+          id: row.id,
+          passenger: {
+            title: row.title,
+            firstName: row.first_name,
+            middleName: row.middle_name ?? undefined,
+            lastName: row.last_name,
+            dateOfBirth: dateOnly(row.date_of_birth),
+            nationality: "Nigerian",
+            gender: row.gender,
+            phone: row.phone_number,
+            email: row.email,
+          },
         };
       },
       async findActiveBookingForPassengerCollection(input) {
@@ -215,7 +242,7 @@ export function createDrizzleBookingRepository(db: DbClient): BookingRepository 
           updated_booking as (
             update skypadi_whatsapp.bookings
             set
-              status = 'supplier_hold_pending',
+              status = 'supplier_booking_pending',
               customer_email = ${input.passenger.email},
               metadata = metadata || ${jsonb({
                 supplierContactEmail: input.supplierContactEmail,
@@ -278,9 +305,90 @@ export function createDrizzleBookingRepository(db: DbClient): BookingRepository 
           throw new Error("Passenger details could not be applied to the active booking");
         }
       },
+      async collectSavedPassengerDetails(input) {
+        const result = await db.execute(sql`
+          with selected_passenger as (
+            select id
+            from skypadi_whatsapp.passengers
+            where id = ${input.passengerId}
+              and user_id = ${input.userId}
+            limit 1
+          ),
+          updated_booking as (
+            update skypadi_whatsapp.bookings
+            set
+              status = 'supplier_booking_pending',
+              customer_email = ${input.passenger.email},
+              metadata = metadata || ${jsonb({
+                supplierContactEmail: input.supplierContactEmail,
+              })},
+              updated_at = ${input.collectedAt}
+            where id = ${input.bookingId}
+              and user_id = ${input.userId}
+              and conversation_id = ${input.conversationId}
+              and status = 'priced'
+            returning id
+          ),
+          inserted_booking_passenger as (
+            insert into skypadi_whatsapp.booking_passengers (
+              booking_id,
+              passenger_id,
+              passenger_type,
+              snapshot,
+              created_at,
+              updated_at
+            )
+            select
+              updated_booking.id,
+              selected_passenger.id,
+              'adult',
+              ${jsonb(input.passenger)},
+              ${input.collectedAt},
+              ${input.collectedAt}
+            from updated_booking, selected_passenger
+            returning booking_id
+          ),
+          updated_conversation as (
+            update skypadi_whatsapp.conversations
+            set status = 'issuing_supplier_booking', updated_at = ${input.collectedAt}
+            where id = ${input.conversationId}
+            returning id
+          )
+          insert into skypadi_whatsapp.audit_events (
+            user_id,
+            booking_id,
+            event_type,
+            actor_type,
+            payload,
+            created_at
+          )
+          select
+            ${input.userId},
+            inserted_booking_passenger.booking_id,
+            'booking.saved_passenger_used',
+            'system',
+            ${jsonb({
+              passengerId: input.passengerId,
+              passengerEmail: input.passenger.email,
+              supplierContactEmail: input.supplierContactEmail,
+            })},
+            ${input.collectedAt}
+          from inserted_booking_passenger
+          returning booking_id
+        `);
+        const rowCount = "rowCount" in result && typeof result.rowCount === "number" ? result.rowCount : result.rows.length;
+        if (rowCount === 0) {
+          throw new Error("Saved passenger details could not be applied to the active booking");
+        }
+      },
     };
   }
 
 function jsonb(value: Record<string, unknown>): SQL {
   return sql`${JSON.stringify(value)}::jsonb`;
+}
+
+function dateOnly(value: Date | string): string {
+  if (typeof value === "string") return value.slice(0, 10);
+  return value.toISOString().slice(0, 10);
 }

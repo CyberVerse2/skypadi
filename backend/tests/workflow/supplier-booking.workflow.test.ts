@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
-import { normalizeWakanowHoldStatus } from "../../src/integrations/wakanow/wakanow.booking.js";
-import { handleSupplierHoldResult, recordSupplierHoldDecision } from "../../src/workflows/supplier-booking.workflow.js";
+import { normalizeWakanowHoldStatus } from "../../src/integrations/wakanow/wakanow.booking";
+import { handleSupplierHoldResult, recordSupplierHoldDecision } from "../../src/workflows/supplier-booking.workflow";
 
 const hold = handleSupplierHoldResult({
   bookingId: "book_123",

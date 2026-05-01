@@ -1,12 +1,11 @@
-import { getCardPaymentProviderStatus } from "../integrations/payments/card.js";
+import { getCardPaymentProviderStatus } from "../integrations/payments/card";
 import {
   assertTrustedConfirmationSource,
   createPaymentDecision,
   createTransferPaymentAttempt,
-  type StartPaymentInput,
-} from "../domain/payment/payment.service.js";
-import type { PaymentRepository, PaymentWorkflowDecision } from "../domain/payment/payment.repository.js";
-import { makeOk, type WorkflowResult } from "./workflow-result.js";
+} from "../domain/payment/payment.service";
+import type { PaymentRepository, PaymentWorkflowDecision, StartPaymentInput } from "../domain/payment/payment.types";
+import { makeOk, type WorkflowResult } from "./workflow-result";
 
 export async function startPayment(input: StartPaymentInput): Promise<WorkflowResult<PaymentWorkflowDecision>> {
   if (input.method === "card") {

@@ -1,9 +1,9 @@
-import { env } from "../../config.js";
+import { env } from "../../config";
 import type {
   FlightSearchRequest,
   FlightSearchResponse,
   FlightSearchResult
-} from "../../schemas/flight-search.js";
+} from "../../schemas/flight-search";
 import { ProxyAgent, fetch as undiciFetch } from "undici";
 
 const FLIGHTS_API_BASE = "https://flights.wakanow.com/api/flights";

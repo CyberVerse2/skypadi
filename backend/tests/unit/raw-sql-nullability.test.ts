@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 
 import type { SQL } from "drizzle-orm";
 
-import type { DbClient } from "../../src/db/client.js";
-import { createDrizzleBookingRepository } from "../../src/domain/booking/booking.repository.js";
-import { createDrizzleInboundEmailRepository } from "../../src/domain/inbound-email/inbound-email.repository.js";
-import { createDrizzlePaymentRepository } from "../../src/domain/payment/payment.repository.js";
-import { createStoredFlightSearchFromWakanow } from "../../src/domain/flight/flight.repository.js";
-import { createDrizzleSupplierBookingRepository } from "../../src/workflows/supplier-booking.workflow.js";
+import type { DbClient } from "../../src/db/client";
+import { createDrizzleBookingRepository } from "../../src/domain/booking/booking.repository";
+import { createDrizzleInboundEmailRepository } from "../../src/domain/inbound-email/inbound-email.repository";
+import { createDrizzlePaymentRepository } from "../../src/domain/payment/payment.repository";
+import { createStoredFlightSearchFromWakanow } from "../../src/domain/flight/flight.repository";
+import { createDrizzleSupplierBookingRepository } from "../../src/workflows/supplier-booking.workflow";
 
 const executedQueries: unknown[] = [];
 const db = {

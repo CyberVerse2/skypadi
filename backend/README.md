@@ -2,12 +2,12 @@
 
 Flight search and booking backend for SkyPadi.
 
-This backend is now WhatsApp-first and workflow-driven:
+This backend is WhatsApp-first, tool-driven, and job-backed:
 
 - WhatsApp Cloud API webhook intake
 - Drizzle/Postgres persistence
 - Resend inbound booking aliases
-- Wakanow search, hold, and booking workflows
+- Wakanow search and supplier booking jobs
 - deterministic payment and supplier state transitions
 
 ## Run
@@ -19,6 +19,24 @@ npm run dev
 ```
 
 Set `DATABASE_URL` in `.env` to your Postgres instance before starting the server. Run Drizzle migrations before serving production traffic.
+
+## Worker
+
+The web process handles HTTP and WhatsApp webhooks:
+
+```bash
+npm run start
+```
+
+The worker process handles durable supplier booking jobs:
+
+```bash
+npm run start:worker
+```
+
+Graphile Worker creates and updates its internal schema when the worker starts with a valid `DATABASE_URL`.
+
+Set `WORKER_CONCURRENCY=1` for browser booking automation until we have production timing data.
 
 To receive WhatsApp Cloud API messages, set:
 

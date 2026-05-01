@@ -14,7 +14,7 @@ import {
   supplierEvents,
   users,
   whatsappContacts,
-} from "../../src/db/schema.js";
+} from "../../src/db/schema";
 
 const tables = [
   users,

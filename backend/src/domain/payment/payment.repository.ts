@@ -1,34 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 
-import type { BookingStatus } from "../booking/booking.types.js";
-import type { DbClient } from "../../db/client.js";
-import type { PaymentAttempt, PaymentStatus } from "./payment.types.js";
-
-export type CreatePaymentAttemptRecord = {
-  id: string;
-  bookingId: string;
-  method: "transfer" | "card";
-  amount: number;
-  currency: "NGN";
-  providerReference?: string;
-  createdAt: Date;
-};
-
-export type PaymentConfirmationRecord = {
-  bookingId: string;
-  paymentAttemptId: string;
-  confirmedBy: string;
-  confirmedAt: Date;
-  providerReference: string;
-  paidAmount: number;
-  currency: "NGN";
-};
-
-export type PaymentRepository = {
-  createPaymentAttempt(input: CreatePaymentAttemptRecord): Promise<PaymentAttempt>;
-  markPaidClaimed(input: { bookingId: string; paymentAttemptId: string; claimedAt: Date }): Promise<void>;
-  confirmPayment(input: PaymentConfirmationRecord): Promise<void>;
-};
+import type { DbClient } from "../../db/client";
+import type { CreatePaymentAttemptRecord, PaymentAttempt, PaymentRepository, PaymentStatus } from "./payment.types";
 
 export function createDrizzlePaymentRepository(db: DbClient): PaymentRepository {
   return {
@@ -142,14 +115,6 @@ export function createDrizzlePaymentRepository(db: DbClient): PaymentRepository 
     },
   };
 }
-
-export type PaymentWorkflowDecision = {
-  bookingId: string;
-  paymentAttemptId: string;
-  method?: "transfer" | "card";
-  paymentStatus: PaymentStatus;
-  bookingStatus: BookingStatus;
-};
 
 function toPaymentAttempt(input: CreatePaymentAttemptRecord, status: PaymentStatus): PaymentAttempt {
   return {

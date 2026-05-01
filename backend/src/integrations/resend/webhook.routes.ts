@@ -1,9 +1,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { db } from "../../db/client.js";
-import { createDrizzleInboundEmailRepository } from "../../domain/inbound-email/inbound-email.repository.js";
-import { handleInboundEmail } from "../../workflows/inbound-email.workflow.js";
-import { createResendClient, getReceivedEmail, type ResendClient } from "./resend.client.js";
-import { verifyResendWebhook } from "./resend.webhook-verifier.js";
+import { db } from "../../db/client";
+import { createDrizzleInboundEmailRepository } from "../../domain/inbound-email/inbound-email.repository";
+import { handleInboundEmail } from "../../workflows/inbound-email.workflow";
+import { createResendClient, getReceivedEmail, type ResendClient } from "./resend.client";
+import { verifyResendWebhook } from "./resend.webhook-verifier";
 
 type RawBodyRequest = FastifyRequest & { rawBody?: string | Buffer };
 

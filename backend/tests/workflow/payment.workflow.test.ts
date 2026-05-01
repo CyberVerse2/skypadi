@@ -6,8 +6,8 @@ import {
   persistPaidClaim,
   persistPaymentConfirmation,
   startPayment,
-} from "../../src/workflows/payment.workflow.js";
-import type { PaymentRepository, PaymentConfirmationRecord } from "../../src/domain/payment/payment.repository.js";
+} from "../../src/workflows/payment.workflow";
+import type { PaymentRepository, PaymentConfirmationRecord } from "../../src/domain/payment/payment.types";
 
 const createdAttempts: unknown[] = [];
 const paidClaims: unknown[] = [];

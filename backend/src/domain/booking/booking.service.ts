@@ -1,19 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { generateBookingEmailAlias } from "../../integrations/resend/booking-alias.service.js";
-import type { BookingDraft } from "./booking.types.js";
-import type { BookingRepository } from "./booking.repository.js";
-
-export type CreateBookingDraftInput = {
-  userId: string;
-  conversationId: string;
-  selectedFlightOptionId: string;
-  inboundDomain: string;
-  now?: Date;
-  idGenerator?: () => string;
-  aliasTokenGenerator?: () => string;
-  repository: BookingRepository;
-};
+import { generateBookingEmailAlias } from "../../integrations/resend/booking-alias.service";
+import type { BookingDraft, CreateBookingDraftInput } from "./booking.types";
 
 export async function createPricedBookingDraft(input: CreateBookingDraftInput): Promise<BookingDraft> {
   const now = input.now ?? new Date();

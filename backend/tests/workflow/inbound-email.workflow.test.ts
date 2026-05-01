@@ -6,7 +6,7 @@ import {
   handleInboundEmailForClassificationOnly,
   consumeInboundEmailOtp,
   waitForInboundEmailOtp,
-} from "../../src/workflows/inbound-email.workflow.js";
+} from "../../src/workflows/inbound-email.workflow";
 
 const classified = classifyInboundEmail({
   subject: "Your Wakanow verification code",

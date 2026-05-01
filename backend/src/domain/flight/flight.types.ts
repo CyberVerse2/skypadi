@@ -10,7 +10,7 @@ export type FlightSearchCriteria = {
   };
   cabinClass?: string;
   currency: "NGN";
-  optimizationPreference?: "cheapest" | "earliest" | "best_value";
+  optimizationPreference?: "cheapest" | "fastest" | "best_value" | "evening";
 };
 
 export type FlightOption = {
@@ -33,7 +33,26 @@ export type FlightOption = {
 
 export type RankedFlightOptions = {
   cheapest?: FlightOption;
-  earliest?: FlightOption;
   bestValue?: FlightOption;
+  fastest?: FlightOption;
+  evening?: FlightOption;
   options: FlightOption[];
+};
+
+export type DisplayFlightOption = {
+  id: string;
+  airline: string;
+  departureTime: string;
+  arrivalTime: string;
+  durationMinutes: number;
+  price: number;
+  stops: number;
+};
+
+export type DisplayRankedFlightOptions = {
+  cheapest: DisplayFlightOption;
+  bestValue: DisplayFlightOption;
+  fastest: DisplayFlightOption;
+  evening: DisplayFlightOption;
+  options: DisplayFlightOption[];
 };

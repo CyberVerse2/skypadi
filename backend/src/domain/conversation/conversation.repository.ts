@@ -1,25 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 
-import type { DbClient } from "../../db/client.js";
-import type { ConversationRecord, ConversationRepository } from "./conversation.service.js";
-
-export type WhatsAppMessageRepository = {
-  recordInboundMessage(input: {
-    phoneNumber: string;
-    conversationId: string;
-    providerMessageId: string;
-    textBody?: string;
-    payload: Record<string, unknown>;
-    receivedAt: Date;
-  }): Promise<{ wasCreated: boolean }>;
-};
+import type { DbClient } from "../../db/client";
+import type { ConversationRecord, ConversationRepository, WhatsAppMessageRepository } from "./conversation.types";
 
 export function createDrizzleConversationRepository(db: DbClient): ConversationRepository & WhatsAppMessageRepository {
   return {
     async findByPhoneNumber(phoneNumber) {
       const result = await db.execute(sql`
-        select c.id, c.user_id, wc.phone_number, c.metadata, c.updated_at
+        select c.id, c.user_id, wc.phone_number, c.status, c.metadata, c.updated_at
         from skypadi_whatsapp.conversations c
         inner join skypadi_whatsapp.whatsapp_contacts wc on wc.id = c.whatsapp_contact_id
         where wc.phone_number = ${phoneNumber}
@@ -27,7 +16,7 @@ export function createDrizzleConversationRepository(db: DbClient): ConversationR
         limit 1
       `);
       const row = result.rows[0] as
-        | { id: string; user_id: string; phone_number: string; metadata: unknown; updated_at: Date | string }
+        | { id: string; user_id: string; phone_number: string; status: ConversationRecord["status"]; metadata: unknown; updated_at: Date | string }
         | undefined;
       if (!row) return undefined;
       const metadata = isRecord(row.metadata) ? row.metadata : {};
@@ -37,6 +26,7 @@ export function createDrizzleConversationRepository(db: DbClient): ConversationR
         id: row.id,
         userId: row.user_id,
         phoneNumber: row.phone_number,
+        status: row.status,
         draft,
         updatedAt: new Date(row.updated_at),
       } as ConversationRecord;
@@ -120,6 +110,52 @@ export function createDrizzleConversationRepository(db: DbClient): ConversationR
         returning id
       `);
       return { wasCreated: result.rows.length > 0 };
+    },
+    async recordOutboundMessage(input) {
+      await db.execute(sql`
+        insert into skypadi_whatsapp.conversation_messages (
+          conversation_id,
+          direction,
+          provider_message_id,
+          text_body,
+          payload,
+          sent_at
+        )
+        values (
+          ${input.conversationId},
+          'outbound',
+          ${input.providerMessageId ?? null},
+          ${input.textBody ?? null},
+          ${JSON.stringify(input.payload)}::jsonb,
+          ${input.sentAt}
+        )
+      `);
+    },
+    async listRecentMessages(input) {
+      const result = await db.execute(sql`
+        select direction, text_body, received_at, sent_at
+        from skypadi_whatsapp.conversation_messages
+        where conversation_id = ${input.conversationId}
+        order by coalesce(received_at, sent_at, created_at) desc
+        limit ${input.limit}
+      `);
+
+      return result.rows
+        .map((row) => {
+          const value = row as {
+            direction: "inbound" | "outbound" | "system";
+            text_body: string | null;
+            received_at: Date | string | null;
+            sent_at: Date | string | null;
+          };
+          return {
+            direction: value.direction,
+            textBody: value.text_body ?? undefined,
+            receivedAt: value.received_at ? new Date(value.received_at) : undefined,
+            sentAt: value.sent_at ? new Date(value.sent_at) : undefined,
+          };
+        })
+        .reverse();
     },
   };
 }

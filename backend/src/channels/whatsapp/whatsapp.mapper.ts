@@ -12,7 +12,7 @@ import type {
   WhatsAppInteractiveListMessage,
   WhatsAppMessagePayload,
   WhatsAppTextMessage,
-} from "./whatsapp.types.js";
+} from "./whatsapp.types";
 
 const MAX_REPLY_BUTTONS = 3;
 const MAX_LIST_ROWS = 10;

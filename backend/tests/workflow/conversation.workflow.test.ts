@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 
-import type { ReplyButtonsIntent, TextIntent } from "../../src/channels/whatsapp/whatsapp.types.js";
-import { createInMemoryConversationRepository } from "../../src/domain/conversation/conversation.service.js";
-import type { IntentExtractor } from "../../src/agent/intent-extractor.js";
-import { handleConversationEvent } from "../../src/workflows/conversation.workflow.js";
+import type { ReplyButtonsIntent, TextIntent } from "../../src/channels/whatsapp/whatsapp.types";
+import { createInMemoryConversationRepository } from "../helpers/conversation.repository";
+import type { IntentExtractor } from "../../src/agent/intent-extractor";
+import { handleConversationEvent } from "../../src/workflows/conversation.workflow";
 
 const repository = createInMemoryConversationRepository();
 const defaultIntentExtractor: IntentExtractor = {

@@ -1,15 +1,9 @@
-import type { InboundEmailClassification, InboundEmailPublicClassification } from "./inbound-email.types.js";
-
-export type InboundEmailContent = {
-  subject: string;
-  text?: string;
-  html?: string;
-  from: string;
-};
-
-export type InternalInboundEmailClassification = InboundEmailPublicClassification & {
-  otp?: string;
-};
+import type {
+  InboundEmailClassification,
+  InboundEmailContent,
+  InboundEmailPublicClassification,
+  InternalInboundEmailClassification,
+} from "./inbound-email.types";
 
 export function classifyInboundEmailContent(input: InboundEmailContent): InternalInboundEmailClassification {
   const body = messageBody(input);

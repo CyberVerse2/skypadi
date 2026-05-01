@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { mapUiIntentToWhatsAppMessage } from "../../src/channels/whatsapp/whatsapp.mapper.js";
+import { mapUiIntentToWhatsAppMessage } from "../../src/channels/whatsapp/whatsapp.mapper";
 
 const originList = mapUiIntentToWhatsAppMessage({
   type: "origin_list",

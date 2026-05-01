@@ -25,7 +25,7 @@ const envSchema = z.object({
     .default("true"),
   WAKANOW_BROWSER_CHANNEL: z.enum(["chrome", "msedge"]).optional(),
   WAKANOW_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
-  WAKANOW_MAX_RESULTS: z.coerce.number().int().positive().default(10),
+  WAKANOW_MAX_RESULTS: z.coerce.number().int().positive().default(50),
   PROXY_URL: z.string().optional(),
   STELLAR_NETWORK: z.enum(["testnet", "mainnet"]).default("testnet"),
   WALLET_ENCRYPTION_KEY: z

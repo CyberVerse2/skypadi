@@ -1,4 +1,4 @@
-import type { FlightSearchResult } from "./flight-search.js";
+import type { FlightSearchResult } from "./flight-search";
 
 export type CustomerContactProfile = {
   title: string;

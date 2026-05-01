@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { createOpenAIIntentExtractor } from "../../src/agent/intent-extractor.js";
+import { createOpenAIIntentExtractor } from "../../src/agent/intent-extractor";
 
 let capturedPrompt = "";
 const extractor = createOpenAIIntentExtractor({

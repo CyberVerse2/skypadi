@@ -1,6 +1,6 @@
-import type { BookingStatus } from "../domain/booking/booking.types.js";
-import type { DbClient } from "../db/client.js";
-import type { SupplierBookingPolicy, SupplierHoldResult } from "../integrations/wakanow/wakanow.types.js";
+import type { BookingStatus } from "../domain/booking/booking.types";
+import type { DbClient } from "../db/client";
+import type { SupplierBookingPolicy, SupplierHoldResult } from "../integrations/wakanow/wakanow.types";
 import { sql, type SQL } from "drizzle-orm";
 
 export type SupplierHoldWorkflowInput = {

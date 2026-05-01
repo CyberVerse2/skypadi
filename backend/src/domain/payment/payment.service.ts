@@ -1,17 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import type { PaymentAttempt, PaymentMethod, TrustedPaymentConfirmationSource } from "./payment.types.js";
-import type { PaymentRepository, PaymentWorkflowDecision } from "./payment.repository.js";
-
-export type StartPaymentInput = {
-  bookingId: string;
-  amount: number;
-  currency: "NGN";
-  method: PaymentMethod;
-  now?: Date;
-  idGenerator?: () => string;
-  repository?: PaymentRepository;
-};
+import type {
+  PaymentAttempt,
+  PaymentMethod,
+  PaymentWorkflowDecision,
+  StartPaymentInput,
+  TrustedPaymentConfirmationSource,
+} from "./payment.types";
 
 export function createPaymentDecision(input: {
   bookingId: string;
