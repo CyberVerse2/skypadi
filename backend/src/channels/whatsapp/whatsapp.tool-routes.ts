@@ -221,6 +221,7 @@ async function processMessages(
       conversation,
       message,
       options,
+      request,
     }), context);
     if (!intent) continue;
 
@@ -268,6 +269,7 @@ export async function uiIntentFromChatAction(
     conversation: PersistedInboundMessage["conversation"];
     message: WhatsAppInboundMessage;
     options: WhatsAppToolRoutesOptions;
+    request?: FastifyRequest;
   }
 ): Promise<UiIntent | undefined> {
   const userId = requiredUserId(input.conversation);
@@ -291,6 +293,7 @@ export async function uiIntentFromChatAction(
       phoneNumber: input.message.from,
       input: action.input,
       flightSearchHandler: input.options.flightSearchHandler,
+      onFailure: createFlightSearchFailureLogger(input.request, input.message),
     });
   }
 
@@ -316,6 +319,7 @@ async function handleCollectedTripDetails(
     conversation: PersistedInboundMessage["conversation"];
     message: WhatsAppInboundMessage;
     options: WhatsAppToolRoutesOptions;
+    request?: FastifyRequest;
   }
 ): Promise<UiIntent | undefined> {
   const draft = mergeCollectedTripDetails(input.conversation.draft, details);
@@ -337,10 +341,30 @@ async function handleCollectedTripDetails(
       phoneNumber: input.message.from,
       input: searchInput,
       flightSearchHandler: input.options.flightSearchHandler,
+      onFailure: createFlightSearchFailureLogger(input.request, input.message),
     });
   }
 
   return nextMissingField ? promptForMissingTripField(nextMissingField) : undefined;
+}
+
+function createFlightSearchFailureLogger(
+  request: FastifyRequest | undefined,
+  message: WhatsAppInboundMessage
+): NonNullable<Parameters<typeof executeSearchFlightsTool>[0]["onFailure"]> {
+  return (error, context) => {
+    request?.log.warn(
+      {
+        err: error,
+        providerMessageId: message.id,
+        search: context.input,
+        conversationId: context.conversationId,
+        userId: context.userId,
+        phoneNumber: context.phoneNumber,
+      },
+      "WhatsApp flight search failed"
+    );
+  };
 }
 
 function mergeCollectedTripDetails(

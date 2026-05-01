@@ -95,6 +95,45 @@ test("chat tools", async () => {
     body: "I could not search flights right now. Please try again shortly.",
   });
 
+  const supplierError = new Error("supplier timeout");
+  const failures: unknown[] = [];
+  await executeSearchFlightsTool({
+    userId: "user-1",
+    conversationId: "conversation-1",
+    phoneNumber: "2348012345678",
+    input: {
+      origin: "LOS",
+      destination: "ENU",
+      departureDate: "2026-05-09",
+      adults: 1,
+    },
+    flightSearchHandler: {
+      async searchAndPresent() {
+        throw supplierError;
+      },
+    },
+    onFailure(error, context) {
+      failures.push({ error, context });
+    },
+  });
+
+  assert.deepEqual(failures, [
+    {
+      error: supplierError,
+      context: {
+        userId: "user-1",
+        conversationId: "conversation-1",
+        phoneNumber: "2348012345678",
+        input: {
+          origin: "LOS",
+          destination: "ENU",
+          departureDate: "2026-05-09",
+          adults: 1,
+        },
+      },
+    },
+  ]);
+
   const bookingIntent = await executeStartBookingJobTool({
     conversationId: "conversation-1",
     userId: "user-1",
