@@ -2,7 +2,6 @@ import type { Task } from "graphile-worker";
 import { sql } from "drizzle-orm";
 
 import { createWhatsAppCloudClient, type WhatsAppClient } from "../../channels/whatsapp/whatsapp.client";
-import { env } from "../../config";
 import { db } from "../../db/client";
 import type { BookingStatus } from "../../domain/booking/booking.types";
 import { createDrizzleConversationRepository } from "../../domain/conversation/conversation.repository";
@@ -116,7 +115,7 @@ async function notifyRecordedSupplierDecision(input: {
     return;
   }
 
-  const whatsappClient = configuredWhatsAppClient();
+  const whatsappClient = configuredWhatsAppClientFromEnv();
   if (!whatsappClient) {
     console.warn("[supplier-booking] WhatsApp credentials missing; skipped supplier decision notification", {
       bookingId: input.bookingId,
@@ -138,11 +137,13 @@ async function notifyRecordedSupplierDecision(input: {
   }
 }
 
-function configuredWhatsAppClient(): WhatsAppClient | undefined {
-  if (!env.WHATSAPP_ACCESS_TOKEN || !env.WHATSAPP_PHONE_NUMBER_ID) return undefined;
+export function configuredWhatsAppClientFromEnv(
+  environment: Partial<Pick<NodeJS.ProcessEnv, "WHATSAPP_ACCESS_TOKEN" | "WHATSAPP_PHONE_NUMBER_ID">> = process.env
+): WhatsAppClient | undefined {
+  if (!environment.WHATSAPP_ACCESS_TOKEN || !environment.WHATSAPP_PHONE_NUMBER_ID) return undefined;
 
   return createWhatsAppCloudClient({
-    accessToken: env.WHATSAPP_ACCESS_TOKEN,
-    phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID,
+    accessToken: environment.WHATSAPP_ACCESS_TOKEN,
+    phoneNumberId: environment.WHATSAPP_PHONE_NUMBER_ID,
   });
 }

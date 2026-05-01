@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 
-import { createSupplierBookingTask } from "../../src/jobs/tasks/supplier-booking.task";
+import {
+  configuredWhatsAppClientFromEnv,
+  createSupplierBookingTask,
+} from "../../src/jobs/tasks/supplier-booking.task";
 import { shouldSkipSupplierBookingForStatus } from "../../src/jobs/tasks/supplier-booking-status";
 
 assert.equal(shouldSkipSupplierBookingForStatus("supplier_booking_pending"), false);
@@ -10,6 +13,7 @@ assert.equal(shouldSkipSupplierBookingForStatus("payment_pending"), true);
 assert.equal(shouldSkipSupplierBookingForStatus("supplier_verification_required"), true);
 assert.equal(shouldSkipSupplierBookingForStatus("issued"), true);
 assert.equal(shouldSkipSupplierBookingForStatus(undefined), false);
+assert.equal(configuredWhatsAppClientFromEnv({}), undefined);
 
 const markedSucceeded: string[] = [];
 const markedFailed: string[] = [];
