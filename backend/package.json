@@ -15,15 +15,13 @@
     "verify": "npm run typecheck && npm run typecheck:test && npm run test:all && npm run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "typecheck:test": "tsc -p tsconfig.test.json",
-    "smoke:stealth": "tsx scripts/smoke-stealth.ts",
     "test:unit": "vitest run tests/unit",
     "test:workflow": "vitest run tests/workflow",
     "test:integration": "vitest run tests/integration",
     "test:all": "npm run test:unit && npm run test:workflow && npm run test:integration && npm run typecheck:test",
     "test:resend-inbound": "vitest run tests/resend-inbound-classification.test.ts",
     "airports:update": "tsx scripts/update-wakanow-airports.ts",
-    "airports:update:full": "tsx scripts/update-wakanow-airports.ts --full",
-    "trace:analyze": "tsx scripts/analyze-trace.ts"
+    "airports:update:full": "tsx scripts/update-wakanow-airports.ts --full"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.52",
@@ -34,11 +32,8 @@
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.0.0",
     "fastify-raw-body": "^5.0.0",
-    "fingerprint-generator": "^2.1.82",
-    "fingerprint-injector": "^2.1.82",
     "graphile-worker": "^0.16.6",
     "hpagent": "^1.2.0",
-    "patchright": "^1.59.4",
     "pg": "^8.20.0",
     "resend": "^6.12.2",
     "undici": "^8.0.2",

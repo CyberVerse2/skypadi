@@ -1,9 +1,12 @@
 import type { SupplierHoldResult } from "./wakanow.types";
 import type { DbClient } from "../../db/client";
 import type { Passenger } from "../../schemas/flight-booking";
-import { bookFlightApi } from "./api-book";
+import { assignWakanowAccountForBooking } from "./account-assignment";
+import { wakanowAccountPoolFromEnv } from "./account-auth";
+import { bookFlightWithWakanowApi, type WakanowSupplierBookingState } from "./api-booking";
 import { sql } from "drizzle-orm";
 import { createDrizzleInboundEmailRepository } from "../../domain/inbound-email/inbound-email.repository";
+import type { BankTransferDetails } from "../../schemas/booking-contract";
 import { waitForInboundEmailOtp } from "../../workflows/inbound-email.workflow";
 
 export type WakanowHoldClient = {
@@ -16,23 +19,35 @@ export type WakanowHoldRequest = {
   selectedFlightOptionId: string;
   passengerSnapshot: Record<string, unknown>;
   contactEmail: string;
+  supplierBookingState?: WakanowSupplierBookingState;
 };
 
-export function createWakanowBrowserHoldClient(input: { db: DbClient }): WakanowHoldClient {
+export function createWakanowApiHoldClient(input: { db: DbClient }): WakanowHoldClient {
   const client: WakanowHoldClient = {
     async createHold(request) {
       const option = await findWakanowOption(input.db, request.selectedFlightOptionId);
       const passenger = passengerFromSnapshot(request.passengerSnapshot, request.contactEmail);
-      const result = await bookFlightApi({
+      const accountCredentials = await assignWakanowAccountForBooking({
+        db: input.db,
+        bookingId: request.bookingId,
+        accountPool: wakanowAccountPoolFromEnv(),
+      });
+      const result = await bookFlightWithWakanowApi({
         bookingId: request.bookingId,
         searchKey: option.searchKey,
         flightId: option.flightId,
-        deeplink: option.deeplink,
         passenger,
+        contactEmail: request.contactEmail,
+        supplierState: request.supplierBookingState,
         resolveOtp: async () => waitForInboundEmailOtp({
           bookingId: request.bookingId,
           repository: createDrizzleInboundEmailRepository(input.db),
         }),
+      }, {
+        accountCredentials,
+        onStateChange: async (state) => {
+          await persistWakanowSupplierBookingState(input.db, request.bookingId, state);
+        },
       });
 
       return {
@@ -43,7 +58,8 @@ export function createWakanowBrowserHoldClient(input: { db: DbClient }): Wakanow
         amountDue: result.flightSummary.price,
         currency: "NGN",
         paymentUrl: result.paymentUrl,
-        rawStatus: result.status,
+        bankTransfers: result.bankTransfers,
+        rawStatus: result.rawStatus,
       };
     },
     async createHoldForBooking(request) {
@@ -54,6 +70,10 @@ export function createWakanowBrowserHoldClient(input: { db: DbClient }): Wakanow
   return client;
 }
 
+export function createWakanowApiFirstHoldClient(input: { db: DbClient }): WakanowHoldClient {
+  return createWakanowApiHoldClient(input);
+}
+
 export function normalizeWakanowHoldStatus(input: {
   status: string;
   supplierBookingRef?: string;
@@ -61,6 +81,7 @@ export function normalizeWakanowHoldStatus(input: {
   amountDue?: number;
   currency?: "NGN";
   paymentUrl?: string;
+  bankTransfers?: BankTransferDetails[];
   reason?: string;
 }): SupplierHoldResult {
   const rawStatus = input.status;
@@ -80,6 +101,7 @@ export function normalizeWakanowHoldStatus(input: {
       amountDue: input.amountDue,
       currency: input.currency ?? "NGN",
       paymentUrl: input.paymentUrl,
+      bankTransfers: input.bankTransfers,
       rawStatus,
     };
   }
@@ -168,6 +190,7 @@ async function findReadyBookingForSupplierHold(db: DbClient, bookingId: string):
     select
       b.id,
       b.selected_flight_option_id,
+      b.supplier_booking_state,
       bp.snapshot,
       bea.email_address
     from skypadi_whatsapp.bookings b
@@ -186,6 +209,7 @@ async function findReadyBookingForSupplierHold(db: DbClient, bookingId: string):
     | {
         id: string;
         selected_flight_option_id: string | null;
+        supplier_booking_state?: WakanowSupplierBookingState;
         snapshot: Record<string, unknown>;
         email_address: string;
       }
@@ -200,7 +224,24 @@ async function findReadyBookingForSupplierHold(db: DbClient, bookingId: string):
     selectedFlightOptionId: row.selected_flight_option_id,
     passengerSnapshot: row.snapshot,
     contactEmail: row.email_address,
+    supplierBookingState: row.supplier_booking_state,
   };
+}
+
+async function persistWakanowSupplierBookingState(
+  db: DbClient,
+  bookingId: string,
+  state: WakanowSupplierBookingState,
+): Promise<void> {
+  const paymentInstructions = state.bankTransfers ? JSON.stringify(state.bankTransfers) : null;
+  await db.execute(sql`
+    update skypadi_whatsapp.bookings
+    set
+      supplier_booking_state = supplier_booking_state || ${JSON.stringify(state)}::jsonb,
+      supplier_payment_instructions = coalesce(${paymentInstructions}::jsonb, supplier_payment_instructions),
+      updated_at = now()
+    where id = ${bookingId}
+  `);
 }
 
 function passengerFromSnapshot(snapshot: Record<string, unknown>, contactEmail: string): Passenger {

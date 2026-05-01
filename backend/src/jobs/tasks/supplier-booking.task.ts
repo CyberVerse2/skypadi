@@ -73,7 +73,7 @@ export function createSupplierBookingTask(dependencies: SupplierBookingTaskDepen
 
 export const supplierBookingTask: Task = createSupplierBookingTask({
   jobRepository: createDrizzleSupplierBookingJobRepository(db),
-  supplierClient: createLazyWakanowBrowserHoldClient(),
+  supplierClient: createLazyWakanowHoldClient(),
   supplierRepository: createDrizzleSupplierBookingRepository(db),
   findBookingStatus,
   notifyRecordedDecision: notifyRecordedSupplierDecision,
@@ -90,8 +90,8 @@ function assertSupplierBookingPayload(payload: unknown): asserts payload is Supp
   }
 }
 
-function isRetryableSupplierBookingError(message: string): boolean {
-  return /timeout|network|browser|navigation|temporar/i.test(message);
+export function isRetryableSupplierBookingError(message: string): boolean {
+  return /timeout|network|temporar|fetch failed|econnreset|etimedout|eai_again|429|5\d{2}|too many requests|bad gateway|service unavailable|gateway timeout/i.test(message);
 }
 
 async function findBookingStatus(bookingId: string): Promise<BookingStatus | undefined> {
@@ -105,11 +105,11 @@ async function findBookingStatus(bookingId: string): Promise<BookingStatus | und
   return row?.status;
 }
 
-function createLazyWakanowBrowserHoldClient(): Pick<WakanowHoldClient, "createHoldForBooking"> {
+function createLazyWakanowHoldClient(): Pick<WakanowHoldClient, "createHoldForBooking"> {
   return {
     async createHoldForBooking(input) {
-      const { createWakanowBrowserHoldClient } = await import("../../integrations/wakanow/wakanow.booking");
-      return createWakanowBrowserHoldClient({ db }).createHoldForBooking(input);
+      const { createWakanowApiHoldClient } = await import("../../integrations/wakanow/wakanow.booking");
+      return createWakanowApiHoldClient({ db }).createHoldForBooking(input);
     },
   };
 }

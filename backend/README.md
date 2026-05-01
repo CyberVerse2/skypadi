@@ -60,7 +60,7 @@ RESEND_INBOUND_DOMAIN=bookings.example.com
 
 Then configure a Resend webhook for `email.received` events at `https://your-domain/webhooks/resend`. Skypadi generates per-booking aliases on that inbound domain, persists aliases and received emails in Postgres, and routes OTP/confirmation emails from the webhook.
 
-For remote servers, let Patchright use its bundled browser by default. Only set `WAKANOW_BROWSER_CHANNEL=chrome` if the host has a working system Chrome install and you explicitly want that channel.
+Wakanow booking runs through the direct API client. Browser automation is no longer part of the production booking path.
 
 ## Structure
 

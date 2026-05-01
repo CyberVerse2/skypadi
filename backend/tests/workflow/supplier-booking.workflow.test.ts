@@ -15,6 +15,13 @@ test("supplier booking workflow", async () => {
       amountDue: 161000,
       currency: "NGN",
       paymentUrl: "https://pay.example/wk123",
+      bankTransfers: [{
+        bank: "Providus Bank",
+        accountNumber: "1234567890",
+        beneficiary: "Wakanow.com Collections",
+        expiresIn: "9 hours",
+        note: "Booking payment",
+      }],
       rawStatus: "Active",
     },
   });
@@ -24,6 +31,7 @@ test("supplier booking workflow", async () => {
   assert.equal(hold.policy, "hold_first");
   assert.equal(hold.holdMode, "hold_created");
   assert.equal(hold.paymentUrl, "https://pay.example/wk123");
+  assert.equal(hold.bankTransfers?.[0]?.accountNumber, "1234567890");
 
   const normalized = normalizeWakanowHoldStatus({
     status: "Active",
@@ -102,6 +110,13 @@ test("supplier booking workflow", async () => {
     holdExpiresAt: new Date("2026-04-29T18:00:00.000Z"),
     amountDue: 161000,
     currency: "NGN",
+    supplierPaymentInstructions: [{
+      bank: "Providus Bank",
+      accountNumber: "1234567890",
+      beneficiary: "Wakanow.com Collections",
+      expiresIn: "9 hours",
+      note: "Booking payment",
+    }],
     failureReason: undefined,
     eventType: "supplier_hold.hold_created",
     eventPayload: {
@@ -113,6 +128,13 @@ test("supplier booking workflow", async () => {
       amountDue: 161000,
       currency: "NGN",
       paymentUrl: "https://pay.example/wk123",
+      bankTransfers: [{
+        bank: "Providus Bank",
+        accountNumber: "1234567890",
+        beneficiary: "Wakanow.com Collections",
+        expiresIn: "9 hours",
+        note: "Booking payment",
+      }],
       reason: undefined,
       rawStatus: "Active",
     },

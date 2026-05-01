@@ -19,13 +19,17 @@ const envSchema = z.object({
   WAKANOW_LOCALE: z.string().default("en-NG"),
   WAKANOW_CURRENCY: z.string().default("NGN"),
   WAKANOW_TIMEZONE: z.string().default("Africa/Lagos"),
-  WAKANOW_HEADLESS: z
-    .string()
-    .transform((value) => value !== "false")
-    .default("true"),
-  WAKANOW_BROWSER_CHANNEL: z.enum(["chrome", "msedge"]).optional(),
-  WAKANOW_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
   WAKANOW_MAX_RESULTS: z.coerce.number().int().positive().default(50),
+  WAKANOW_ACCOUNT_EMAIL: z.string().email().optional(),
+  WAKANOW_ACCOUNT_PASSWORD: z.string().min(1).optional(),
+  WAKANOW_ACCOUNT_1_EMAIL: z.string().email().optional(),
+  WAKANOW_ACCOUNT_1_PASSWORD: z.string().min(1).optional(),
+  WAKANOW_ACCOUNT_2_EMAIL: z.string().email().optional(),
+  WAKANOW_ACCOUNT_2_PASSWORD: z.string().min(1).optional(),
+  WAKANOW_ACCOUNT_3_EMAIL: z.string().email().optional(),
+  WAKANOW_ACCOUNT_3_PASSWORD: z.string().min(1).optional(),
+  WAKANOW_ACCOUNT_4_EMAIL: z.string().email().optional(),
+  WAKANOW_ACCOUNT_4_PASSWORD: z.string().min(1).optional(),
   PROXY_URL: z.string().optional(),
   STELLAR_NETWORK: z.enum(["testnet", "mainnet"]).default("testnet"),
   WALLET_ENCRYPTION_KEY: z
