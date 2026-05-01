@@ -24,7 +24,16 @@ export const whatsappOriginRows = nigerianOriginAirports.map((airport) => ({
   description: airport.airportName,
 }));
 
+const airportCodeAliases: Record<string, string> = {
+  LAG: "LOS",
+};
+
 export function airportByCode(code: string): AirportCatalogEntry | undefined {
-  const normalizedCode = code.trim().toUpperCase();
+  const normalizedCode = normalizeAirportCode(code);
   return nigerianOriginAirports.find((airport) => airport.code === normalizedCode);
+}
+
+export function normalizeAirportCode(code: string): string {
+  const normalizedCode = code.trim().toUpperCase();
+  return airportCodeAliases[normalizedCode] ?? normalizedCode;
 }

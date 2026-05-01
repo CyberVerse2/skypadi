@@ -78,6 +78,37 @@ test("chat agent", async () => {
     },
   });
 
+  const lagosAliasSearchDecision = await decideChatActionWithModel(
+    async () => ({
+      action: "searchFlights",
+      message: null,
+      searchFlightsInput: {
+        origin: "ENU",
+        destination: "LAG",
+        departureDate: "2026-05-08",
+        departureWindow: "anytime",
+        returnDate: null,
+        adults: 1,
+      },
+      collectTripDetailsInput: null,
+      sendControlledReplyInput: null,
+      startBookingJobInput: null,
+    }),
+    baseDecisionInput
+  );
+
+  assert.deepEqual(lagosAliasSearchDecision, {
+    type: "tool",
+    tool: "searchFlights",
+    input: {
+      origin: "ENU",
+      destination: "LOS",
+      departureDate: "2026-05-08",
+      departureWindow: "anytime",
+      adults: 1,
+    },
+  });
+
   const modelShapeCollectTripDetailsDecision = await decideChatActionWithModel(
     async () => ({
       action: "collectTripDetails",

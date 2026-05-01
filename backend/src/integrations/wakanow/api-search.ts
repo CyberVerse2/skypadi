@@ -5,7 +5,7 @@ import type {
   FlightSearchResult
 } from "../../schemas/flight-search";
 import { ProxyAgent, fetch as undiciFetch } from "undici";
-import { nigerianOriginAirports } from "../../domain/flight/airport-catalog";
+import { nigerianOriginAirports, normalizeAirportCode } from "../../domain/flight/airport-catalog";
 
 const FLIGHTS_API_BASE = "https://flights.wakanow.com/api/flights";
 const POLL_INTERVAL_MS = 1_500;
@@ -246,7 +246,7 @@ function resolveAirport(input: string) {
   if (match) return match;
 
   // Check if input is already an airport code
-  const upper = input.toUpperCase().trim();
+  const upper = normalizeAirportCode(input);
   for (const airport of Object.values(AIRPORT_CODES)) {
     if (airport.code === upper) return airport;
   }

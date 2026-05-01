@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { airportByCode, whatsappOriginRows } from "../../src/domain/flight/airport-catalog";
+import { airportByCode, normalizeAirportCode, whatsappOriginRows } from "../../src/domain/flight/airport-catalog";
 import { test } from "vitest";
 
 test("airport catalog", async () => {
@@ -19,6 +19,8 @@ test("airport catalog", async () => {
   ]);
   assert.equal(airportByCode("ENU")?.city, "Enugu");
   assert.equal(airportByCode("PHC")?.city, "Port Harcourt");
+  assert.equal(airportByCode("LAG")?.code, "LOS");
+  assert.equal(normalizeAirportCode("lag"), "LOS");
   assert.equal(airportByCode("xxx"), undefined);
 
   console.log("airport catalog tests passed");

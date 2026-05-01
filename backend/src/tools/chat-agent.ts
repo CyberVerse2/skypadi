@@ -2,6 +2,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { z } from "zod";
 
+import { normalizeAirportCode } from "../domain/flight/airport-catalog";
 import type { ChatAction, DecideChatActionInput } from "./chat-tool.types";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -150,8 +151,8 @@ function parseChatAction(value: unknown): ChatAction {
       type: "tool",
       tool: "searchFlights",
       input: {
-        origin: parsed.searchFlightsInput.origin,
-        destination: parsed.searchFlightsInput.destination,
+        origin: normalizeAirportCode(parsed.searchFlightsInput.origin),
+        destination: normalizeAirportCode(parsed.searchFlightsInput.destination),
         departureDate: parsed.searchFlightsInput.departureDate,
         ...(parsed.searchFlightsInput.departureWindow ? { departureWindow: parsed.searchFlightsInput.departureWindow } : {}),
         ...(parsed.searchFlightsInput.returnDate ? { returnDate: parsed.searchFlightsInput.returnDate } : {}),
@@ -168,8 +169,8 @@ function parseChatAction(value: unknown): ChatAction {
       type: "tool",
       tool: "collectTripDetails",
       input: {
-        ...(parsed.collectTripDetailsInput.origin ? { origin: parsed.collectTripDetailsInput.origin } : {}),
-        ...(parsed.collectTripDetailsInput.destination ? { destination: parsed.collectTripDetailsInput.destination } : {}),
+        ...(parsed.collectTripDetailsInput.origin ? { origin: normalizeAirportCode(parsed.collectTripDetailsInput.origin) } : {}),
+        ...(parsed.collectTripDetailsInput.destination ? { destination: normalizeAirportCode(parsed.collectTripDetailsInput.destination) } : {}),
         ...(parsed.collectTripDetailsInput.departureDate ? { departureDate: parsed.collectTripDetailsInput.departureDate } : {}),
         ...(parsed.collectTripDetailsInput.departureWindow ? { departureWindow: parsed.collectTripDetailsInput.departureWindow } : {}),
         ...(parsed.collectTripDetailsInput.returnDate ? { returnDate: parsed.collectTripDetailsInput.returnDate } : {}),
