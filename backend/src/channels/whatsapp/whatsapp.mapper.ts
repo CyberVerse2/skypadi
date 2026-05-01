@@ -1,4 +1,5 @@
 import type {
+  CtaButtonIntent,
   DocumentIntent,
   FlightListIntent,
   OriginListIntent,
@@ -30,6 +31,7 @@ const LIST_CTA_BUTTON_TEXT = "Choose city";
 export function mapUiIntentToWhatsAppMessage(intent: OriginListIntent): WhatsAppInteractiveListMessage;
 export function mapUiIntentToWhatsAppMessage(intent: FlightListIntent): WhatsAppInteractiveListMessage;
 export function mapUiIntentToWhatsAppMessage(intent: ReplyButtonsIntent): WhatsAppInteractiveButtonMessage;
+export function mapUiIntentToWhatsAppMessage(intent: CtaButtonIntent): WhatsAppInteractiveButtonMessage;
 export function mapUiIntentToWhatsAppMessage(intent: TextIntent): WhatsAppTextMessage;
 export function mapUiIntentToWhatsAppMessage(intent: DocumentIntent): WhatsAppDocumentMessage;
 export function mapUiIntentToWhatsAppMessage(intent: PassengerDetailsFlowIntent): WhatsAppInteractiveFlowMessage;
@@ -42,6 +44,8 @@ export function mapUiIntentToWhatsAppMessage(intent: UiIntent): WhatsAppMessageP
       return mapFlightList(intent);
     case "reply_buttons":
       return mapReplyButtons(intent);
+    case "cta_button":
+      return mapCtaButton(intent);
     case "text":
       assertPresent(intent.body, "text body");
       assertMaxLength(intent.body, MAX_TEXT_BODY_LENGTH, "text body");
@@ -200,6 +204,30 @@ function mapReplyButtons(intent: ReplyButtonsIntent): WhatsAppInteractiveButtonM
           type: "reply",
           reply: button,
         })),
+      },
+    },
+  };
+}
+
+function mapCtaButton(intent: CtaButtonIntent): WhatsAppInteractiveButtonMessage {
+  assertInteractiveBody(intent.body);
+  assertPresent(intent.button.id, "CTA button id");
+  assertMaxLength(intent.button.id, MAX_INTERACTIVE_ID_LENGTH, "CTA button id");
+  assertPresent(intent.button.title, "CTA button title");
+  assertMaxLength(intent.button.title, MAX_REPLY_BUTTON_TITLE_LENGTH, "CTA button title");
+
+  return {
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: { text: intent.body },
+      action: {
+        buttons: [
+          {
+            type: "reply",
+            reply: intent.button,
+          },
+        ],
       },
     },
   };

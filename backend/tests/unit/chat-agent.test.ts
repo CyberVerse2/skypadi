@@ -57,6 +57,8 @@ const modelShapeSearchDecision = await decideChatActionWithModel(
       returnDate: null,
       adults: 1,
     },
+    collectTripDetailsInput: null,
+    sendControlledReplyInput: null,
     startBookingJobInput: null,
   }),
   baseDecisionInput
@@ -74,11 +76,61 @@ assert.deepEqual(modelShapeSearchDecision, {
   },
 });
 
+const modelShapeCollectTripDetailsDecision = await decideChatActionWithModel(
+  async () => ({
+    action: "collectTripDetails",
+    message: null,
+    searchFlightsInput: null,
+    collectTripDetailsInput: {
+      origin: "LOS",
+      destination: null,
+      departureDate: "2026-05-09",
+      departureWindow: "morning",
+      returnDate: null,
+      adults: 1,
+    },
+    sendControlledReplyInput: null,
+    startBookingJobInput: null,
+  }),
+  baseDecisionInput
+);
+
+assert.deepEqual(modelShapeCollectTripDetailsDecision, {
+  type: "tool",
+  tool: "collectTripDetails",
+  input: {
+    origin: "LOS",
+    departureDate: "2026-05-09",
+    departureWindow: "morning",
+    adults: 1,
+  },
+});
+
+const modelShapeControlledReplyDecision = await decideChatActionWithModel(
+  async () => ({
+    action: "sendControlledReply",
+    message: null,
+    searchFlightsInput: null,
+    collectTripDetailsInput: null,
+    sendControlledReplyInput: { key: "skypadi_intro" },
+    startBookingJobInput: null,
+  }),
+  baseDecisionInput
+);
+
+assert.deepEqual(modelShapeControlledReplyDecision, {
+  type: "tool",
+  tool: "sendControlledReply",
+  input: { key: "skypadi_intro" },
+});
+
 const modelShapeReplyDecision = await decideChatActionWithModel(
   async () => ({
     action: "reply",
     message: "Sure. Which city are you flying from?",
     searchFlightsInput: null,
+    collectTripDetailsInput: null,
+    sendControlledReplyInput: null,
     startBookingJobInput: null,
   }),
   baseDecisionInput
@@ -108,6 +160,8 @@ await assert.rejects(
       action: "searchFlights",
       message: null,
       searchFlightsInput: null,
+      collectTripDetailsInput: null,
+      sendControlledReplyInput: null,
       startBookingJobInput: null,
     }),
     baseDecisionInput

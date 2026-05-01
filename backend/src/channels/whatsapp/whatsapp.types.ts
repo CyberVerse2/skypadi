@@ -16,6 +16,11 @@ export type UiIntent =
       buttons: Array<{ id: string; title: string }>;
     }
   | {
+      type: "cta_button";
+      body: string;
+      button: { id: string; title: string };
+    }
+  | {
       type: "text";
       body: string;
     }
@@ -37,6 +42,7 @@ export type UiIntent =
 export type OriginListIntent = Extract<UiIntent, { type: "origin_list" }>;
 export type FlightListIntent = Extract<UiIntent, { type: "flight_list" }>;
 export type ReplyButtonsIntent = Extract<UiIntent, { type: "reply_buttons" }>;
+export type CtaButtonIntent = Extract<UiIntent, { type: "cta_button" }>;
 export type TextIntent = Extract<UiIntent, { type: "text" }>;
 export type DocumentIntent = Extract<UiIntent, { type: "document" }>;
 export type PassengerDetailsFlowIntent = Extract<UiIntent, { type: "passenger_details_flow" }>;

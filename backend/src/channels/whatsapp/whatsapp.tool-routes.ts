@@ -8,10 +8,16 @@ import type { Passenger } from "../../schemas/flight-booking";
 import { findOrCreateConversation } from "../../domain/conversation/conversation.service";
 import type { ConversationRepository, WhatsAppMessageRepository } from "../../domain/conversation/conversation.types";
 import { decideChatActionWithModel, type ChatModel } from "../../tools/chat-agent";
-import type { ChatAction, ChatContext, ChatContextMessage } from "../../tools/chat-tool.types";
+import type {
+  ChatAction,
+  ChatContext,
+  ChatContextMessage,
+  CollectTripDetailsToolInput,
+  SearchFlightsToolInput,
+} from "../../tools/chat-tool.types";
 import { executeSearchFlightsTool } from "../../tools/search-flights.tool";
 import type { BookingSelectionHandler, FlightSearchHandler } from "./whatsapp.handlers";
-import { addFirstTimeOnboarding } from "./whatsapp.onboarding";
+import { addFirstTimeOnboarding, SKYPADI_ONBOARDING_MESSAGE } from "./whatsapp.onboarding";
 import { passengerActionFromReplyId, selectedFlightOptionIdFromReplyId } from "./whatsapp.reply-ids";
 
 export type WhatsAppToolRoutesOptions = {
@@ -246,6 +252,14 @@ export async function uiIntentFromChatAction(
     return { type: "text", body: action.message };
   }
 
+  if (action.tool === "sendControlledReply") {
+    return controlledReplyIntent(action.input.key);
+  }
+
+  if (action.tool === "collectTripDetails") {
+    return handleCollectedTripDetails(action.input, input);
+  }
+
   if (action.tool === "searchFlights") {
     return executeSearchFlightsTool({
       userId,
@@ -262,6 +276,112 @@ export async function uiIntentFromChatAction(
     phoneNumber: input.message.from,
     selectedFlightOptionId: action.input.selectedFlightOptionId,
   });
+}
+
+function controlledReplyIntent(key: "skypadi_intro"): UiIntent {
+  if (key === "skypadi_intro") {
+    return { type: "text", body: SKYPADI_ONBOARDING_MESSAGE };
+  }
+
+  return { type: "text", body: SKYPADI_ONBOARDING_MESSAGE };
+}
+
+async function handleCollectedTripDetails(
+  details: CollectTripDetailsToolInput,
+  input: {
+    conversation: PersistedInboundMessage["conversation"];
+    message: WhatsAppInboundMessage;
+    options: WhatsAppToolRoutesOptions;
+  }
+): Promise<UiIntent | undefined> {
+  const draft = mergeCollectedTripDetails(input.conversation.draft, details);
+  const nextMissingField = firstMissingSearchField(draft);
+  const savedConversation = await input.options.conversationRepository.save({
+    ...input.conversation,
+    draft: {
+      ...draft,
+      expectedField: nextMissingField,
+    },
+    updatedAt: new Date(),
+  });
+
+  const searchInput = searchInputFromDraft(savedConversation.draft);
+  if (searchInput) {
+    return executeSearchFlightsTool({
+      userId: requiredUserId(savedConversation),
+      conversationId: savedConversation.id,
+      phoneNumber: input.message.from,
+      input: searchInput,
+      flightSearchHandler: input.options.flightSearchHandler,
+    });
+  }
+
+  return nextMissingField ? promptForMissingTripField(nextMissingField) : undefined;
+}
+
+function mergeCollectedTripDetails(
+  draft: PersistedInboundMessage["conversation"]["draft"],
+  details: CollectTripDetailsToolInput
+): PersistedInboundMessage["conversation"]["draft"] {
+  return {
+    ...draft,
+    ...(details.origin ? { origin: details.origin } : {}),
+    ...(details.destination ? { destination: details.destination } : {}),
+    ...(details.departureDate ? { departureDate: details.departureDate } : {}),
+    ...(details.departureWindow ? { departureWindow: details.departureWindow } : {}),
+    ...(details.returnDate ? { returnDate: details.returnDate } : {}),
+    ...(details.adults ? { adults: details.adults } : {}),
+  };
+}
+
+function firstMissingSearchField(
+  draft: PersistedInboundMessage["conversation"]["draft"]
+): PersistedInboundMessage["conversation"]["draft"]["expectedField"] {
+  if (!draft.origin) return "origin";
+  if (!draft.destination) return "destination";
+  if (!draft.departureDate) return "departure_date";
+  if (!draft.adults) return "passengers";
+  return undefined;
+}
+
+function searchInputFromDraft(
+  draft: PersistedInboundMessage["conversation"]["draft"]
+): SearchFlightsToolInput | undefined {
+  if (!draft.origin || !draft.destination || !draft.departureDate || !draft.adults) return undefined;
+  return {
+    origin: draft.origin,
+    destination: draft.destination,
+    departureDate: draft.departureDate,
+    departureWindow: draft.departureWindow ?? "anytime",
+    ...(draft.returnDate ? { returnDate: draft.returnDate } : {}),
+    adults: draft.adults,
+  };
+}
+
+function promptForMissingTripField(
+  field: NonNullable<PersistedInboundMessage["conversation"]["draft"]["expectedField"]>
+): UiIntent {
+  if (field === "origin") {
+    return { type: "text", body: "Where are you flying from?" };
+  }
+
+  if (field === "destination") {
+    return { type: "text", body: "Where are you flying to?" };
+  }
+
+  if (field === "departure_date") {
+    return { type: "text", body: "What date do you want to travel?" };
+  }
+
+  return {
+    type: "reply_buttons",
+    body: "How many adults are travelling?",
+    buttons: [
+      { id: "passengers:1", title: "1 adult" },
+      { id: "passengers:2", title: "2 adults" },
+      { id: "passengers:more", title: "More" },
+    ],
+  };
 }
 
 async function passengerDetailsIntentFromMessage(

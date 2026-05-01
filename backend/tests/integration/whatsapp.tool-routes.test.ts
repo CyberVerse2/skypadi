@@ -36,9 +36,14 @@ const selectedFlightOptionId = "33333333-3333-4333-8333-333333333333";
 await rejectsInvalidMetaSignature();
 await dedupesProviderMessages();
 await prependsOnboardingForFirstTimeUsers();
+await usesSavedOnboardingForFirstTimeGreetingOnlyUsers();
+await usesControlledCopyWhenChatModelSelectsIt();
+await letsModelReplyToReturningGreetingUsers();
 await includesConversationContextForFollowUpAnswers();
 await dedupesRepeatedRecentMessagesBeforeChatModel();
 await repliesWhenChatModelFails();
+await asksControlledNextQuestionAfterTripDetailExtraction();
+await searchesWhenExtractedTripDetailsCompleteTheDraft();
 await executesSearchTool();
 await startsBookingFromFlightSelection();
 await continuesBookingWithSavedPassenger();
@@ -122,6 +127,84 @@ async function prependsOnboardingForFirstTimeUsers(): Promise<void> {
   const body = ((sentMessages[0]?.message as { text?: { body?: string } }).text?.body ?? "");
   assert.match(body, /^Hi, I’m Skypadi/);
   assert.match(body, /Sure\. Are you flying from Lagos\?/);
+
+  await app.close();
+}
+
+async function usesSavedOnboardingForFirstTimeGreetingOnlyUsers(): Promise<void> {
+  const sentMessages: SentMessage[] = [];
+  const app = buildToolRouteServer({
+    sentMessages,
+    messageRepository: createMemoryMessageRepository(),
+    chatModel: async () => ({
+      type: "reply",
+      message: "Hi! Where are you flying from, where to, what date, and how many adults?",
+    }),
+  });
+
+  const response = await signedPost(app, webhookBody({ id: "wamid.first-time-hi", text: "hi" }));
+  assert.equal(response.statusCode, 200);
+  await waitFor(() => sentMessages.length === 1);
+
+  const body = ((sentMessages[0]?.message as { text?: { body?: string } }).text?.body ?? "");
+  assert.match(body, /^Hi, I’m Skypadi/);
+  assert.doesNotMatch(body, /Where are you flying from, where to/);
+
+  await app.close();
+}
+
+async function usesControlledCopyWhenChatModelSelectsIt(): Promise<void> {
+  const sentMessages: SentMessage[] = [];
+  const app = buildToolRouteServer({
+    sentMessages,
+    messageRepository: createMemoryMessageRepository([
+      {
+        direction: "outbound",
+        textBody: "Hi, I’m Skypadi — your AI travel agent.",
+        sentAt: new Date("2026-05-01T10:00:00.000Z"),
+      },
+    ]),
+    chatModel: async () => ({
+      type: "tool",
+      tool: "sendControlledReply",
+      input: { key: "skypadi_intro" },
+    }),
+  });
+
+  const response = await signedPost(app, webhookBody({ id: "wamid.about-skypadi", text: "Tell me about skypadi" }));
+  assert.equal(response.statusCode, 200);
+  await waitFor(() => sentMessages.length === 1);
+
+  const body = ((sentMessages[0]?.message as { text?: { body?: string } }).text?.body ?? "");
+  assert.match(body, /^Hi, I’m Skypadi/);
+  assert.doesNotMatch(body, /WhatsApp flight booking assistant/);
+
+  await app.close();
+}
+
+async function letsModelReplyToReturningGreetingUsers(): Promise<void> {
+  const sentMessages: SentMessage[] = [];
+  const app = buildToolRouteServer({
+    sentMessages,
+    messageRepository: createMemoryMessageRepository([
+      {
+        direction: "outbound",
+        textBody: "Hi, I’m Skypadi — your AI travel agent.",
+        sentAt: new Date("2026-05-01T10:00:00.000Z"),
+      },
+    ]),
+    chatModel: async () => ({
+      type: "reply",
+      message: "Hi! Where are you flying from, where to, what date, and how many adults?",
+    }),
+  });
+
+  const response = await signedPost(app, webhookBody({ id: "wamid.returning-hi", text: "hi" }));
+  assert.equal(response.statusCode, 200);
+  await waitFor(() => sentMessages.length === 1);
+
+  const body = ((sentMessages[0]?.message as { text?: { body?: string } }).text?.body ?? "");
+  assert.equal(body, "Hi! Where are you flying from, where to, what date, and how many adults?");
 
   await app.close();
 }
@@ -271,6 +354,105 @@ async function repliesWhenChatModelFails(): Promise<void> {
   });
   const outbound = recentMessages.find((message) => message.direction === "outbound");
   assert.equal(outbound?.textBody?.includes("I’m having trouble responding right now."), true);
+
+  await app.close();
+}
+
+async function asksControlledNextQuestionAfterTripDetailExtraction(): Promise<void> {
+  const sentMessages: SentMessage[] = [];
+  let chatInput: DecideChatActionInput | undefined;
+  const app = buildToolRouteServer({
+    sentMessages,
+    messageRepository: createMemoryMessageRepository([
+      {
+        direction: "outbound",
+        textBody: "Hi, I’m Skypadi — your AI travel agent.",
+        sentAt: new Date("2026-05-01T10:00:00.000Z"),
+      },
+    ]),
+    chatModel: async (input) => {
+      chatInput = input;
+      return {
+        type: "tool",
+        tool: "collectTripDetails",
+        input: {
+          destination: "LOS",
+          departureDate: "2026-05-05",
+        },
+      };
+    },
+  });
+
+  const response = await signedPost(app, webhookBody({ id: "wamid.partial-trip", text: "I want to travel to Lagos next Tuesday" }));
+  assert.equal(response.statusCode, 200);
+  await waitFor(() => sentMessages.length === 1);
+
+  assert.equal(chatInput?.userText, "I want to travel to Lagos next Tuesday");
+  assert.deepEqual(sentMessages[0], {
+    to: "2348012345678",
+    message: {
+      type: "text",
+      text: { body: "Where are you flying from?" },
+    },
+  });
+
+  await app.close();
+}
+
+async function searchesWhenExtractedTripDetailsCompleteTheDraft(): Promise<void> {
+  const sentMessages: SentMessage[] = [];
+  let searchCalls = 0;
+  const app = buildToolRouteServer({
+    sentMessages,
+    initialConversation: {
+      draft: {
+        destination: "LOS",
+        departureDate: "2026-05-05",
+      },
+    },
+    chatModel: async () => ({
+      type: "tool",
+      tool: "collectTripDetails",
+      input: {
+        origin: "ENU",
+        departureWindow: "morning",
+        adults: 1,
+      },
+    }),
+    flightSearchHandler: {
+      async searchAndPresent(input: FlightSearchHandlerInput) {
+        searchCalls += 1;
+        assert.deepEqual(input.search, {
+          origin: "ENU",
+          destination: "LOS",
+          departureDate: "2026-05-05",
+          departureWindow: "morning",
+          tripType: "one_way",
+          returnDate: undefined,
+          adults: 1,
+        });
+        return {
+          type: "flight_list",
+          body: "I found the best morning option.",
+          buttonText: "Choose flight",
+          rows: [
+            {
+              id: flightOptionReplyId(selectedFlightOptionId),
+              title: "SkyPadi Air",
+              description: "08:45 - NGN 158,000",
+            },
+          ],
+        };
+      },
+    },
+  });
+
+  const response = await signedPost(app, webhookBody({ id: "wamid.complete-trip", text: "I am coming from Enugu, morning, just me" }));
+  assert.equal(response.statusCode, 200);
+  await waitFor(() => sentMessages.length === 1);
+
+  assert.equal(searchCalls, 1);
+  assert.equal(sentMessages[0]?.message.type, "interactive");
 
   await app.close();
 }

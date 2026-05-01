@@ -108,6 +108,19 @@ assert.equal(eveningButtons.buttons[1]?.title, "Cheapest overall");
 assert.match(eveningButtons.body, /Best Evening — United Nigeria/);
 assert.match(eveningButtons.body, /save ₦23,764/i);
 
+const cheapestMorningCta = rankedFlightOptionsToIntent(
+  rankFlightOptionsForDisplay([
+    option({ id: "best-morning", airline: "Aero", departureTime: "10:20", arrivalTime: "11:35", price: 106286 }),
+    option({ id: "later-morning", airline: "Air Peace", departureTime: "11:20", arrivalTime: "12:40", price: 136678 }),
+  ]),
+  "morning"
+);
+
+assert.equal(cheapestMorningCta.type, "cta_button");
+assert.equal(cheapestMorningCta.button.id, flightOptionReplyId("best-morning"));
+assert.equal(cheapestMorningCta.button.title, "Book this");
+assert.match(cheapestMorningCta.body, /Best Morning — Aero/);
+
 const directPreferred = rankFlightOptionsForDisplay([
   option({ id: "cheap-stop", airline: "Air Peace", departureTime: "14:25", arrivalTime: "09:50", price: 100000, stops: 1 }),
   option({ id: "direct", airline: "Aero", departureTime: "10:20", arrivalTime: "11:35", price: 106286 }),

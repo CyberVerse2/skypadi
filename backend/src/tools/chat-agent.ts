@@ -25,6 +25,19 @@ const searchFlightsInputSchema = z
     }
   });
 
+const collectTripDetailsInputSchema = z.object({
+  origin: airportCodeSchema.optional(),
+  destination: airportCodeSchema.optional(),
+  departureDate: dateSchema.optional(),
+  departureWindow: z.enum(["morning", "afternoon", "evening", "anytime"]).optional(),
+  returnDate: dateSchema.optional(),
+  adults: z.number().int().positive().optional(),
+});
+
+const sendControlledReplyInputSchema = z.object({
+  key: z.literal("skypadi_intro"),
+});
+
 const legacyChatActionSchema = z.union([
   z.object({
     type: z.literal("reply"),
@@ -35,6 +48,16 @@ const legacyChatActionSchema = z.union([
       type: z.literal("tool"),
       tool: z.literal("searchFlights"),
       input: searchFlightsInputSchema,
+    }),
+    z.object({
+      type: z.literal("tool"),
+      tool: z.literal("collectTripDetails"),
+      input: collectTripDetailsInputSchema,
+    }),
+    z.object({
+      type: z.literal("tool"),
+      tool: z.literal("sendControlledReply"),
+      input: sendControlledReplyInputSchema,
     }),
     z.object({
       type: z.literal("tool"),
@@ -55,10 +78,25 @@ const modelSearchFlightsInputSchema = z.object({
   adults: z.number().int().positive(),
 });
 
+const modelCollectTripDetailsInputSchema = z.object({
+  origin: airportCodeSchema.nullable(),
+  destination: airportCodeSchema.nullable(),
+  departureDate: dateSchema.nullable(),
+  departureWindow: z.enum(["morning", "afternoon", "evening", "anytime"]).nullable(),
+  returnDate: dateSchema.nullable(),
+  adults: z.number().int().positive().nullable(),
+});
+
+const modelSendControlledReplyInputSchema = z.object({
+  key: z.literal("skypadi_intro"),
+});
+
 const chatActionResponseSchema = z.object({
-  action: z.enum(["reply", "searchFlights", "startBookingJob"]),
+  action: z.enum(["reply", "searchFlights", "collectTripDetails", "sendControlledReply", "startBookingJob"]),
   message: z.string().trim().nullable(),
   searchFlightsInput: modelSearchFlightsInputSchema.nullable(),
+  collectTripDetailsInput: modelCollectTripDetailsInputSchema.nullable(),
+  sendControlledReplyInput: modelSendControlledReplyInputSchema.nullable(),
   startBookingJobInput: z
     .object({
       selectedFlightOptionId: z.string().uuid(),
@@ -122,6 +160,31 @@ function parseChatAction(value: unknown): ChatAction {
     };
   }
 
+  if (parsed.action === "collectTripDetails") {
+    if (!parsed.collectTripDetailsInput) {
+      throw new Error("collectTripDetails action requires collectTripDetailsInput");
+    }
+    return {
+      type: "tool",
+      tool: "collectTripDetails",
+      input: {
+        ...(parsed.collectTripDetailsInput.origin ? { origin: parsed.collectTripDetailsInput.origin } : {}),
+        ...(parsed.collectTripDetailsInput.destination ? { destination: parsed.collectTripDetailsInput.destination } : {}),
+        ...(parsed.collectTripDetailsInput.departureDate ? { departureDate: parsed.collectTripDetailsInput.departureDate } : {}),
+        ...(parsed.collectTripDetailsInput.departureWindow ? { departureWindow: parsed.collectTripDetailsInput.departureWindow } : {}),
+        ...(parsed.collectTripDetailsInput.returnDate ? { returnDate: parsed.collectTripDetailsInput.returnDate } : {}),
+        ...(parsed.collectTripDetailsInput.adults ? { adults: parsed.collectTripDetailsInput.adults } : {}),
+      },
+    };
+  }
+
+  if (parsed.action === "sendControlledReply") {
+    if (!parsed.sendControlledReplyInput) {
+      throw new Error("sendControlledReply action requires sendControlledReplyInput");
+    }
+    return { type: "tool", tool: "sendControlledReply", input: parsed.sendControlledReplyInput };
+  }
+
   if (!parsed.startBookingJobInput) {
     throw new Error("startBookingJob action requires startBookingJobInput");
   }
@@ -134,7 +197,9 @@ function buildPrompt(input: DecideChatActionInput): string {
     "Reply in at most three short sentences.",
     "Ask one question when required information is missing.",
     "Return action=reply with message when answering or asking a question.",
-    "Return action=searchFlights with searchFlightsInput only when origin, destination, departure date, and adult count are known.",
+    "Return action=sendControlledReply with key=skypadi_intro for Skypadi capability, product, about, or help questions.",
+    "Return action=collectTripDetails with collectTripDetailsInput when the user provides, confirms, or corrects trip details.",
+    "Return action=searchFlights with searchFlightsInput only when origin, destination, departure date, and adult count are known and no trip details need to be merged first.",
     "Return action=startBookingJob with startBookingJobInput only when the user clearly selected a flight option by ID already shown by the app.",
     "Do not call booking tools for side questions.",
     `Current date: ${input.now.toISOString().slice(0, 10)}`,

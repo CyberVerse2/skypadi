@@ -1,5 +1,5 @@
 import type { DbClient } from "../db/client";
-import type { FlightListIntent, ReplyButtonsIntent, UiIntent } from "../channels/whatsapp/whatsapp.types";
+import type { CtaButtonIntent, FlightListIntent, ReplyButtonsIntent, UiIntent } from "../channels/whatsapp/whatsapp.types";
 import { flightOptionReplyId } from "../channels/whatsapp/whatsapp.reply-ids";
 import { env } from "../config";
 import type { FlightSearchResponse } from "../schemas/flight-search";
@@ -99,7 +99,7 @@ export function createFlightSearchPresentationHandler(input: {
 export function rankedFlightOptionsToIntent(
   ranked: DisplayRankedFlightOptions,
   departureWindow = "anytime"
-): FlightListIntent | ReplyButtonsIntent {
+): FlightListIntent | ReplyButtonsIntent | CtaButtonIntent {
   const requestedWindow = normalizedDepartureWindow(departureWindow);
   if (requestedWindow) {
     const options = focusedWindowOptions(ranked, requestedWindow);
@@ -127,8 +127,19 @@ function focusedWindowOptionsToButtonIntent(
   options: RecommendedFlightOption[],
   requestedWindow: DepartureWindow,
   cheapest: DisplayFlightOption
-): ReplyButtonsIntent {
+): CtaButtonIntent | ReplyButtonsIntent {
   const selected = options[0]!;
+  if (cheapest.id === selected.flight.id) {
+    return {
+      type: "cta_button",
+      body: focusedWindowBody(options, requestedWindow, cheapest),
+      button: {
+        id: flightOptionReplyId(selected.flight.id),
+        title: "Book this",
+      },
+    };
+  }
+
   const buttons: ReplyButtonsIntent["buttons"] = [
     {
       id: flightOptionReplyId(selected.flight.id),
@@ -136,12 +147,10 @@ function focusedWindowOptionsToButtonIntent(
     },
   ];
 
-  if (cheapest.id !== selected.flight.id) {
-    buttons.push({
-      id: flightOptionReplyId(cheapest.id),
-      title: "Cheapest overall",
-    });
-  }
+  buttons.push({
+    id: flightOptionReplyId(cheapest.id),
+    title: "Cheapest overall",
+  });
 
   return {
     type: "reply_buttons",
