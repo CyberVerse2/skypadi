@@ -391,8 +391,22 @@ async function asksControlledNextQuestionAfterTripDetailExtraction(): Promise<vo
   assert.deepEqual(sentMessages[0], {
     to: "2348012345678",
     message: {
-      type: "text",
-      text: { body: "Where are you flying from?" },
+      type: "interactive",
+      interactive: {
+        type: "list",
+        body: { text: "Where are you flying from?" },
+        action: {
+          button: "Choose city",
+          sections: [
+            {
+              rows: [
+                { id: "origin:LOS", title: "Lagos", description: "Murtala Muhammed Airport" },
+                { id: "origin:ABV", title: "Abuja", description: "Nnamdi Azikiwe Airport" },
+              ],
+            },
+          ],
+        },
+      },
     },
   });
 

@@ -362,7 +362,14 @@ function promptForMissingTripField(
   field: NonNullable<PersistedInboundMessage["conversation"]["draft"]["expectedField"]>
 ): UiIntent {
   if (field === "origin") {
-    return { type: "text", body: "Where are you flying from?" };
+    return {
+      type: "origin_list",
+      body: "Where are you flying from?",
+      rows: [
+        { id: "origin:LOS", title: "Lagos", description: "Murtala Muhammed Airport" },
+        { id: "origin:ABV", title: "Abuja", description: "Nnamdi Azikiwe Airport" },
+      ],
+    };
   }
 
   if (field === "destination") {
