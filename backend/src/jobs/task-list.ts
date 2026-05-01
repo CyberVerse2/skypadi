@@ -1,3 +1,8 @@
 import type { TaskList } from "graphile-worker";
 
-export const taskList: TaskList = {};
+import { supplierBookingTaskName } from "./booking-queue";
+import { supplierBookingTask } from "./tasks/supplier-booking.task";
+
+export const taskList: TaskList = {
+  [supplierBookingTaskName]: supplierBookingTask,
+};

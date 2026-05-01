@@ -1,7 +1,14 @@
 import { createPricedBookingDraft } from "../domain/booking/booking.service";
-import type { BookingDraft, BookingRepository, CreateBookingDraftInput } from "../domain/booking/booking.types";
+import type {
+  BookingDraft,
+  BookingRepository,
+  CreateBookingDraftInput,
+  QueuedSupplierBooking,
+  QueueSupplierBookingInput,
+} from "../domain/booking/booking.types";
 import { passengerSchema, type Passenger } from "../schemas/flight-booking";
 import type { WakanowHoldClient } from "../integrations/wakanow/wakanow.booking";
+import { supplierBookingJobKey } from "../jobs/booking-queue";
 import { handleSupplierHoldResult, recordSupplierHoldDecision, type SupplierBookingRepository, type SupplierHoldDecision } from "./supplier-booking.workflow";
 import { makeOk, type WorkflowResult } from "./workflow-result";
 
@@ -27,7 +34,7 @@ export async function collectPassengerDetailsAndCreateSupplierHold(input: {
   conversationId: string;
   passenger?: Passenger;
   repository?: BookingRepository;
-  supplierClient?: WakanowHoldClient;
+  supplierClient?: Pick<WakanowHoldClient, "createHold">;
   supplierRepository?: SupplierBookingRepository;
   now?: Date;
 }): Promise<WorkflowResult<SupplierHoldDecision>> {
@@ -94,6 +101,63 @@ export async function collectPassengerDetailsAndCreateSupplierHold(input: {
   }
 
   return makeOk(recordedDecision);
+}
+
+export async function collectPassengerDetailsAndQueueSupplierBooking(
+  input: QueueSupplierBookingInput
+): Promise<WorkflowResult<QueuedSupplierBooking>> {
+  if (!input.repository) {
+    return { kind: "temporary_failure", reason: "booking repository dependency is required" };
+  }
+  if (!input.jobRepository) {
+    return { kind: "temporary_failure", reason: "supplier booking job repository dependency is required" };
+  }
+  if (!input.enqueueSupplierBooking) {
+    return { kind: "temporary_failure", reason: "supplier booking enqueue dependency is required" };
+  }
+
+  const booking = await input.repository.findActiveBookingForPassengerCollection({
+    userId: input.userId,
+    conversationId: input.conversationId,
+  });
+  if (!booking) {
+    return { kind: "permanent_failure", reason: "no active priced booking found for passenger collection" };
+  }
+
+  const passenger = input.passenger ? validatePassenger(input.passenger) : invalidPassenger("Passenger details must be submitted through the WhatsApp Flow.");
+  if (!passenger.ok) {
+    return {
+      kind: "needs_user_input",
+      field: "passenger_details",
+      ui: {
+        type: "text",
+        body: passenger.message,
+      },
+    };
+  }
+
+  const collectedAt = input.now ?? new Date();
+  await input.repository.collectPassengerDetails({
+    bookingId: booking.id,
+    userId: input.userId,
+    conversationId: input.conversationId,
+    passenger: passenger.value,
+    supplierContactEmail: booking.bookingEmailAlias,
+    collectedAt,
+  });
+
+  const job = await input.jobRepository.createQueued({
+    bookingId: booking.id,
+    graphileJobKey: supplierBookingJobKey(booking.id),
+    now: collectedAt,
+  });
+  await input.enqueueSupplierBooking({ bookingId: booking.id });
+
+  return makeOk({
+    bookingId: booking.id,
+    status: "supplier_booking_pending",
+    job,
+  });
 }
 
 type PassengerParseResult = { ok: true; value: Passenger } | { ok: false; message: string };

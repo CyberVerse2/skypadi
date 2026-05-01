@@ -175,7 +175,7 @@ export function createDrizzleBookingRepository(db: DbClient): BookingRepository 
           updated_booking as (
             update skypadi_whatsapp.bookings
             set
-              status = 'supplier_hold_pending',
+              status = 'supplier_booking_pending',
               customer_email = ${input.passenger.email},
               metadata = metadata || ${jsonb({
                 supplierContactEmail: input.supplierContactEmail,

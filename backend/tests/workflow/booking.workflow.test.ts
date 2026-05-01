@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 
-import { collectPassengerDetailsAndCreateSupplierHold, createBookingFromSelectedOption } from "../../src/workflows/booking.workflow";
+import {
+  collectPassengerDetailsAndCreateSupplierHold,
+  collectPassengerDetailsAndQueueSupplierBooking,
+  createBookingFromSelectedOption,
+} from "../../src/workflows/booking.workflow";
 import type {
   ActiveBookingForPassengerCollection,
   BookingRepository,
@@ -82,6 +86,65 @@ const missingRepository = await createBookingFromSelectedOption({
 assert.equal(missingRepository.kind, "temporary_failure");
 
 const supplierCalls: ActiveBookingForPassengerCollection[] = [];
+const enqueuedBookingIds: string[] = [];
+const queuedJobInputs: Array<{ bookingId: string; graphileJobKey: string; now: Date }> = [];
+const queuedResult = await collectPassengerDetailsAndQueueSupplierBooking({
+  userId: "user_123",
+  conversationId: "conv_123",
+  passenger: {
+    title: "Mr",
+    firstName: "Celestine",
+    lastName: "Ejiofor",
+    dateOfBirth: "1990-04-12",
+    nationality: "Nigerian",
+    gender: "Male",
+    phone: "08012345678",
+    email: "celestine@email.com",
+  },
+  repository,
+  jobRepository: {
+    async createQueued(input) {
+      queuedJobInputs.push(input);
+      return {
+        id: "job_123",
+        bookingId: input.bookingId,
+        graphileJobKey: input.graphileJobKey,
+        status: "queued",
+        attemptCount: 0,
+        queuedAt: input.now,
+        updatedAt: input.now,
+      };
+    },
+    async markRunning() {
+      throw new Error("not used in this test");
+    },
+    async markSucceeded() {
+      throw new Error("not used in this test");
+    },
+    async markFailed() {
+      throw new Error("not used in this test");
+    },
+  },
+  async enqueueSupplierBooking(payload) {
+    enqueuedBookingIds.push(payload.bookingId);
+  },
+  now: new Date("2026-05-01T12:00:00.000Z"),
+});
+
+assert.equal(queuedResult.kind, "ok");
+assert.equal(queuedJobInputs.length, 1);
+assert.equal(queuedJobInputs[0]?.bookingId, "11111111-1111-4111-8111-111111111111");
+assert.equal(queuedJobInputs[0]?.graphileJobKey, "supplier-booking:11111111-1111-4111-8111-111111111111");
+assert.deepEqual(enqueuedBookingIds, ["11111111-1111-4111-8111-111111111111"]);
+if (queuedResult.kind === "ok") {
+  assert.equal(queuedResult.value.bookingId, "11111111-1111-4111-8111-111111111111");
+  assert.equal(queuedResult.value.status, "supplier_booking_pending");
+  assert.equal(queuedResult.value.job.bookingId, "11111111-1111-4111-8111-111111111111");
+}
+assert.equal(collectedPassengerDetails.length, 1);
+assert.equal(collectedPassengerDetails[0]?.passenger.email, "celestine@email.com");
+assert.equal(collectedPassengerDetails[0]?.supplierContactEmail, "book_abc123@bookings.wakanow.com");
+
 const supplierHold = await collectPassengerDetailsAndCreateSupplierHold({
   userId: "user_123",
   conversationId: "conv_123",
@@ -132,9 +195,9 @@ if (supplierHold.kind === "ok") {
   assert.equal(supplierHold.value.status, "awaiting_payment_for_hold");
   assert.equal(supplierHold.value.supplierBookingRef, "WK123");
 }
-assert.equal(collectedPassengerDetails.length, 1);
-assert.equal(collectedPassengerDetails[0]?.passenger.email, "celestine@email.com");
-assert.equal(collectedPassengerDetails[0]?.supplierContactEmail, "book_abc123@bookings.wakanow.com");
+assert.equal(collectedPassengerDetails.length, 2);
+assert.equal(collectedPassengerDetails[1]?.passenger.email, "celestine@email.com");
+assert.equal(collectedPassengerDetails[1]?.supplierContactEmail, "book_abc123@bookings.wakanow.com");
 assert.equal(supplierCalls.length, 1);
 
 const invalidPassengerDetails = await collectPassengerDetailsAndCreateSupplierHold({

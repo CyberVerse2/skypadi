@@ -1,4 +1,9 @@
 import type { Passenger } from "../../schemas/flight-booking";
+import type {
+  SupplierBookingJobPayload,
+  SupplierBookingJobRecord,
+  SupplierBookingJobRepository,
+} from "../../jobs/booking-job.types";
 
 export const bookingStatuses = [
   "draft",
@@ -78,6 +83,22 @@ export type CreateBookingDraftInput = {
   idGenerator?: () => string;
   aliasTokenGenerator?: () => string;
   repository: BookingRepository;
+};
+
+export type QueueSupplierBookingInput = {
+  userId: string;
+  conversationId: string;
+  passenger?: Passenger;
+  repository?: BookingRepository;
+  jobRepository?: SupplierBookingJobRepository;
+  enqueueSupplierBooking?: (payload: SupplierBookingJobPayload) => Promise<void>;
+  now?: Date;
+};
+
+export type QueuedSupplierBooking = {
+  bookingId: string;
+  status: "supplier_booking_pending";
+  job: SupplierBookingJobRecord;
 };
 
 const terminalBookingStatuses = new Set<BookingStatus>([

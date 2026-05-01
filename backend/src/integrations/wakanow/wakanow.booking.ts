@@ -8,6 +8,7 @@ import { waitForInboundEmailOtp } from "../../workflows/inbound-email.workflow";
 
 export type WakanowHoldClient = {
   createHold(input: WakanowHoldRequest): Promise<SupplierHoldResult>;
+  createHoldForBooking(input: { bookingId: string }): Promise<SupplierHoldResult>;
 };
 
 export type WakanowHoldRequest = {
@@ -18,7 +19,7 @@ export type WakanowHoldRequest = {
 };
 
 export function createWakanowBrowserHoldClient(input: { db: DbClient }): WakanowHoldClient {
-  return {
+  const client: WakanowHoldClient = {
     async createHold(request) {
       const option = await findWakanowOption(input.db, request.selectedFlightOptionId);
       const passenger = passengerFromSnapshot(request.passengerSnapshot, request.contactEmail);
@@ -45,7 +46,12 @@ export function createWakanowBrowserHoldClient(input: { db: DbClient }): Wakanow
         rawStatus: result.status,
       };
     },
+    async createHoldForBooking(request) {
+      return client.createHold(await findReadyBookingForSupplierHold(input.db, request.bookingId));
+    },
   };
+
+  return client;
 }
 
 export function normalizeWakanowHoldStatus(input: {
@@ -155,6 +161,46 @@ async function findWakanowOption(db: DbClient, selectedFlightOptionId: string): 
   }
 
   return { searchKey, flightId, deeplink };
+}
+
+async function findReadyBookingForSupplierHold(db: DbClient, bookingId: string): Promise<WakanowHoldRequest> {
+  const result = await db.execute(sql`
+    select
+      b.id,
+      b.selected_flight_option_id,
+      bp.snapshot,
+      bea.email_address
+    from skypadi_whatsapp.bookings b
+    inner join skypadi_whatsapp.booking_passengers bp
+      on bp.booking_id = b.id
+      and bp.passenger_type = 'adult'
+    inner join skypadi_whatsapp.booking_email_aliases bea
+      on bea.booking_id = b.id
+      and bea.status = 'active'
+    where b.id = ${bookingId}
+      and b.status = 'supplier_booking_pending'
+    order by bp.created_at asc
+    limit 1
+  `);
+  const row = result.rows[0] as
+    | {
+        id: string;
+        selected_flight_option_id: string | null;
+        snapshot: Record<string, unknown>;
+        email_address: string;
+      }
+    | undefined;
+
+  if (!row?.selected_flight_option_id) {
+    throw new Error("Booking is not ready for supplier hold");
+  }
+
+  return {
+    bookingId: row.id,
+    selectedFlightOptionId: row.selected_flight_option_id,
+    passengerSnapshot: row.snapshot,
+    contactEmail: row.email_address,
+  };
 }
 
 function passengerFromSnapshot(snapshot: Record<string, unknown>, contactEmail: string): Passenger {
