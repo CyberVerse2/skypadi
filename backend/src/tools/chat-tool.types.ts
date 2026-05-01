@@ -35,11 +35,34 @@ export type StartBookingJobToolInput = {
   selectedFlightOptionId: string;
 };
 
+export type CollectTripDetailsToolInput = {
+  origin?: string;
+  destination?: string;
+  departureDate?: string;
+  departureWindow?: string;
+  returnDate?: string;
+  adults?: number;
+};
+
+export type SendControlledReplyToolInput = {
+  key: "skypadi_intro";
+};
+
 export type ChatToolRequest =
   | {
       type: "tool";
       tool: "searchFlights";
       input: SearchFlightsToolInput;
+    }
+  | {
+      type: "tool";
+      tool: "collectTripDetails";
+      input: CollectTripDetailsToolInput;
+    }
+  | {
+      type: "tool";
+      tool: "sendControlledReply";
+      input: SendControlledReplyToolInput;
     }
   | {
       type: "tool";
