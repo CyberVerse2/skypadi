@@ -52,6 +52,15 @@ assert.match(sqlText, /finished_at = null/);
 assert.match(sqlText, /queued_at = excluded\.queued_at/);
 assert.match(sqlText, /attempt_count = 0/);
 
+await repository.markRunning({
+  bookingId: "11111111-1111-4111-8111-111111111111",
+  startedAt: new Date("2026-05-01T10:02:00.000Z"),
+});
+
+const markRunningSqlText = sqlString(executedQueries[1]);
+assert.match(markRunningSqlText, /last_error = null/);
+assert.match(markRunningSqlText, /finished_at = null/);
+
 console.log("booking job repository tests passed");
 
 function sqlString(value: unknown): string {

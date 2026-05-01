@@ -96,7 +96,9 @@ export function createDrizzleSupplierBookingJobRepository(db: DbClient): Supplie
         update skypadi_whatsapp.supplier_booking_jobs
         set status = 'running',
             attempt_count = attempt_count + 1,
+            last_error = null,
             started_at = ${input.startedAt},
+            finished_at = null,
             updated_at = ${input.startedAt}
         where booking_id = ${input.bookingId}
         returning id, booking_id, graphile_job_key, status, attempt_count, last_error, queued_at, started_at, finished_at, updated_at
