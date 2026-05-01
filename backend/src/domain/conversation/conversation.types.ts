@@ -44,6 +44,13 @@ export type WhatsAppMessageRepository = {
     payload: Record<string, unknown>;
     receivedAt: Date;
   }): Promise<{ wasCreated: boolean }>;
+  recordOutboundMessage?(input: {
+    conversationId: string;
+    providerMessageId?: string;
+    textBody?: string;
+    payload: Record<string, unknown>;
+    sentAt: Date;
+  }): Promise<void>;
   listRecentMessages?(input: {
     conversationId: string;
     limit: number;

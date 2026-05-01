@@ -23,6 +23,7 @@ type SentMessage = {
 type RecentMessage = {
   direction: "inbound" | "outbound" | "system";
   textBody?: string;
+  payload?: Record<string, unknown>;
   receivedAt?: Date;
   sentAt?: Date;
 };
@@ -100,13 +101,8 @@ async function dedupesProviderMessages(): Promise<void> {
 async function includesConversationContextForFollowUpAnswers(): Promise<void> {
   const sentMessages: SentMessage[] = [];
   let chatInput: DecideChatActionInput | undefined;
-  const messageRepository = createMemoryMessageRepository([
-    {
-      direction: "outbound",
-      textBody: "Where are you flying from?",
-      sentAt: new Date("2026-05-01T09:01:00.000Z"),
-    },
-  ]);
+  const messageRepository = createMemoryMessageRepository();
+  let chatModelCalls = 0;
   const app = buildToolRouteServer({
     sentMessages,
     messageRepository,
@@ -119,15 +115,24 @@ async function includesConversationContextForFollowUpAnswers(): Promise<void> {
       },
     },
     chatModel: async (input) => {
+      chatModelCalls += 1;
       chatInput = input;
+      if (chatModelCalls === 1) {
+        return { type: "reply", message: "Where are you flying from?" };
+      }
       return { type: "reply", message: "Got Lagos. What time works best?" };
     },
   });
 
-  const response = await signedPost(app, webhookBody({ id: "wamid.context", text: "Lagos" }));
-  assert.equal(response.statusCode, 200);
+  const first = await signedPost(app, webhookBody({ id: "wamid.context.1", text: "I want to travel" }));
+  assert.equal(first.statusCode, 200);
   await waitFor(() => sentMessages.length === 1);
 
+  const second = await signedPost(app, webhookBody({ id: "wamid.context.2", text: "Lagos" }));
+  assert.equal(second.statusCode, 200);
+  await waitFor(() => sentMessages.length === 2);
+
+  assert.equal(chatModelCalls, 2);
   assert.equal(chatInput?.userText, "Lagos");
   assert.deepEqual(chatInput?.context.currentDraft, {
     destination: "DXB",
@@ -136,7 +141,12 @@ async function includesConversationContextForFollowUpAnswers(): Promise<void> {
     expectedField: "origin",
   });
   assert.equal(chatInput?.context.expectedField, "origin");
-  assert.equal(chatInput?.context.recentMessages?.[0]?.textBody, "Where are you flying from?");
+  assert.equal(
+    chatInput?.context.recentMessages?.some(
+      (message) => message.direction === "outbound" && message.textBody === "Where are you flying from?"
+    ),
+    true
+  );
   assert.equal(chatInput?.context.recentMessages?.at(-1)?.textBody, "Lagos");
 
   await app.close();
@@ -144,9 +154,11 @@ async function includesConversationContextForFollowUpAnswers(): Promise<void> {
 
 async function executesSearchTool(): Promise<void> {
   const sentMessages: SentMessage[] = [];
+  const messageRepository = createMemoryMessageRepository();
   let searchCalls = 0;
   const app = buildToolRouteServer({
     sentMessages,
+    messageRepository,
     chatModel: async () => ({
       type: "tool",
       tool: "searchFlights",
@@ -195,15 +207,24 @@ async function executesSearchTool(): Promise<void> {
 
   assert.equal(searchCalls, 1);
   assert.equal(sentMessages[0]?.message.type, "interactive");
+  const recentMessages = await messageRepository.listRecentMessages({
+    conversationId: savedConversationId,
+    limit: 8,
+  });
+  const outbound = recentMessages.find((message) => message.direction === "outbound");
+  assert.equal(outbound?.textBody, "I found these flights.");
+  assert.equal(outbound?.payload?.type, "interactive");
 
   await app.close();
 }
 
 async function startsBookingFromFlightSelection(): Promise<void> {
   const sentMessages: SentMessage[] = [];
+  const messageRepository = createMemoryMessageRepository();
   let bookingCalls = 0;
   const app = buildToolRouteServer({
     sentMessages,
+    messageRepository,
     bookingHandler: {
       async createFromFlightSelection(input: BookingSelectionInput) {
         bookingCalls += 1;
@@ -242,6 +263,13 @@ async function startsBookingFromFlightSelection(): Promise<void> {
   assert.equal(bookingCalls, 1);
   assert.equal(sentMessages[0]?.message.type, "interactive");
   assert.equal((sentMessages[0]?.message.interactive as { type?: string } | undefined)?.type, "flow");
+  const recentMessages = await messageRepository.listRecentMessages({
+    conversationId: savedConversationId,
+    limit: 8,
+  });
+  const outbound = recentMessages.find((message) => message.direction === "outbound");
+  assert.equal(outbound?.textBody, "Great choice. I need passenger details.");
+  assert.equal(outbound?.payload?.type, "interactive");
 
   await app.close();
 }
@@ -435,6 +463,20 @@ function createMemoryMessageRepository(initialMessages: RecentMessage[] = []) {
         receivedAt: input.receivedAt,
       });
       return { wasCreated: true };
+    },
+    async recordOutboundMessage(input: {
+      conversationId: string;
+      textBody?: string;
+      payload: Record<string, unknown>;
+      sentAt: Date;
+    }) {
+      assert.equal(input.conversationId, savedConversationId);
+      messages.push({
+        direction: "outbound",
+        textBody: input.textBody,
+        payload: input.payload,
+        sentAt: input.sentAt,
+      });
     },
     async listRecentMessages(input: { conversationId: string; limit: number }) {
       assert.equal(input.conversationId, savedConversationId);

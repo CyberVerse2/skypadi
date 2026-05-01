@@ -111,6 +111,26 @@ export function createDrizzleConversationRepository(db: DbClient): ConversationR
       `);
       return { wasCreated: result.rows.length > 0 };
     },
+    async recordOutboundMessage(input) {
+      await db.execute(sql`
+        insert into skypadi_whatsapp.conversation_messages (
+          conversation_id,
+          direction,
+          provider_message_id,
+          text_body,
+          payload,
+          sent_at
+        )
+        values (
+          ${input.conversationId},
+          'outbound',
+          ${input.providerMessageId ?? null},
+          ${input.textBody ?? null},
+          ${JSON.stringify(input.payload)}::jsonb,
+          ${input.sentAt}
+        )
+      `);
+    },
     async listRecentMessages(input) {
       const result = await db.execute(sql`
         select direction, text_body, received_at, sent_at

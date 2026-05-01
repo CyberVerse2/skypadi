@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import { mapUiIntentToWhatsAppMessage } from "./whatsapp.mapper";
 import type { WhatsAppClient } from "./whatsapp.client";
-import type { UiIntent } from "./whatsapp.types";
+import type { UiIntent, WhatsAppMessagePayload } from "./whatsapp.types";
 import type { Passenger } from "../../schemas/flight-booking";
 import { findOrCreateConversation } from "../../domain/conversation/conversation.service";
 import type { ConversationRepository, WhatsAppMessageRepository } from "../../domain/conversation/conversation.types";
@@ -135,6 +135,7 @@ async function processMessages(
           phoneNumber: message.from,
           selectedFlightOptionId,
         }),
+        conversation.id,
         message,
         options
       );
@@ -144,7 +145,7 @@ async function processMessages(
 
     const bookingIntent = await passengerDetailsIntentFromMessage(message, conversation, options);
     if (bookingIntent) {
-      await sendIntentReply(bookingIntent, message, options);
+      await sendIntentReply(bookingIntent, conversation.id, message, options);
       request.log.info({ providerMessageId: message.id, resultKind: "booking_passenger_details" }, "Processed WhatsApp booking message");
       continue;
     }
@@ -165,7 +166,7 @@ async function processMessages(
     });
     if (!intent) continue;
 
-    await sendIntentReply(intent, message, options);
+    await sendIntentReply(intent, conversation.id, message, options);
     request.log.info({ providerMessageId: message.id, resultKind: action.type }, "Processed WhatsApp tool message");
   }
 }
@@ -336,12 +337,34 @@ function requiredUserId(conversation: PersistedInboundMessage["conversation"]): 
 
 async function sendIntentReply(
   intent: UiIntent,
+  conversationId: string,
   message: WhatsAppInboundMessage,
   options: WhatsAppToolRoutesOptions
 ): Promise<void> {
+  const outboundMessage = mapUiIntentToWhatsAppMessage(intent);
   await options.whatsappClient.sendMessage({
     to: message.from,
-    message: mapUiIntentToWhatsAppMessage(intent),
+    message: outboundMessage,
+  });
+  await recordOutboundMessage({
+    conversationId,
+    intent,
+    message: outboundMessage,
+    options,
+  });
+}
+
+async function recordOutboundMessage(input: {
+  conversationId: string;
+  intent: UiIntent;
+  message: WhatsAppMessagePayload;
+  options: WhatsAppToolRoutesOptions;
+}): Promise<void> {
+  await input.options.messageRepository?.recordOutboundMessage?.({
+    conversationId: input.conversationId,
+    textBody: input.intent.body,
+    payload: input.message as unknown as Record<string, unknown>,
+    sentAt: new Date(),
   });
 }
 
