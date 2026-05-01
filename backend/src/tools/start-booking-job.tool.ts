@@ -17,12 +17,22 @@ export async function executeStartBookingJobTool(input: {
   }) => Promise<WorkflowResult<BookingDraft>>;
   inboundDomain?: string;
 }): Promise<UiIntent> {
-  const result = await input.createBookingFromSelectedOption({
-    userId: input.userId,
-    conversationId: input.conversationId,
-    selectedFlightOptionId: input.input.selectedFlightOptionId,
-    inboundDomain: input.inboundDomain ?? "booking.local",
-  });
+  const inboundDomain = input.inboundDomain?.trim();
+  if (!inboundDomain) {
+    return { type: "text", body: "I could not start that booking yet. Please try again shortly." };
+  }
+
+  let result: WorkflowResult<BookingDraft>;
+  try {
+    result = await input.createBookingFromSelectedOption({
+      userId: input.userId,
+      conversationId: input.conversationId,
+      selectedFlightOptionId: input.input.selectedFlightOptionId,
+      inboundDomain,
+    });
+  } catch {
+    return { type: "text", body: "I could not start that booking. Please choose another flight." };
+  }
 
   if (result.kind !== "ok") {
     return { type: "text", body: "I could not start that booking. Please choose another flight." };
