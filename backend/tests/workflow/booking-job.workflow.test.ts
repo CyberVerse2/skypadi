@@ -10,11 +10,13 @@ import {
 const now = new Date("2026-05-01T10:00:00.000Z");
 
 const created = createSupplierBookingJobRecord({
+  id: "22222222-2222-4222-8222-222222222222",
   bookingId: "11111111-1111-4111-8111-111111111111",
   graphileJobKey: "supplier-booking:11111111-1111-4111-8111-111111111111",
   now,
 });
 
+assert.equal(created.id, "22222222-2222-4222-8222-222222222222");
 assert.equal(created.status, "queued");
 assert.equal(created.attemptCount, 0);
 assert.equal(created.bookingId, "11111111-1111-4111-8111-111111111111");

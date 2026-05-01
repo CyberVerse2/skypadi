@@ -10,7 +10,7 @@ import type {
 
 export function createSupplierBookingJobRecord(input: CreateSupplierBookingJobInput): SupplierBookingJobRecord {
   return {
-    id: randomUUID(),
+    id: input.id,
     bookingId: input.bookingId,
     graphileJobKey: input.graphileJobKey,
     status: "queued",
@@ -55,7 +55,10 @@ export function markSupplierBookingJobFailed(
 export function createDrizzleSupplierBookingJobRepository(db: DbClient): SupplierBookingJobRepository {
   return {
     async createQueued(input) {
-      const record = createSupplierBookingJobRecord(input);
+      const record = createSupplierBookingJobRecord({
+        ...input,
+        id: randomUUID(),
+      });
       await db.execute(sql`
         insert into skypadi_whatsapp.supplier_booking_jobs (
           id,

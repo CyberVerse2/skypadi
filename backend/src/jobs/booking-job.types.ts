@@ -23,13 +23,14 @@ export type SupplierBookingJobRecord = {
 };
 
 export type CreateSupplierBookingJobInput = {
+  id: string;
   bookingId: string;
   graphileJobKey: string;
   now: Date;
 };
 
 export type SupplierBookingJobRepository = {
-  createQueued(input: CreateSupplierBookingJobInput): Promise<SupplierBookingJobRecord>;
+  createQueued(input: Omit<CreateSupplierBookingJobInput, "id">): Promise<SupplierBookingJobRecord>;
   markRunning(input: { bookingId: string; startedAt: Date }): Promise<SupplierBookingJobRecord>;
   markSucceeded(input: { bookingId: string; finishedAt: Date }): Promise<SupplierBookingJobRecord>;
   markFailed(input: {
