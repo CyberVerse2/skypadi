@@ -145,6 +145,73 @@ assert.equal(collectedPassengerDetails.length, 1);
 assert.equal(collectedPassengerDetails[0]?.passenger.email, "celestine@email.com");
 assert.equal(collectedPassengerDetails[0]?.supplierContactEmail, "book_abc123@bookings.wakanow.com");
 
+const failedJobMarks: Array<{ bookingId: string; errorMessage: string; retryable: boolean }> = [];
+const enqueueFailure = await collectPassengerDetailsAndQueueSupplierBooking({
+  userId: "user_123",
+  conversationId: "conv_123",
+  passenger: {
+    title: "Mr",
+    firstName: "Celestine",
+    lastName: "Ejiofor",
+    dateOfBirth: "1990-04-12",
+    nationality: "Nigerian",
+    gender: "Male",
+    phone: "08012345678",
+    email: "celestine@email.com",
+  },
+  repository,
+  jobRepository: {
+    async createQueued(input) {
+      return {
+        id: "job_failed_enqueue",
+        bookingId: input.bookingId,
+        graphileJobKey: input.graphileJobKey,
+        status: "queued",
+        attemptCount: 0,
+        queuedAt: input.now,
+        updatedAt: input.now,
+      };
+    },
+    async markRunning() {
+      throw new Error("not used in this test");
+    },
+    async markSucceeded() {
+      throw new Error("not used in this test");
+    },
+    async markFailed(input) {
+      failedJobMarks.push({
+        bookingId: input.bookingId,
+        errorMessage: input.errorMessage,
+        retryable: input.retryable,
+      });
+      return {
+        id: "job_failed_enqueue",
+        bookingId: input.bookingId,
+        graphileJobKey: "supplier-booking:11111111-1111-4111-8111-111111111111",
+        status: input.retryable ? "retryable_failed" : "terminal_failed",
+        attemptCount: 0,
+        lastError: input.errorMessage,
+        queuedAt: new Date("2026-05-01T12:05:00.000Z"),
+        finishedAt: input.failedAt,
+        updatedAt: input.failedAt,
+      };
+    },
+  },
+  async enqueueSupplierBooking() {
+    throw new Error("graphile enqueue unavailable");
+  },
+  now: new Date("2026-05-01T12:05:00.000Z"),
+});
+
+assert.equal(enqueueFailure.kind, "temporary_failure");
+if (enqueueFailure.kind === "temporary_failure") {
+  assert.equal(enqueueFailure.reason, "supplier booking enqueue failed");
+}
+assert.equal(failedJobMarks.length, 1);
+assert.equal(failedJobMarks[0]?.bookingId, "11111111-1111-4111-8111-111111111111");
+assert.equal(failedJobMarks[0]?.errorMessage, "graphile enqueue unavailable");
+assert.equal(failedJobMarks[0]?.retryable, true);
+
 const supplierHold = await collectPassengerDetailsAndCreateSupplierHold({
   userId: "user_123",
   conversationId: "conv_123",
@@ -195,9 +262,9 @@ if (supplierHold.kind === "ok") {
   assert.equal(supplierHold.value.status, "awaiting_payment_for_hold");
   assert.equal(supplierHold.value.supplierBookingRef, "WK123");
 }
-assert.equal(collectedPassengerDetails.length, 2);
-assert.equal(collectedPassengerDetails[1]?.passenger.email, "celestine@email.com");
-assert.equal(collectedPassengerDetails[1]?.supplierContactEmail, "book_abc123@bookings.wakanow.com");
+assert.equal(collectedPassengerDetails.length, 3);
+assert.equal(collectedPassengerDetails[2]?.passenger.email, "celestine@email.com");
+assert.equal(collectedPassengerDetails[2]?.supplierContactEmail, "book_abc123@bookings.wakanow.com");
 assert.equal(supplierCalls.length, 1);
 
 const invalidPassengerDetails = await collectPassengerDetailsAndCreateSupplierHold({

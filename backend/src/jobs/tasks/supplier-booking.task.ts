@@ -1,6 +1,8 @@
 import type { Task } from "graphile-worker";
+import { sql } from "drizzle-orm";
 
 import { db } from "../../db/client";
+import type { BookingStatus } from "../../domain/booking/booking.types";
 import { createWakanowBrowserHoldClient } from "../../integrations/wakanow/wakanow.booking";
 import {
   createDrizzleSupplierBookingRepository,
@@ -9,6 +11,7 @@ import {
 } from "../../workflows/supplier-booking.workflow";
 import { createDrizzleSupplierBookingJobRepository } from "../booking-job.repository";
 import type { SupplierBookingJobPayload } from "../booking-job.types";
+import { shouldSkipSupplierBookingForStatus } from "./supplier-booking-status";
 
 export const supplierBookingTask: Task = async (payload) => {
   assertSupplierBookingPayload(payload);
@@ -17,6 +20,12 @@ export const supplierBookingTask: Task = async (payload) => {
   await jobRepository.markRunning({ bookingId: payload.bookingId, startedAt: new Date() });
 
   try {
+    const bookingStatus = await findBookingStatus(payload.bookingId);
+    if (shouldSkipSupplierBookingForStatus(bookingStatus)) {
+      await jobRepository.markSucceeded({ bookingId: payload.bookingId, finishedAt: new Date() });
+      return;
+    }
+
     const supplierClient = createWakanowBrowserHoldClient({ db });
     const supplierRepository = createDrizzleSupplierBookingRepository(db);
     const supplierResult = await supplierClient.createHoldForBooking({ bookingId: payload.bookingId });
@@ -53,4 +62,15 @@ function assertSupplierBookingPayload(payload: unknown): asserts payload is Supp
 
 function isRetryableSupplierBookingError(message: string): boolean {
   return /timeout|network|browser|navigation|temporar/i.test(message);
+}
+
+async function findBookingStatus(bookingId: string): Promise<BookingStatus | undefined> {
+  const result = await db.execute(sql`
+    select status
+    from skypadi_whatsapp.bookings
+    where id = ${bookingId}
+    limit 1
+  `);
+  const row = result.rows[0] as { status: BookingStatus } | undefined;
+  return row?.status;
 }

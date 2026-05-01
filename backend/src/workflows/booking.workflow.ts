@@ -137,21 +137,46 @@ export async function collectPassengerDetailsAndQueueSupplierBooking(
   }
 
   const collectedAt = input.now ?? new Date();
-  await input.repository.collectPassengerDetails({
-    bookingId: booking.id,
-    userId: input.userId,
-    conversationId: input.conversationId,
-    passenger: passenger.value,
-    supplierContactEmail: booking.bookingEmailAlias,
-    collectedAt,
-  });
-
   const job = await input.jobRepository.createQueued({
     bookingId: booking.id,
     graphileJobKey: supplierBookingJobKey(booking.id),
     now: collectedAt,
   });
-  await input.enqueueSupplierBooking({ bookingId: booking.id });
+
+  try {
+    await input.repository.collectPassengerDetails({
+      bookingId: booking.id,
+      userId: input.userId,
+      conversationId: input.conversationId,
+      passenger: passenger.value,
+      supplierContactEmail: booking.bookingEmailAlias,
+      collectedAt,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Supplier booking queue preparation failed";
+    await input.jobRepository.markFailed({
+      bookingId: booking.id,
+      failedAt: new Date(),
+      errorMessage: message,
+      retryable: true,
+    });
+
+    return { kind: "temporary_failure", reason: "supplier booking queue preparation failed" };
+  }
+
+  try {
+    await input.enqueueSupplierBooking({ bookingId: booking.id });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Supplier booking enqueue failed";
+    await input.jobRepository.markFailed({
+      bookingId: booking.id,
+      failedAt: new Date(),
+      errorMessage: message,
+      retryable: true,
+    });
+
+    return { kind: "temporary_failure", reason: "supplier booking enqueue failed" };
+  }
 
   return makeOk({
     bookingId: booking.id,
