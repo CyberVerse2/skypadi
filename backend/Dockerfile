@@ -12,7 +12,7 @@ RUN npx patchright install chromium
 # Build
 COPY tsconfig.json ./
 COPY src ./src
-RUN npx tsc -p tsconfig.json
+RUN npm run build
 
 # Remove devDependencies after build
 RUN npm prune --omit=dev
