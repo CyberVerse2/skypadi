@@ -46,15 +46,24 @@ const legacyChatActionSchema = z.union([
   ]),
 ]);
 
+const modelSearchFlightsInputSchema = z.object({
+  origin: airportCodeSchema,
+  destination: airportCodeSchema,
+  departureDate: dateSchema,
+  departureWindow: z.enum(["morning", "afternoon", "evening", "anytime"]).nullable(),
+  returnDate: dateSchema.nullable(),
+  adults: z.number().int().positive(),
+});
+
 const chatActionResponseSchema = z.object({
   action: z.enum(["reply", "searchFlights", "startBookingJob"]),
-  message: z.string().trim().optional(),
-  searchFlightsInput: searchFlightsInputSchema.optional(),
+  message: z.string().trim().nullable(),
+  searchFlightsInput: modelSearchFlightsInputSchema.nullable(),
   startBookingJobInput: z
     .object({
       selectedFlightOptionId: z.string().uuid(),
     })
-    .optional(),
+    .nullable(),
 });
 
 export type ChatModel = (input: DecideChatActionInput) => Promise<unknown>;
@@ -99,7 +108,18 @@ function parseChatAction(value: unknown): ChatAction {
     if (!parsed.searchFlightsInput) {
       throw new Error("searchFlights action requires searchFlightsInput");
     }
-    return { type: "tool", tool: "searchFlights", input: parsed.searchFlightsInput };
+    return {
+      type: "tool",
+      tool: "searchFlights",
+      input: {
+        origin: parsed.searchFlightsInput.origin,
+        destination: parsed.searchFlightsInput.destination,
+        departureDate: parsed.searchFlightsInput.departureDate,
+        ...(parsed.searchFlightsInput.departureWindow ? { departureWindow: parsed.searchFlightsInput.departureWindow } : {}),
+        ...(parsed.searchFlightsInput.returnDate ? { returnDate: parsed.searchFlightsInput.returnDate } : {}),
+        adults: parsed.searchFlightsInput.adults,
+      },
+    };
   }
 
   if (!parsed.startBookingJobInput) {

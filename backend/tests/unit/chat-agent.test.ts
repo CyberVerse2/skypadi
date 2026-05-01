@@ -48,13 +48,16 @@ assert.deepEqual(replyDecision, {
 const modelShapeSearchDecision = await decideChatActionWithModel(
   async () => ({
     action: "searchFlights",
+    message: null,
     searchFlightsInput: {
       origin: "LOS",
       destination: "ENU",
       departureDate: "2026-05-09",
       departureWindow: "morning",
+      returnDate: null,
       adults: 1,
     },
+    startBookingJobInput: null,
   }),
   baseDecisionInput
 );
@@ -75,6 +78,8 @@ const modelShapeReplyDecision = await decideChatActionWithModel(
   async () => ({
     action: "reply",
     message: "Sure. Which city are you flying from?",
+    searchFlightsInput: null,
+    startBookingJobInput: null,
   }),
   baseDecisionInput
 );
@@ -101,6 +106,9 @@ await assert.rejects(
   decideChatActionWithModel(
     async () => ({
       action: "searchFlights",
+      message: null,
+      searchFlightsInput: null,
+      startBookingJobInput: null,
     }),
     baseDecisionInput
   ),
