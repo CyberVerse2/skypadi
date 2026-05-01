@@ -1,16 +1,28 @@
-import type { AddJobFunction } from "graphile-worker";
 import { makeWorkerUtils } from "graphile-worker";
 
 import type { SupplierBookingJobPayload } from "./booking-job.types";
 
 export const supplierBookingTaskName = "supplier-booking";
 
+export type SupplierBookingJobSpec = {
+  queueName: typeof supplierBookingTaskName;
+  maxAttempts: 3;
+  jobKey: string;
+  jobKeyMode: "unsafe_dedupe";
+};
+
+export type SupplierBookingAddJob = (
+  identifier: typeof supplierBookingTaskName,
+  payload: SupplierBookingJobPayload,
+  spec: SupplierBookingJobSpec,
+) => Promise<unknown>;
+
 export function supplierBookingJobKey(bookingId: string): string {
   return `${supplierBookingTaskName}:${bookingId}`;
 }
 
 export async function enqueueSupplierBookingJobWithAddJob(
-  addJob: AddJobFunction,
+  addJob: SupplierBookingAddJob,
   payload: SupplierBookingJobPayload,
 ): Promise<void> {
   await addJob(supplierBookingTaskName, payload, {
