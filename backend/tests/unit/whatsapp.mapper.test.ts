@@ -27,6 +27,28 @@ const tripButtons = mapUiIntentToWhatsAppMessage({
 assert.equal(tripButtons.interactive.type, "button");
 assert.equal(tripButtons.interactive.action.buttons[1].reply.id, "trip_type:return");
 
+const ctaButton = mapUiIntentToWhatsAppMessage({
+  type: "cta_button",
+  body: "I found the best morning option.",
+  button: { id: "flight:123", title: "Book this" },
+});
+
+assert.deepEqual(ctaButton, {
+  type: "interactive",
+  interactive: {
+    type: "button",
+    body: { text: "I found the best morning option." },
+    action: {
+      buttons: [
+        {
+          type: "reply",
+          reply: { id: "flight:123", title: "Book this" },
+        },
+      ],
+    },
+  },
+});
+
 const textMessage = mapUiIntentToWhatsAppMessage({
   type: "text",
   body: "I found a few flights for you.",
@@ -100,6 +122,16 @@ assert.throws(
       ],
     }),
   /at most 3 buttons/
+);
+
+assert.throws(
+  () =>
+    mapUiIntentToWhatsAppMessage({
+      type: "cta_button",
+      body: "Choose an option.",
+      button: { id: "book", title: "x".repeat(21) },
+    }),
+  /CTA button title.*20 characters/
 );
 
 assert.throws(

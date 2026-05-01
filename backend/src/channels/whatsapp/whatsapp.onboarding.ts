@@ -30,6 +30,7 @@ function supportsOnboardingPrefix(intent: UiIntent): boolean {
     intent.type === "text" ||
     intent.type === "flight_list" ||
     intent.type === "reply_buttons" ||
+    intent.type === "cta_button" ||
     intent.type === "passenger_details_flow"
   );
 }
