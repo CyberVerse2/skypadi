@@ -13,7 +13,12 @@ export function addFirstTimeOnboarding(intent: UiIntent | undefined, context: Ch
 }
 
 function shouldAddFirstTimeOnboarding(intent: UiIntent, context: ChatContext): boolean {
-  if (intent.type !== "text" && intent.type !== "flight_list" && intent.type !== "passenger_details_flow") {
+  if (
+    intent.type !== "text" &&
+    intent.type !== "flight_list" &&
+    intent.type !== "reply_buttons" &&
+    intent.type !== "passenger_details_flow"
+  ) {
     return false;
   }
 

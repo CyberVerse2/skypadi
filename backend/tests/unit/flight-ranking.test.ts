@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { rankFlightOptionsForDisplay } from "../../src/domain/flight/flight-search.service";
-import { presentStoredFlightOptions, rankedFlightOptionsToListIntent } from "../../src/workflows/flight-search.workflow";
+import { presentStoredFlightOptions, rankedFlightOptionsToIntent } from "../../src/workflows/flight-search.workflow";
 import { flightOptionReplyId } from "../../src/channels/whatsapp/whatsapp.reply-ids";
 import type { DisplayFlightOption } from "../../src/domain/flight/flight.types";
 
@@ -24,7 +24,7 @@ const lowStressRanked = rankFlightOptionsForDisplay([
 assert.equal(lowStressRanked.bestValue.id, "afternoon");
 assert.throws(() => rankFlightOptionsForDisplay([]), /At least one flight option is required/);
 
-const distinctAirlineList = rankedFlightOptionsToListIntent(
+const distinctAirlineList = rankedFlightOptionsToIntent(
   rankFlightOptionsForDisplay([
     option({ id: "value-early", airline: "ValueJet", departureTime: "07:30", arrivalTime: "08:40", price: 142000 }),
     option({ id: "value-late", airline: "ValueJet", departureTime: "10:30", arrivalTime: "11:45", price: 139000 }),
@@ -34,6 +34,8 @@ const distinctAirlineList = rankedFlightOptionsToListIntent(
   ])
 );
 
+assert.equal(distinctAirlineList.type, "flight_list");
+assert.equal(distinctAirlineList.buttonText, "Choose flight");
 assert.deepEqual(
   distinctAirlineList.rows.map((row) => row.id),
   [
@@ -65,7 +67,7 @@ assert.match(distinctAirlineList.body, /Evening — Green Africa/);
 assert.match(distinctAirlineList.body, /My recommendation: Ibom Air/);
 assert.match(distinctAirlineList.body, /cheapest afternoon/i);
 
-const morningList = rankedFlightOptionsToListIntent(
+const morningButtons = rankedFlightOptionsToIntent(
   rankFlightOptionsForDisplay([
     option({ id: "cheap-evening", airline: "Arik Air", departureTime: "17:50", arrivalTime: "19:05", price: 104405 }),
     option({ id: "best-morning", airline: "Aero", departureTime: "10:20", arrivalTime: "11:35", price: 106286 }),
@@ -74,19 +76,23 @@ const morningList = rankedFlightOptionsToListIntent(
   "morning"
 );
 
-assert.deepEqual(morningList.rows, [
+assert.equal(morningButtons.type, "reply_buttons");
+assert.deepEqual(morningButtons.buttons, [
   {
     id: flightOptionReplyId("best-morning"),
-    title: "1 Best: Aero",
-    description: "10:20-11:35 - NGN 106,286 - Direct",
+    title: "Book this",
+  },
+  {
+    id: flightOptionReplyId("cheap-evening"),
+    title: "Cheapest overall",
   },
 ]);
-assert.match(morningList.body, /Best Morning — Aero/);
-assert.match(morningList.body, /cheapest morning option/i);
-assert.match(morningList.body, /save ₦1,881/i);
-assert.match(morningList.body, /travel at evening/i);
+assert.match(morningButtons.body, /Best Morning — Aero/);
+assert.match(morningButtons.body, /cheapest morning option/i);
+assert.match(morningButtons.body, /save ₦1,881/i);
+assert.match(morningButtons.body, /travel at evening/i);
 
-const eveningList = rankedFlightOptionsToListIntent(
+const eveningButtons = rankedFlightOptionsToIntent(
   rankFlightOptionsForDisplay([
     option({ id: "cheap-morning", airline: "Aero", departureTime: "10:20", arrivalTime: "11:35", price: 106286 }),
     option({ id: "best-evening", airline: "United Nigeria", departureTime: "18:55", arrivalTime: "20:10", price: 130050 }),
@@ -94,10 +100,13 @@ const eveningList = rankedFlightOptionsToListIntent(
   "evening"
 );
 
-assert.equal(eveningList.rows.length, 1);
-assert.equal(eveningList.rows[0]?.id, flightOptionReplyId("best-evening"));
-assert.match(eveningList.body, /Best Evening — United Nigeria/);
-assert.match(eveningList.body, /save ₦23,764/i);
+assert.equal(eveningButtons.type, "reply_buttons");
+assert.equal(eveningButtons.buttons[0]?.id, flightOptionReplyId("best-evening"));
+assert.equal(eveningButtons.buttons[0]?.title, "Book this");
+assert.equal(eveningButtons.buttons[1]?.id, flightOptionReplyId("cheap-morning"));
+assert.equal(eveningButtons.buttons[1]?.title, "Cheapest overall");
+assert.match(eveningButtons.body, /Best Evening — United Nigeria/);
+assert.match(eveningButtons.body, /save ₦23,764/i);
 
 const directPreferred = rankFlightOptionsForDisplay([
   option({ id: "cheap-stop", airline: "Air Peace", departureTime: "14:25", arrivalTime: "09:50", price: 100000, stops: 1 }),

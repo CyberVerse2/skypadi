@@ -1,5 +1,5 @@
 import type { DbClient } from "../db/client";
-import type { FlightListIntent, UiIntent } from "../channels/whatsapp/whatsapp.types";
+import type { FlightListIntent, ReplyButtonsIntent, UiIntent } from "../channels/whatsapp/whatsapp.types";
 import { flightOptionReplyId } from "../channels/whatsapp/whatsapp.reply-ids";
 import { env } from "../config";
 import type { FlightSearchResponse } from "../schemas/flight-search";
@@ -91,34 +91,73 @@ export function createFlightSearchPresentationHandler(input: {
         return { type: "text", body: "I could not prepare flight options yet. Please try again." };
       }
 
-      return rankedFlightOptionsToListIntent(ranked.value, request.search.departureWindow);
+      return rankedFlightOptionsToIntent(ranked.value, request.search.departureWindow);
     },
   };
 }
 
-export function rankedFlightOptionsToListIntent(
+export function rankedFlightOptionsToIntent(
   ranked: DisplayRankedFlightOptions,
   departureWindow = "anytime"
-): FlightListIntent {
+): FlightListIntent | ReplyButtonsIntent {
   const requestedWindow = normalizedDepartureWindow(departureWindow);
-  const options = requestedWindow
-    ? focusedWindowOptions(ranked, requestedWindow)
-    : recommendedOptions(ranked);
+  if (requestedWindow) {
+    const options = focusedWindowOptions(ranked, requestedWindow);
+    return focusedWindowOptionsToButtonIntent(options, requestedWindow, ranked.cheapest);
+  }
 
+  return recommendedOptionsToListIntent(recommendedOptions(ranked), ranked.bestValue);
+}
+
+export const rankedFlightOptionsToListIntent = rankedFlightOptionsToIntent;
+
+function recommendedOptionsToListIntent(
+  options: RecommendedFlightOption[],
+  bestValue: DisplayFlightOption
+): FlightListIntent {
   return {
     type: "flight_list",
-    body: requestedWindow
-      ? focusedWindowBody(options, requestedWindow, ranked.cheapest)
-      : comparisonBody(options, ranked.bestValue),
+    body: comparisonBody(options, bestValue),
     buttonText: "Choose flight",
-    rows: options.map((option, index) => ({
-      id: flightOptionReplyId(option.flight.id),
-      title: truncate(`${index + 1} ${option.label}: ${option.flight.airline}`, 24),
-      description: truncate(
-        `${option.flight.departureTime}-${option.flight.arrivalTime} - NGN ${option.flight.price.toLocaleString("en-NG")} - ${directnessSummary(option.flight)}`,
-        72
-      ),
-    })),
+    rows: options.map((option, index) => flightOptionRow(option, index)),
+  };
+}
+
+function focusedWindowOptionsToButtonIntent(
+  options: RecommendedFlightOption[],
+  requestedWindow: DepartureWindow,
+  cheapest: DisplayFlightOption
+): ReplyButtonsIntent {
+  const selected = options[0]!;
+  const buttons: ReplyButtonsIntent["buttons"] = [
+    {
+      id: flightOptionReplyId(selected.flight.id),
+      title: "Book this",
+    },
+  ];
+
+  if (cheapest.id !== selected.flight.id) {
+    buttons.push({
+      id: flightOptionReplyId(cheapest.id),
+      title: "Cheapest overall",
+    });
+  }
+
+  return {
+    type: "reply_buttons",
+    body: focusedWindowBody(options, requestedWindow, cheapest),
+    buttons,
+  };
+}
+
+function flightOptionRow(option: RecommendedFlightOption, index: number): FlightListIntent["rows"][number] {
+  return {
+    id: flightOptionReplyId(option.flight.id),
+    title: truncate(`${index + 1} ${option.label}: ${option.flight.airline}`, 24),
+    description: truncate(
+      `${option.flight.departureTime}-${option.flight.arrivalTime} - NGN ${option.flight.price.toLocaleString("en-NG")} - ${directnessSummary(option.flight)}`,
+      72
+    ),
   };
 }
 
