@@ -66,6 +66,7 @@ export function createOpenAIChatModel(input: { apiKey: string; model: string }):
       model: openai.chat(input.model),
       schema: chatActionSchema,
       prompt: buildPrompt(decisionInput),
+      maxRetries: 0,
     });
     return result.object;
   };

@@ -37,6 +37,7 @@ await rejectsInvalidMetaSignature();
 await dedupesProviderMessages();
 await prependsOnboardingForFirstTimeUsers();
 await includesConversationContextForFollowUpAnswers();
+await repliesWhenChatModelFails();
 await executesSearchTool();
 await startsBookingFromFlightSelection();
 await continuesBookingWithSavedPassenger();
@@ -174,6 +175,51 @@ async function includesConversationContextForFollowUpAnswers(): Promise<void> {
     true
   );
   assert.equal(chatInput?.context.recentMessages?.at(-1)?.textBody, "Lagos");
+
+  await app.close();
+}
+
+async function repliesWhenChatModelFails(): Promise<void> {
+  const sentMessages: SentMessage[] = [];
+  const messageRepository = createMemoryMessageRepository();
+  const app = buildToolRouteServer({
+    sentMessages,
+    messageRepository,
+    initialConversation: {
+      draft: {
+        adults: 1,
+        origin: "ENU",
+        destination: "LOS",
+        departureDate: "2026-05-05",
+        departureWindow: "morning",
+        tripType: "one_way",
+      },
+    },
+    chatModel: async () => {
+      throw new Error("insufficient_quota");
+    },
+  });
+
+  const response = await signedPost(app, webhookBody({ id: "wamid.model-failure", text: "Heyyy" }));
+  assert.equal(response.statusCode, 200);
+  await waitFor(() => sentMessages.length === 1);
+
+  assert.deepEqual(sentMessages[0], {
+    to: "2348012345678",
+    message: {
+      type: "text",
+      text: {
+        body: "I’m having trouble responding right now. I still have your ENU to LOS morning trip for 2026-05-05. Please message me again shortly.",
+      },
+    },
+  });
+
+  const recentMessages = await messageRepository.listRecentMessages({
+    conversationId: savedConversationId,
+    limit: 8,
+  });
+  const outbound = recentMessages.find((message) => message.direction === "outbound");
+  assert.equal(outbound?.textBody?.includes("I’m having trouble responding right now."), true);
 
   await app.close();
 }
