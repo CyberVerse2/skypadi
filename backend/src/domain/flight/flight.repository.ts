@@ -68,6 +68,7 @@ export async function createStoredFlightSearchFromWakanow(input: {
         destination,
         departure_at,
         arrival_at,
+        duration_minutes,
         stops,
         amount,
         currency,
@@ -84,8 +85,9 @@ export async function createStoredFlightSearchFromWakanow(input: {
         ${result.airline},
         ${request.origin},
         ${request.destination},
-        ${dateTimeFromSearchResult(request.departureDate, result.departureTime)},
-        ${dateTimeFromSearchResult(request.departureDate, result.arrivalTime ?? result.departureTime)},
+        ${departureDateTimeFromSearchResult(request.departureDate, result.departureTime)},
+        ${arrivalDateTimeFromSearchResult(request.departureDate, result.departureTime, result.arrivalTime, result.duration)},
+        ${parseDurationMinutes(result.duration)},
         ${parseStops(result)},
         ${parsePriceAmount(result.priceText)},
         'NGN',
@@ -113,7 +115,31 @@ function parseStops(result: FlightSearchResult): number {
   return Number.parseInt(result.stops, 10) || 0;
 }
 
-function dateTimeFromSearchResult(date: string, time: string | null): Date {
+function departureDateTimeFromSearchResult(date: string, time: string | null): Date {
   if (!time) return new Date(`${date}T00:00:00.000+01:00`);
   return new Date(`${date}T${time}:00.000+01:00`);
+}
+
+function arrivalDateTimeFromSearchResult(
+  date: string,
+  departureTime: string | null,
+  arrivalTime: string | null,
+  duration: string | null
+): Date {
+  const departureAt = departureDateTimeFromSearchResult(date, departureTime);
+  const durationMinutes = parseDurationMinutes(duration);
+  if (durationMinutes !== null) {
+    return new Date(departureAt.getTime() + durationMinutes * 60_000);
+  }
+
+  const arrivalAt = departureDateTimeFromSearchResult(date, arrivalTime ?? departureTime);
+  return arrivalAt < departureAt ? new Date(arrivalAt.getTime() + 24 * 60 * 60_000) : arrivalAt;
+}
+
+function parseDurationMinutes(duration: string | null): number | null {
+  if (!duration) return null;
+  const hours = /(\d+)\s*h/.exec(duration)?.[1];
+  const minutes = /(\d+)\s*m/.exec(duration)?.[1];
+  const total = (hours ? Number.parseInt(hours, 10) * 60 : 0) + (minutes ? Number.parseInt(minutes, 10) : 0);
+  return total > 0 ? total : null;
 }

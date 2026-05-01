@@ -14,6 +14,7 @@ type StoredFlightOptionRow = {
   airline_name: string | null;
   departure_at: Date | string;
   arrival_at: Date | string;
+  duration_minutes: number | null;
   amount: string | number;
   stops: number;
 };
@@ -114,7 +115,7 @@ export function rankedFlightOptionsToListIntent(
       id: flightOptionReplyId(option.flight.id),
       title: truncate(`${index + 1} ${option.label}: ${option.flight.airline}`, 24),
       description: truncate(
-        `${option.flight.departureTime}-${option.flight.arrivalTime} - NGN ${option.flight.price.toLocaleString("en-NG")}`,
+        `${option.flight.departureTime}-${option.flight.arrivalTime} - NGN ${option.flight.price.toLocaleString("en-NG")} - ${directnessSummary(option.flight)}`,
         72
       ),
     })),
@@ -224,10 +225,10 @@ function bestWindowLabel(departureWindow: DepartureWindow): RecommendedFlightOpt
 
 function comparisonBody(options: RecommendedFlightOption[], bestValue: DisplayFlightOption): string {
   const recommendation = options.find((option) => option.flight.id === bestValue.id) ?? options[0]!;
-  const lines = options.map((option, index) => {
-    return `${index + 1}. ${option.bodyLabel} — ${option.flight.airline}\n${option.flight.departureTime} → ${option.flight.arrivalTime} — ₦${option.flight.price.toLocaleString("en-NG")}\n${detailLine(option)}`;
-  });
   const cheapest = options.find((option) => option.bodyLabel === "Cheapest") ?? options[0]!;
+  const lines = options.map((option, index) => {
+    return `${index + 1}. ${option.bodyLabel} — ${option.flight.airline}\n${option.flight.departureTime} → ${option.flight.arrivalTime} — ₦${option.flight.price.toLocaleString("en-NG")}\n${detailLine(option, cheapest.flight)}`;
+  });
   const premium = recommendation.flight.price - cheapest.flight.price;
   const reason = recommendationReason(recommendation, premium);
 
@@ -248,7 +249,7 @@ function focusedWindowBody(
   const lines = [
     `${selected.bodyLabel} — ${selected.flight.airline}`,
     `${selected.flight.departureTime} → ${selected.flight.arrivalTime} — ₦${selected.flight.price.toLocaleString("en-NG")}`,
-    `This is the cheapest ${requestedWindow} option I found.`,
+    `${directnessSummary(selected.flight)}. This is the cheapest ${requestedWindow} option I found.`,
   ];
 
   if (savings > 0 && cheapest.id !== selected.flight.id) {
@@ -262,11 +263,13 @@ function focusedWindowBody(
   return lines.join("\n\n");
 }
 
-function detailLine(option: RecommendedFlightOption): string {
-  if (option.label === "Best") return "Cheapest afternoon flight.";
-  if (option.label === "Fastest") return `${option.flight.durationMinutes} min flight time.`;
-  if (option.label === "Evening") return "Cheapest evening flight.";
-  return "Lowest fare.";
+function detailLine(option: RecommendedFlightOption, cheapest: DisplayFlightOption): string {
+  const premium = option.flight.price - cheapest.price;
+  const priceBand = premium > 0 ? `₦${premium.toLocaleString("en-NG")} more than cheapest.` : "Lowest fare.";
+  if (option.label === "Best") return `${directnessSummary(option.flight)}. Cheapest afternoon flight. ${priceBand}`;
+  if (option.label === "Fastest") return `${directnessSummary(option.flight)}. ${option.flight.durationMinutes} min flight time. ${priceBand}`;
+  if (option.label === "Evening") return `${directnessSummary(option.flight)}. Cheapest evening flight. ${priceBand}`;
+  return `${directnessSummary(option.flight)}. ${priceBand}`;
 }
 
 function recommendationReason(recommendation: RecommendedFlightOption, premium: number): string {
@@ -285,6 +288,12 @@ function timeWindowName(option: DisplayFlightOption): string {
   if (minutes >= 12 * 60 && minutes < 17 * 60) return "afternoon";
   if (minutes >= 17 * 60) return "evening";
   return "that time";
+}
+
+function directnessSummary(option: DisplayFlightOption): string {
+  if (option.stops === 0) return "Direct";
+  if (option.stops === 1) return "1 stop";
+  return `${option.stops} stops`;
 }
 
 function compareByPriceThenDeparture(left: DisplayFlightOption, right: DisplayFlightOption): number {
@@ -310,7 +319,7 @@ function toDisplayFlightOption(row: StoredFlightOptionRow, displayTimeZone = "Af
     airline: row.airline_name ?? "Unknown airline",
     departureTime: formatDepartureTime(row.departure_at, displayTimeZone),
     arrivalTime: formatDepartureTime(row.arrival_at, displayTimeZone),
-    durationMinutes: durationMinutes(row.departure_at, row.arrival_at),
+    durationMinutes: row.duration_minutes ?? durationMinutes(row.departure_at, row.arrival_at),
     price: Number(row.amount),
     stops: row.stops,
   };

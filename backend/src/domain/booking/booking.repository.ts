@@ -18,7 +18,7 @@ export function createDrizzleBookingRepository(db: DbClient): DrizzleBookingRepo
     async createDraft(input) {
       const result = await db.execute(sql`
         with selected_option as (
-          select fo.id
+          select fo.id, fo.supplier_option_id, fo.supplier_payload
           from skypadi_whatsapp.flight_options fo
           inner join skypadi_whatsapp.flight_searches fs on fs.id = fo.flight_search_id
           where fo.id = ${input.selectedFlightOptionId}
@@ -82,12 +82,15 @@ export function createDrizzleBookingRepository(db: DbClient): DrizzleBookingRepo
           inserted_booking.id,
           'booking.created',
           'system',
-          ${jsonb({
-            selectedFlightOptionId: input.selectedFlightOptionId,
-            bookingEmailAlias: input.bookingEmailAlias,
-          })},
+          jsonb_build_object(
+            'selectedFlightOptionId', ${input.selectedFlightOptionId},
+            'bookingEmailAlias', ${input.bookingEmailAlias},
+            'supplierOptionId', selected_option.supplier_option_id,
+            'searchKey', selected_option.supplier_payload->>'searchKey',
+            'deeplink', selected_option.supplier_payload->>'deeplink'
+          ),
           ${input.createdAt}
-        from inserted_booking
+        from inserted_booking, selected_option
         returning booking_id
       `);
       const rowCount = "rowCount" in result && typeof result.rowCount === "number" ? result.rowCount : result.rows.length;

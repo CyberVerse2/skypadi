@@ -51,10 +51,10 @@ assert.deepEqual(
 assert.deepEqual(
   distinctAirlineList.rows.map((row) => row.description),
   [
-    "10:30-11:45 - NGN 139,000",
-    "13:45-14:55 - NGN 158,000",
-    "06:45-07:45 - NGN 171,000",
-    "19:15-20:25 - NGN 160,000",
+    "10:30-11:45 - NGN 139,000 - Direct",
+    "13:45-14:55 - NGN 158,000 - Direct",
+    "06:45-07:45 - NGN 171,000 - Direct",
+    "19:15-20:25 - NGN 160,000 - Direct",
   ]
 );
 assert.match(distinctAirlineList.body, /I found 4 good options/);
@@ -78,7 +78,7 @@ assert.deepEqual(morningList.rows, [
   {
     id: flightOptionReplyId("best-morning"),
     title: "1 Best: Aero",
-    description: "10:20-11:35 - NGN 106,286",
+    description: "10:20-11:35 - NGN 106,286 - Direct",
   },
 ]);
 assert.match(morningList.body, /Best Morning — Aero/);
@@ -99,6 +99,22 @@ assert.equal(eveningList.rows[0]?.id, flightOptionReplyId("best-evening"));
 assert.match(eveningList.body, /Best Evening — United Nigeria/);
 assert.match(eveningList.body, /save ₦23,764/i);
 
+const directPreferred = rankFlightOptionsForDisplay([
+  option({ id: "cheap-stop", airline: "Air Peace", departureTime: "14:25", arrivalTime: "09:50", price: 100000, stops: 1 }),
+  option({ id: "direct", airline: "Aero", departureTime: "10:20", arrivalTime: "11:35", price: 106286 }),
+]);
+
+assert.equal(directPreferred.cheapest.id, "direct");
+assert.equal(directPreferred.options.some((flight) => flight.id === "cheap-stop"), false);
+
+const deduped = rankFlightOptionsForDisplay([
+  option({ id: "expensive-duplicate", airline: "Aero", departureTime: "10:20", arrivalTime: "11:35", price: 120000 }),
+  option({ id: "cheap-duplicate", airline: "Aero", departureTime: "10:20", arrivalTime: "11:35", price: 106286 }),
+]);
+
+assert.equal(deduped.cheapest.id, "cheap-duplicate");
+assert.equal(deduped.options.length, 1);
+
 const presented = await presentStoredFlightOptions("search_123", {
   displayTimeZone: "Africa/Lagos",
   db: {
@@ -109,6 +125,7 @@ const presented = await presentStoredFlightOptions("search_123", {
           airline_name: "Ibom Air",
           departure_at: "2026-06-10T07:45:00.000Z",
           arrival_at: "2026-06-10T08:55:00.000Z",
+          duration_minutes: 65,
           amount: "158000",
           stops: 0,
         },
@@ -121,7 +138,7 @@ assert.equal(presented.kind, "ok");
 if (presented.kind === "ok") {
   assert.equal(presented.value.cheapest.departureTime, "08:45");
   assert.equal(presented.value.cheapest.arrivalTime, "09:55");
-  assert.equal(presented.value.cheapest.durationMinutes, 70);
+  assert.equal(presented.value.cheapest.durationMinutes, 65);
 }
 console.log("flight ranking tests passed");
 
@@ -131,11 +148,12 @@ function option(input: {
   departureTime: string;
   arrivalTime: string;
   price: number;
+  stops?: number;
 }): DisplayFlightOption {
   return {
     ...input,
     durationMinutes: minutes(input.arrivalTime) - minutes(input.departureTime),
-    stops: 0,
+    stops: input.stops ?? 0,
   };
 }
 

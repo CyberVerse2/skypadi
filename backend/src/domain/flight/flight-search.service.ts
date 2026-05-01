@@ -5,19 +5,35 @@ export function rankFlightOptionsForDisplay(options: DisplayFlightOption[]): Dis
     throw new Error("At least one flight option is required");
   }
 
-  const sortedOptions = [...options].sort(compareByStableDisplayOrder);
-  const cheapest = [...sortedOptions].sort(compareByPriceThenDeparture)[0]!;
-  const bestValue = cheapestInWindow(sortedOptions, 12, 18) ?? cheapest;
-  const fastest = [...sortedOptions].sort(compareByDurationThenPrice)[0]!;
-  const evening = cheapestInWindow(sortedOptions, 18, 24) ?? cheapest;
+  const sortedOptions = dedupeIdenticalFlights(options).sort(compareByStableDisplayOrder);
+  const directOptions = sortedOptions.filter((option) => option.stops === 0);
+  const recommendationOptions = directOptions.length > 0 ? directOptions : sortedOptions;
+  const cheapest = [...recommendationOptions].sort(compareByPriceThenDeparture)[0]!;
+  const bestValue = cheapestInWindow(recommendationOptions, 12, 17) ?? cheapest;
+  const fastest = [...recommendationOptions].sort(compareByDurationThenPrice)[0]!;
+  const evening = cheapestInWindow(recommendationOptions, 17, 24) ?? cheapest;
 
   return {
     cheapest,
     bestValue,
     fastest,
     evening,
-    options: sortedOptions,
+    options: recommendationOptions,
   };
+}
+
+function dedupeIdenticalFlights(options: DisplayFlightOption[]): DisplayFlightOption[] {
+  const selected = new Map<string, DisplayFlightOption>();
+  for (const option of [...options].sort(compareByPriceThenDeparture)) {
+    const key = [
+      option.airline.trim().toLowerCase(),
+      option.departureTime,
+      option.arrivalTime,
+      option.stops,
+    ].join("|");
+    if (!selected.has(key)) selected.set(key, option);
+  }
+  return [...selected.values()];
 }
 
 function compareByStableDisplayOrder(left: DisplayFlightOption, right: DisplayFlightOption): number {
