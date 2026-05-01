@@ -25,6 +25,7 @@ export type ConversationRecord = {
   id: string;
   userId?: string;
   phoneNumber: string;
+  status?: ConversationState;
   draft: ConversationDraft;
   updatedAt: Date;
 };
@@ -43,6 +44,17 @@ export type WhatsAppMessageRepository = {
     payload: Record<string, unknown>;
     receivedAt: Date;
   }): Promise<{ wasCreated: boolean }>;
+  listRecentMessages?(input: {
+    conversationId: string;
+    limit: number;
+  }): Promise<
+    Array<{
+      direction: "inbound" | "outbound" | "system";
+      textBody?: string;
+      receivedAt?: Date;
+      sentAt?: Date;
+    }>
+  >;
 };
 
 export type ConversationState =

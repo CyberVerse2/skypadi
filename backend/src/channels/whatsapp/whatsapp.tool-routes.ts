@@ -8,7 +8,7 @@ import type { Passenger } from "../../schemas/flight-booking";
 import { findOrCreateConversation } from "../../domain/conversation/conversation.service";
 import type { ConversationRepository, WhatsAppMessageRepository } from "../../domain/conversation/conversation.types";
 import { decideChatActionWithModel, type ChatModel } from "../../tools/chat-agent";
-import type { ChatAction } from "../../tools/chat-tool.types";
+import type { ChatAction, ChatContext, ChatContextMessage } from "../../tools/chat-tool.types";
 import { executeSearchFlightsTool } from "../../tools/search-flights.tool";
 import type { BookingSelectionHandler, FlightSearchHandler } from "./whatsapp.routes";
 
@@ -108,7 +108,7 @@ async function persistInboundMessages(
       phoneNumber: message.from,
       conversationId: savedConversation.id,
       providerMessageId: message.id,
-      textBody: message.text?.body,
+      textBody: chatTextFromMessage(message),
       payload: message as unknown as Record<string, unknown>,
       receivedAt: now,
     });
@@ -149,16 +149,13 @@ async function processMessages(
       continue;
     }
 
-    if (!isChatMessage(message)) continue;
+    const userText = chatTextFromMessage(message);
+    if (!userText) continue;
 
     const action = await decideChatActionWithModel(options.chatModel, {
-      userText: message.text?.body ?? "",
+      userText,
       now,
-      context: {
-        conversationId: conversation.id,
-        userId: requiredUserId(conversation),
-        phoneNumber: message.from,
-      },
+      context: await chatContextFromConversation({ conversation, message, options }),
     });
 
     const intent = await uiIntentFromChatAction(action, {
@@ -212,13 +209,60 @@ async function passengerDetailsIntentFromMessage(
 ): Promise<UiIntent | undefined> {
   const passenger = passengerFromFlowReply(message);
   if (!passenger) return undefined;
-  return options.bookingHandler.collectPassengerDetails({
-    userId: requiredUserId(conversation),
-    conversationId: conversation.id,
-    phoneNumber: message.from,
-    text: "",
-    passenger,
-  });
+  try {
+    return (
+      (await options.bookingHandler.collectPassengerDetails({
+        userId: requiredUserId(conversation),
+        conversationId: conversation.id,
+        phoneNumber: message.from,
+        text: "",
+        passenger,
+      })) ?? supplierBookingStartFailureIntent()
+    );
+  } catch {
+    return supplierBookingStartFailureIntent();
+  }
+}
+
+async function chatContextFromConversation(input: {
+  conversation: PersistedInboundMessage["conversation"];
+  message: WhatsAppInboundMessage;
+  options: WhatsAppToolRoutesOptions;
+}): Promise<ChatContext> {
+  const recentMessages = await loadRecentMessages(input.options.messageRepository, input.conversation.id);
+  return {
+    conversationId: input.conversation.id,
+    userId: requiredUserId(input.conversation),
+    phoneNumber: input.message.from,
+    conversationStatus: input.conversation.status,
+    currentDraft: { ...input.conversation.draft },
+    expectedField: input.conversation.draft.expectedField,
+    recentMessages,
+  };
+}
+
+async function loadRecentMessages(
+  repository: WhatsAppMessageRepository | undefined,
+  conversationId: string
+): Promise<ChatContextMessage[] | undefined> {
+  const rows = await repository?.listRecentMessages?.({ conversationId, limit: 8 });
+  if (!rows?.length) return undefined;
+
+  return rows
+    .filter((message) => message.textBody?.trim())
+    .map((message) => ({
+      direction: message.direction,
+      textBody: message.textBody,
+      receivedAt: message.receivedAt?.toISOString(),
+      sentAt: message.sentAt?.toISOString(),
+    }));
+}
+
+function supplierBookingStartFailureIntent(): UiIntent {
+  return {
+    type: "text",
+    body: "I could not start the supplier booking yet. Please try again shortly.",
+  };
 }
 
 function passengerFromFlowReply(message: WhatsAppInboundMessage): Passenger | undefined {
@@ -254,8 +298,33 @@ function selectedFlightOptionIdFromMessage(message: WhatsAppInboundMessage): str
   return replyId.slice(prefix.length);
 }
 
-function isChatMessage(message: WhatsAppInboundMessage): boolean {
-  return message.type === "text" && Boolean(message.text?.body);
+function chatTextFromMessage(message: WhatsAppInboundMessage): string | undefined {
+  if (message.type === "text" && message.text?.body?.trim()) {
+    return message.text.body.trim();
+  }
+
+  if (message.type !== "interactive") return undefined;
+
+  const replyId = message.interactive?.button_reply?.id ?? message.interactive?.list_reply?.id;
+  if (!replyId) return undefined;
+  const title = message.interactive?.button_reply?.title ?? message.interactive?.list_reply?.title;
+
+  if (replyId.startsWith("origin:")) {
+    return selectedReplyText("Origin selected", replyId.slice("origin:".length), title);
+  }
+  if (replyId.startsWith("trip_type:")) {
+    return selectedReplyText("Trip type selected", replyId.slice("trip_type:".length), title);
+  }
+  if (replyId.startsWith("passengers:")) {
+    return selectedReplyText("Passengers selected", replyId.slice("passengers:".length), title);
+  }
+
+  return selectedReplyText("Selected", replyId, title);
+}
+
+function selectedReplyText(prefix: string, value: string, title: string | undefined): string {
+  const trimmedTitle = title?.trim();
+  return trimmedTitle ? `${prefix}: ${value} (${trimmedTitle})` : `${prefix}: ${value}`;
 }
 
 function requiredUserId(conversation: PersistedInboundMessage["conversation"]): string {
