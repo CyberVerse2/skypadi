@@ -165,8 +165,7 @@ async function findBookingSummaryForSelectedFlight(input: {
       destination,
       airline_name,
       departure_at,
-      amount,
-      fare_rules
+      amount
     from skypadi_whatsapp.flight_options
     where id = ${input.selectedFlightOptionId}
     limit 1
@@ -178,7 +177,6 @@ async function findBookingSummaryForSelectedFlight(input: {
         airline_name: string | null;
         departure_at: Date | string;
         amount: string | number;
-        fare_rules?: Record<string, unknown> | null;
       }
     | undefined;
   if (!row) return undefined;
@@ -186,9 +184,7 @@ async function findBookingSummaryForSelectedFlight(input: {
   return {
     route: `${row.origin} → ${row.destination}`,
     flight: `${row.airline_name ?? "Selected airline"}, ${formatFlightSummaryTime(row.departure_at, input.displayTimeZone)}`,
-    baggage: row.fare_rules?.baggageIncluded === false
-      ? "check baggage before paying"
-      : "standard cabin + checked baggage included",
+    baggage: "standard airline baggage rules apply",
     fare: Number(row.amount),
     currency: "NGN",
     skypadiFee: 3000,

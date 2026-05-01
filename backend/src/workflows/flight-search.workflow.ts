@@ -12,9 +12,9 @@ type StoredFlightOptionRow = {
   id: string;
   airline_name: string | null;
   departure_at: Date | string;
+  arrival_at: Date | string;
   amount: string | number;
   stops: number;
-  fare_rules?: unknown;
 };
 
 export type FlightSearchWorkflowDependencies = {
@@ -94,71 +94,124 @@ export function createFlightSearchPresentationHandler(input: {
 }
 
 export function rankedFlightOptionsToListIntent(ranked: DisplayRankedFlightOptions): FlightListIntent {
-  const options = topDistinctAirlineOptions(ranked.options, 3);
+  const options = recommendedOptions(ranked);
 
   return {
     type: "flight_list",
     body: comparisonBody(options, ranked.bestValue),
     buttonText: "Choose flight",
     rows: options.map((option, index) => ({
-      id: flightOptionReplyId(option.id),
-      title: truncate(`${index + 1} ${listRowLabel(option, index, ranked.bestValue)}: ${option.airline}`, 24),
+      id: flightOptionReplyId(option.flight.id),
+      title: truncate(`${index + 1} ${option.label}: ${option.flight.airline}`, 24),
       description: truncate(
-        `${option.departureTime} - NGN ${option.price.toLocaleString("en-NG")} - ${baggageSummary(option)}`,
+        `${option.flight.departureTime}-${option.flight.arrivalTime} - NGN ${option.flight.price.toLocaleString("en-NG")}`,
         72
       ),
     })),
   };
 }
 
-function topDistinctAirlineOptions(options: DisplayFlightOption[], limit: number): DisplayFlightOption[] {
-  const selected = new Map<string, DisplayFlightOption>();
-  for (const option of [...options].sort((left, right) => left.price - right.price || left.departureTime.localeCompare(right.departureTime))) {
-    const key = option.airline.trim().toLowerCase();
-    if (!selected.has(key)) selected.set(key, option);
-    if (selected.size >= limit) break;
+type RecommendedFlightOption = {
+  label: "Cheapest" | "Best" | "Fastest" | "Evening";
+  bodyLabel: "Cheapest" | "Best Value" | "Fastest" | "Evening";
+  flight: DisplayFlightOption;
+};
+
+function recommendedOptions(ranked: DisplayRankedFlightOptions): RecommendedFlightOption[] {
+  const selected: RecommendedFlightOption[] = [];
+  const usedFlightIds = new Set<string>();
+  const categories: Array<Omit<RecommendedFlightOption, "flight"> & { flight: DisplayFlightOption }> = [
+    { label: "Cheapest", bodyLabel: "Cheapest", flight: ranked.cheapest },
+    { label: "Best", bodyLabel: "Best Value", flight: ranked.bestValue },
+    { label: "Fastest", bodyLabel: "Fastest", flight: ranked.fastest },
+    { label: "Evening", bodyLabel: "Evening", flight: ranked.evening },
+  ];
+
+  for (const category of categories) {
+    const fallback = findReplacementFlight({
+      category,
+      options: ranked.options,
+      usedFlightIds,
+    });
+    if (!fallback) continue;
+    selected.push({ label: category.label, bodyLabel: category.bodyLabel, flight: fallback });
+    usedFlightIds.add(fallback.id);
   }
-  return [...selected.values()];
+
+  return selected;
 }
 
-function comparisonBody(options: DisplayFlightOption[], bestValue: DisplayFlightOption): string {
-  const recommendation = options.find((option) => option.id === bestValue.id) ?? options[0]!;
+function findReplacementFlight(input: {
+  category: RecommendedFlightOption;
+  options: DisplayFlightOption[];
+  usedFlightIds: Set<string>;
+}): DisplayFlightOption | undefined {
+  if (!input.usedFlightIds.has(input.category.flight.id)) {
+    return input.category.flight;
+  }
+
+  const candidates = candidatesForCategory(input.category, input.options)
+    .filter((option) => !input.usedFlightIds.has(option.id));
+  return candidates[0];
+}
+
+function candidatesForCategory(category: RecommendedFlightOption, options: DisplayFlightOption[]): DisplayFlightOption[] {
+  if (category.label === "Best") {
+    return options.filter((option) => isInDepartureWindow(option, 12, 18)).sort(compareByPriceThenDeparture);
+  }
+  if (category.label === "Fastest") {
+    return [...options].sort(compareByDurationThenPrice);
+  }
+  if (category.label === "Evening") {
+    return options.filter((option) => isInDepartureWindow(option, 18, 24)).sort(compareByPriceThenDeparture);
+  }
+  return [...options].sort(compareByPriceThenDeparture);
+}
+
+function comparisonBody(options: RecommendedFlightOption[], bestValue: DisplayFlightOption): string {
+  const recommendation = options.find((option) => option.flight.id === bestValue.id) ?? options[0]!;
   const lines = options.map((option, index) => {
-    const label = comparisonLabel(option, index, recommendation);
-    return `${index + 1}. ${label} — ${option.airline}\n${option.departureTime} — ₦${option.price.toLocaleString("en-NG")}\n${comparisonBaggageSummary(option)}`;
+    return `${index + 1}. ${option.bodyLabel} — ${option.flight.airline}\n${option.flight.departureTime} → ${option.flight.arrivalTime} — ₦${option.flight.price.toLocaleString("en-NG")}\n${detailLine(option)}`;
   });
-  const cheapest = options[0]!;
-  const premium = recommendation.price - cheapest.price;
-  const reason =
-    premium > 0
-      ? `It is ₦${premium.toLocaleString("en-NG")} more than the cheapest, but it should be less rushed and not stressful overall.`
-      : "It is the cheapest solid option and keeps the trip simple.";
+  const cheapest = options.find((option) => option.bodyLabel === "Cheapest") ?? options[0]!;
+  const premium = recommendation.flight.price - cheapest.flight.price;
+  const reason = recommendationReason(recommendation, premium);
 
   return [
     `I found ${options.length} good options:`,
     ...lines,
-    `My recommendation: ${recommendation.airline}. ${reason}`,
+    `My recommendation: ${recommendation.flight.airline}. ${reason}`,
   ].join("\n\n");
 }
 
-function comparisonLabel(option: DisplayFlightOption, index: number, recommendation: DisplayFlightOption): string {
-  if (index === 0) return "Cheapest";
-  if (option.id === recommendation.id) return "Best Value";
-  return "Next Cheapest";
+function detailLine(option: RecommendedFlightOption): string {
+  if (option.label === "Best") return "Cheapest afternoon flight.";
+  if (option.label === "Fastest") return `${option.flight.durationMinutes} min flight time.`;
+  if (option.label === "Evening") return "Cheapest evening flight.";
+  return "Lowest fare.";
 }
 
-function listRowLabel(option: DisplayFlightOption, index: number, recommendation: DisplayFlightOption): string {
-  if (index === 0) return "Cheapest";
-  if (option.id === recommendation.id) return "Best";
-  return "Next";
+function recommendationReason(recommendation: RecommendedFlightOption, premium: number): string {
+  if (recommendation.label !== "Best") {
+    return "It is the strongest available pick from the options I found.";
+  }
+  if (premium > 0) {
+    return `It is ₦${premium.toLocaleString("en-NG")} more than the cheapest, but it gives you an afternoon departure.`;
+  }
+  return "It is the cheapest afternoon option, so it keeps the trip calm without adding cost.";
 }
 
-function baggageSummary(option: DisplayFlightOption): string {
-  return option.baggageIncluded ? "Bag included" : "Check bag";
+function compareByPriceThenDeparture(left: DisplayFlightOption, right: DisplayFlightOption): number {
+  return left.price - right.price || parseDepartureMinutes(left.departureTime) - parseDepartureMinutes(right.departureTime);
 }
 
-function comparisonBaggageSummary(option: DisplayFlightOption): string {
-  return option.baggageIncluded ? "Baggage included." : "Check baggage before paying.";
+function compareByDurationThenPrice(left: DisplayFlightOption, right: DisplayFlightOption): number {
+  return left.durationMinutes - right.durationMinutes || compareByPriceThenDeparture(left, right);
+}
+
+function isInDepartureWindow(option: DisplayFlightOption, startHour: number, endHour: number): boolean {
+  const minutes = parseDepartureMinutes(option.departureTime);
+  return minutes >= startHour * 60 && minutes < endHour * 60;
 }
 
 function truncate(value: string, maxLength: number): string {
@@ -170,9 +223,10 @@ function toDisplayFlightOption(row: StoredFlightOptionRow, displayTimeZone = "Af
     id: row.id,
     airline: row.airline_name ?? "Unknown airline",
     departureTime: formatDepartureTime(row.departure_at, displayTimeZone),
+    arrivalTime: formatDepartureTime(row.arrival_at, displayTimeZone),
+    durationMinutes: durationMinutes(row.departure_at, row.arrival_at),
     price: Number(row.amount),
     stops: row.stops,
-    baggageIncluded: hasIncludedBaggage(row.fare_rules),
   };
 }
 
@@ -194,11 +248,14 @@ function formatDepartureTime(departureAt: Date | string, timeZone: string): stri
   return `${hour}:${minute}`;
 }
 
-function hasIncludedBaggage(fareRules: unknown): boolean {
-  return Boolean(
-    fareRules &&
-      typeof fareRules === "object" &&
-      "baggageIncluded" in fareRules &&
-      (fareRules as { baggageIncluded?: unknown }).baggageIncluded === true
-  );
+function durationMinutes(departureAt: Date | string, arrivalAt: Date | string): number {
+  const departure = departureAt instanceof Date ? departureAt : new Date(departureAt);
+  const arrival = arrivalAt instanceof Date ? arrivalAt : new Date(arrivalAt);
+  return Math.max(0, Math.round((arrival.getTime() - departure.getTime()) / 60_000));
+}
+
+function parseDepartureMinutes(departureTime: string): number {
+  const match = /^(\d{2}):(\d{2})$/.exec(departureTime);
+  if (!match) return 0;
+  return Number(match[1]) * 60 + Number(match[2]);
 }

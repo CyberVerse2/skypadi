@@ -89,7 +89,7 @@ export async function createStoredFlightSearchFromWakanow(input: {
         ${parseStops(result)},
         ${parsePriceAmount(result.priceText)},
         'NGN',
-        ${JSON.stringify({ baggageIncluded: true })}::jsonb,
+        ${JSON.stringify({})}::jsonb,
         ${JSON.stringify(result)}::jsonb,
         ${now},
         ${now}
