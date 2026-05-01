@@ -38,10 +38,11 @@ await dedupesProviderMessages();
 await prependsOnboardingForFirstTimeUsers();
 await usesSavedOnboardingForFirstTimeGreetingOnlyUsers();
 await usesControlledCopyWhenChatModelSelectsIt();
-await letsModelReplyToReturningGreetingUsers();
+await letsModelAnswerReturningGreetingWithoutTripPrompt();
 await includesConversationContextForFollowUpAnswers();
 await dedupesRepeatedRecentMessagesBeforeChatModel();
 await repliesWhenChatModelFails();
+await reroutesModelTripPromptRepliesToControlledPrompt();
 await asksControlledNextQuestionAfterTripDetailExtraction();
 await searchesWhenExtractedTripDetailsCompleteTheDraft();
 await executesSearchTool();
@@ -182,7 +183,7 @@ async function usesControlledCopyWhenChatModelSelectsIt(): Promise<void> {
   await app.close();
 }
 
-async function letsModelReplyToReturningGreetingUsers(): Promise<void> {
+async function letsModelAnswerReturningGreetingWithoutTripPrompt(): Promise<void> {
   const sentMessages: SentMessage[] = [];
   const app = buildToolRouteServer({
     sentMessages,
@@ -195,7 +196,7 @@ async function letsModelReplyToReturningGreetingUsers(): Promise<void> {
     ]),
     chatModel: async () => ({
       type: "reply",
-      message: "Hi! Where are you flying from, where to, what date, and how many adults?",
+      message: "Hi! I can help you search and book flights when you’re ready.",
     }),
   });
 
@@ -204,7 +205,7 @@ async function letsModelReplyToReturningGreetingUsers(): Promise<void> {
   await waitFor(() => sentMessages.length === 1);
 
   const body = ((sentMessages[0]?.message as { text?: { body?: string } }).text?.body ?? "");
-  assert.equal(body, "Hi! Where are you flying from, where to, what date, and how many adults?");
+  assert.equal(body, "Hi! I can help you search and book flights when you’re ready.");
 
   await app.close();
 }
@@ -354,6 +355,52 @@ async function repliesWhenChatModelFails(): Promise<void> {
   });
   const outbound = recentMessages.find((message) => message.direction === "outbound");
   assert.equal(outbound?.textBody?.includes("I’m having trouble responding right now."), true);
+
+  await app.close();
+}
+
+async function reroutesModelTripPromptRepliesToControlledPrompt(): Promise<void> {
+  const sentMessages: SentMessage[] = [];
+  const app = buildToolRouteServer({
+    sentMessages,
+    messageRepository: createMemoryMessageRepository([
+      {
+        direction: "outbound",
+        textBody: "Hi, I’m Skypadi — your AI travel agent.",
+        sentAt: new Date("2026-05-01T10:00:00.000Z"),
+      },
+    ]),
+    chatModel: async () => ({
+      type: "reply",
+      message: "Hi — where are you flying from, and how many adults are traveling?",
+    }),
+  });
+
+  const response = await signedPost(app, webhookBody({ id: "wamid.model-trip-prompt", text: "Hi" }));
+  assert.equal(response.statusCode, 200);
+  await waitFor(() => sentMessages.length === 1);
+
+  assert.deepEqual(sentMessages[0], {
+    to: "2348012345678",
+    message: {
+      type: "interactive",
+      interactive: {
+        type: "list",
+        body: { text: "Where are you flying from?" },
+        action: {
+          button: "Choose city",
+          sections: [
+            {
+              rows: [
+                { id: "origin:LOS", title: "Lagos", description: "Murtala Muhammed Airport" },
+                { id: "origin:ABV", title: "Abuja", description: "Nnamdi Azikiwe Airport" },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  });
 
   await app.close();
 }
@@ -772,7 +819,7 @@ async function sendsLegacyInteractiveRepliesToChatModel(): Promise<void> {
     to: "2348012345678",
     message: {
       type: "text",
-      text: { body: "Got Lagos. Where are you flying to?" },
+      text: { body: "Where are you flying to?" },
     },
   });
 
