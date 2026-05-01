@@ -36,6 +36,8 @@ const selectedFlightOptionId = "33333333-3333-4333-8333-333333333333";
 await rejectsInvalidMetaSignature();
 await dedupesProviderMessages();
 await prependsOnboardingForFirstTimeUsers();
+await usesSavedOnboardingForFirstTimeGreetingOnlyUsers();
+await letsModelReplyToReturningGreetingUsers();
 await includesConversationContextForFollowUpAnswers();
 await dedupesRepeatedRecentMessagesBeforeChatModel();
 await repliesWhenChatModelFails();
@@ -122,6 +124,55 @@ async function prependsOnboardingForFirstTimeUsers(): Promise<void> {
   const body = ((sentMessages[0]?.message as { text?: { body?: string } }).text?.body ?? "");
   assert.match(body, /^Hi, I’m Skypadi/);
   assert.match(body, /Sure\. Are you flying from Lagos\?/);
+
+  await app.close();
+}
+
+async function usesSavedOnboardingForFirstTimeGreetingOnlyUsers(): Promise<void> {
+  const sentMessages: SentMessage[] = [];
+  const app = buildToolRouteServer({
+    sentMessages,
+    messageRepository: createMemoryMessageRepository(),
+    chatModel: async () => ({
+      type: "reply",
+      message: "Hi! Where are you flying from, where to, what date, and how many adults?",
+    }),
+  });
+
+  const response = await signedPost(app, webhookBody({ id: "wamid.first-time-hi", text: "hi" }));
+  assert.equal(response.statusCode, 200);
+  await waitFor(() => sentMessages.length === 1);
+
+  const body = ((sentMessages[0]?.message as { text?: { body?: string } }).text?.body ?? "");
+  assert.match(body, /^Hi, I’m Skypadi/);
+  assert.doesNotMatch(body, /Where are you flying from, where to/);
+
+  await app.close();
+}
+
+async function letsModelReplyToReturningGreetingUsers(): Promise<void> {
+  const sentMessages: SentMessage[] = [];
+  const app = buildToolRouteServer({
+    sentMessages,
+    messageRepository: createMemoryMessageRepository([
+      {
+        direction: "outbound",
+        textBody: "Hi, I’m Skypadi — your AI travel agent.",
+        sentAt: new Date("2026-05-01T10:00:00.000Z"),
+      },
+    ]),
+    chatModel: async () => ({
+      type: "reply",
+      message: "Hi! Where are you flying from, where to, what date, and how many adults?",
+    }),
+  });
+
+  const response = await signedPost(app, webhookBody({ id: "wamid.returning-hi", text: "hi" }));
+  assert.equal(response.statusCode, 200);
+  await waitFor(() => sentMessages.length === 1);
+
+  const body = ((sentMessages[0]?.message as { text?: { body?: string } }).text?.body ?? "");
+  assert.equal(body, "Hi! Where are you flying from, where to, what date, and how many adults?");
 
   await app.close();
 }
