@@ -212,7 +212,6 @@ async function processMessages(
 
     const intent = addFirstTimeOnboarding(await uiIntentFromChatAction(action, {
       conversation,
-      context,
       message,
       options,
     }), context);
@@ -243,7 +242,6 @@ export async function uiIntentFromChatAction(
   action: ChatAction,
   input: {
     conversation: PersistedInboundMessage["conversation"];
-    context?: ChatContext;
     message: WhatsAppInboundMessage;
     options: WhatsAppToolRoutesOptions;
   }
@@ -251,11 +249,6 @@ export async function uiIntentFromChatAction(
   const userId = requiredUserId(input.conversation);
 
   if (action.type === "reply") {
-    const controlledPrompt = controlledPromptForModelReply(action.message, {
-      context: input.context,
-      draft: input.conversation.draft,
-    });
-    if (controlledPrompt) return controlledPrompt;
     return { type: "text", body: action.message };
   }
 
@@ -283,45 +276,6 @@ export async function uiIntentFromChatAction(
     phoneNumber: input.message.from,
     selectedFlightOptionId: action.input.selectedFlightOptionId,
   });
-}
-
-function controlledPromptForModelReply(
-  message: string,
-  input: {
-    context?: ChatContext;
-    draft: PersistedInboundMessage["conversation"]["draft"];
-  }
-): UiIntent | undefined {
-  if (input.context && isFirstConversationReply(input.context)) return undefined;
-  if (!looksLikeTripDetailPrompt(message)) return undefined;
-  const nextMissingField = tripPromptFieldFromMessage(message) ?? firstMissingSearchField(input.draft);
-  return nextMissingField ? promptForMissingTripField(nextMissingField) : undefined;
-}
-
-function isFirstConversationReply(context: ChatContext): boolean {
-  const messages = context.recentMessages ?? [];
-  const hasDraft = Boolean(context.currentDraft && Object.keys(context.currentDraft).length > 0);
-  return !hasDraft && !messages.some((message) => message.direction === "outbound" || message.direction === "system");
-}
-
-function tripPromptFieldFromMessage(
-  message: string
-): PersistedInboundMessage["conversation"]["draft"]["expectedField"] | undefined {
-  const normalized = message.trim().toLowerCase();
-  if (/where are you flying from|where.*from/.test(normalized)) return "origin";
-  if (/where are you flying to|where to|destination/.test(normalized)) return "destination";
-  if (/what date|when do you want to travel|travel date/.test(normalized)) return "departure_date";
-  if (/how many adults|how many passengers/.test(normalized)) return "passengers";
-  if (/time of day|morning|afternoon|evening/.test(normalized)) return "departure_window";
-  if (/one-way|one way|return trip/.test(normalized)) return "trip_type";
-  return undefined;
-}
-
-function looksLikeTripDetailPrompt(message: string): boolean {
-  const normalized = message.trim().toLowerCase();
-  return /where are you flying from|where are you flying to|what date|when do you want to travel|how many adults|how many passengers|one-way|return trip|time of day/.test(
-    normalized
-  );
 }
 
 function controlledReplyIntent(key: "skypadi_intro"): UiIntent {
@@ -598,6 +552,9 @@ function chatTextFromMessage(message: WhatsAppInboundMessage): string | undefine
   }
   if (replyId.startsWith("trip_type:")) {
     return selectedReplyText("Trip type selected", replyId.slice("trip_type:".length), title);
+  }
+  if (replyId.startsWith("departure_window:")) {
+    return selectedReplyText("Departure window selected", replyId.slice("departure_window:".length), title);
   }
   if (replyId.startsWith("passengers:")) {
     return selectedReplyText("Passengers selected", replyId.slice("passengers:".length), title);

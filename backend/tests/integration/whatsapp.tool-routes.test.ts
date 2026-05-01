@@ -42,7 +42,7 @@ await letsModelAnswerReturningGreetingWithoutTripPrompt();
 await includesConversationContextForFollowUpAnswers();
 await dedupesRepeatedRecentMessagesBeforeChatModel();
 await repliesWhenChatModelFails();
-await reroutesModelTripPromptRepliesToControlledPrompt();
+await usesControlledPromptWhenModelRequestsTripCollection();
 await asksControlledNextQuestionAfterTripDetailExtraction();
 await searchesWhenExtractedTripDetailsCompleteTheDraft();
 await executesSearchTool();
@@ -50,7 +50,7 @@ await startsBookingFromFlightSelection();
 await continuesBookingWithSavedPassenger();
 await opensPassengerFlowForDifferentPassenger();
 await repliesWhenPassengerDetailsQueueFails();
-await sendsLegacyInteractiveRepliesToChatModel();
+await sendsLegacyInteractiveRepliesThroughTripCollectionTool();
 
 console.log("whatsapp tool route tests passed");
 
@@ -359,7 +359,7 @@ async function repliesWhenChatModelFails(): Promise<void> {
   await app.close();
 }
 
-async function reroutesModelTripPromptRepliesToControlledPrompt(): Promise<void> {
+async function usesControlledPromptWhenModelRequestsTripCollection(): Promise<void> {
   const sentMessages: SentMessage[] = [];
   const app = buildToolRouteServer({
     sentMessages,
@@ -371,12 +371,13 @@ async function reroutesModelTripPromptRepliesToControlledPrompt(): Promise<void>
       },
     ]),
     chatModel: async () => ({
-      type: "reply",
-      message: "Hi — where are you flying from, and how many adults are traveling?",
+      type: "tool",
+      tool: "collectTripDetails",
+      input: {},
     }),
   });
 
-  const response = await signedPost(app, webhookBody({ id: "wamid.model-trip-prompt", text: "Hi" }));
+  const response = await signedPost(app, webhookBody({ id: "wamid.model-trip-collection", text: "Hi" }));
   assert.equal(response.statusCode, 200);
   await waitFor(() => sentMessages.length === 1);
 
@@ -786,7 +787,7 @@ async function repliesWhenPassengerDetailsQueueFails(): Promise<void> {
   await app.close();
 }
 
-async function sendsLegacyInteractiveRepliesToChatModel(): Promise<void> {
+async function sendsLegacyInteractiveRepliesThroughTripCollectionTool(): Promise<void> {
   const sentMessages: SentMessage[] = [];
   let chatInput: DecideChatActionInput | undefined;
   const app = buildToolRouteServer({
@@ -796,7 +797,11 @@ async function sendsLegacyInteractiveRepliesToChatModel(): Promise<void> {
     },
     chatModel: async (input) => {
       chatInput = input;
-      return { type: "reply", message: "Got Lagos. Where are you flying to?" };
+      return {
+        type: "tool",
+        tool: "collectTripDetails",
+        input: { origin: "LOS" },
+      };
     },
   });
 
