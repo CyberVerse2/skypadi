@@ -59,7 +59,7 @@ export function createDrizzleSupplierBookingJobRepository(db: DbClient): Supplie
         ...input,
         id: randomUUID(),
       });
-      await db.execute(sql`
+      const result = await db.execute(sql`
         insert into skypadi_whatsapp.supplier_booking_jobs (
           id,
           booking_id,
@@ -81,10 +81,15 @@ export function createDrizzleSupplierBookingJobRepository(db: DbClient): Supplie
         on conflict (booking_id) do update
           set graphile_job_key = excluded.graphile_job_key,
               status = 'queued',
+              attempt_count = 0,
+              last_error = null,
+              queued_at = excluded.queued_at,
+              started_at = null,
+              finished_at = null,
               updated_at = excluded.updated_at
-        returning id
+        returning id, booking_id, graphile_job_key, status, attempt_count, last_error, queued_at, started_at, finished_at, updated_at
       `);
-      return record;
+      return rowToRecord(result.rows[0]);
     },
     async markRunning(input) {
       const result = await db.execute(sql`
