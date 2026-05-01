@@ -21,6 +21,8 @@
     "test:integration": "vitest run tests/integration",
     "test:all": "npm run test:unit && npm run test:workflow && npm run test:integration && npm run typecheck:test",
     "test:resend-inbound": "vitest run tests/resend-inbound-classification.test.ts",
+    "airports:update": "tsx scripts/update-wakanow-airports.ts",
+    "airports:update:full": "tsx scripts/update-wakanow-airports.ts --full",
     "trace:analyze": "tsx scripts/analyze-trace.ts"
   },
   "dependencies": {

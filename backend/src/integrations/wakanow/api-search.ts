@@ -5,7 +5,7 @@ import type {
   FlightSearchResult
 } from "../../schemas/flight-search";
 import { ProxyAgent, fetch as undiciFetch } from "undici";
-import { nigerianOriginAirports } from "../../domain/flight/airport-catalog";
+import { normalizeAirportCode, resolveAirport as resolveCatalogAirport } from "../../domain/flight/airport-catalog";
 
 const FLIGHTS_API_BASE = "https://flights.wakanow.com/api/flights";
 const POLL_INTERVAL_MS = 1_500;
@@ -20,24 +20,6 @@ function proxyFetch(url: string, opts: any = {}): Promise<Response> {
   }
   return fetch(url, opts);
 }
-
-const AIRPORT_CODES: Record<string, { code: string; description: string; city: string; country: string }> = {
-  ...Object.fromEntries(nigerianOriginAirports.map((airport) => [
-    airport.city.toLowerCase(),
-    {
-      code: airport.code,
-      description: `${airport.airportName} (${airport.code})`,
-      city: airport.city,
-      country: airport.country,
-    },
-  ])),
-  dubai: { code: "DXB", description: "Dubai International Airport (DXB)", city: "Dubai", country: "UAE" },
-  london: { code: "LHR", description: "Heathrow Airport (LHR)", city: "London", country: "UK" },
-  accra: { code: "ACC", description: "Kotoka International Airport (ACC)", city: "Accra", country: "Ghana" },
-  nairobi: { code: "NBO", description: "Jomo Kenyatta International Airport (NBO)", city: "Nairobi", country: "Kenya" },
-  johannesburg: { code: "JNB", description: "O.R. Tambo International Airport (JNB)", city: "Johannesburg", country: "South Africa" },
-  doha: { code: "DOH", description: "Hamad International Airport (DOH)", city: "Doha", country: "Qatar" },
-};
 
 const COMMON_HEADERS = {
   "Content-Type": "application/json",
@@ -241,17 +223,18 @@ function mapFlightResult(r: WakanowFlightResult, deeplink: string, searchKey: st
 }
 
 function resolveAirport(input: string) {
-  const key = input.toLowerCase().trim();
-  const match = AIRPORT_CODES[key];
-  if (match) return match;
-
-  // Check if input is already an airport code
-  const upper = input.toUpperCase().trim();
-  for (const airport of Object.values(AIRPORT_CODES)) {
-    if (airport.code === upper) return airport;
+  const match = resolveCatalogAirport(input);
+  if (match) {
+    return {
+      code: match.code,
+      description: match.description ?? `${match.airportName} (${match.code})`,
+      city: match.city,
+      country: match.country,
+    };
   }
 
   // Default: use input as-is (3-letter code)
+  const upper = normalizeAirportCode(input);
   if (upper.length === 3) {
     return {
       code: upper,
