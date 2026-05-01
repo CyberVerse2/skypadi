@@ -5,7 +5,7 @@ import { createWhatsAppCloudClient, type WhatsAppClient } from "../../channels/w
 import { db } from "../../db/client";
 import type { BookingStatus } from "../../domain/booking/booking.types";
 import { createDrizzleConversationRepository } from "../../domain/conversation/conversation.repository";
-import { createWakanowBrowserHoldClient, type WakanowHoldClient } from "../../integrations/wakanow/wakanow.booking";
+import type { WakanowHoldClient } from "../../integrations/wakanow/wakanow.booking";
 import {
   createDrizzleSupplierBookingRepository,
   handleSupplierHoldResult,
@@ -73,7 +73,7 @@ export function createSupplierBookingTask(dependencies: SupplierBookingTaskDepen
 
 export const supplierBookingTask: Task = createSupplierBookingTask({
   jobRepository: createDrizzleSupplierBookingJobRepository(db),
-  supplierClient: createWakanowBrowserHoldClient({ db }),
+  supplierClient: createLazyWakanowBrowserHoldClient(),
   supplierRepository: createDrizzleSupplierBookingRepository(db),
   findBookingStatus,
   notifyRecordedDecision: notifyRecordedSupplierDecision,
@@ -103,6 +103,15 @@ async function findBookingStatus(bookingId: string): Promise<BookingStatus | und
   `);
   const row = result.rows[0] as { status: BookingStatus } | undefined;
   return row?.status;
+}
+
+function createLazyWakanowBrowserHoldClient(): Pick<WakanowHoldClient, "createHoldForBooking"> {
+  return {
+    async createHoldForBooking(input) {
+      const { createWakanowBrowserHoldClient } = await import("../../integrations/wakanow/wakanow.booking");
+      return createWakanowBrowserHoldClient({ db }).createHoldForBooking(input);
+    },
+  };
 }
 
 async function notifyRecordedSupplierDecision(input: {
