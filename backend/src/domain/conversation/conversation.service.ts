@@ -16,30 +16,3 @@ export async function findOrCreateConversation(
 ): Promise<ConversationRecord> {
   return (await repository.findByPhoneNumber(phoneNumber)) ?? createConversationRecord(phoneNumber, now);
 }
-
-export function createInMemoryConversationRepository(): ConversationRepository {
-  const conversations = new Map<string, ConversationRecord>();
-
-  return {
-    async findByPhoneNumber(phoneNumber) {
-      const conversation = conversations.get(phoneNumber);
-      return conversation
-        ? {
-            ...conversation,
-            draft: { ...conversation.draft },
-          }
-        : undefined;
-    },
-    async save(conversation) {
-      const saved = {
-        ...conversation,
-        draft: { ...conversation.draft },
-      };
-      conversations.set(conversation.phoneNumber, saved);
-      return {
-        ...saved,
-        draft: { ...saved.draft },
-      };
-    },
-  };
-}
