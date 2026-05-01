@@ -310,14 +310,14 @@ async function loadRecentMessages(
   const rows = await repository?.listRecentMessages?.({ conversationId, limit: 8 });
   if (!rows?.length) return undefined;
 
-  return rows
+  return dedupeRecentMessages(rows
     .filter((message) => message.textBody?.trim())
     .map((message) => ({
       direction: message.direction,
       textBody: message.textBody,
       receivedAt: message.receivedAt?.toISOString(),
       sentAt: message.sentAt?.toISOString(),
-    }));
+    })));
 }
 
 function supplierBookingStartFailureIntent(): UiIntent {
@@ -325,6 +325,29 @@ function supplierBookingStartFailureIntent(): UiIntent {
     type: "text",
     body: "I could not start the supplier booking yet. Please try again shortly.",
   };
+}
+
+function dedupeRecentMessages(messages: ChatContextMessage[]): ChatContextMessage[] {
+  const deduped: ChatContextMessage[] = [];
+  for (const message of messages) {
+    const previous = deduped.at(-1);
+    if (
+      previous &&
+      previous.direction === message.direction &&
+      normalizedMessageText(previous.textBody) === normalizedMessageText(message.textBody)
+    ) {
+      deduped[deduped.length - 1] = message;
+      continue;
+    }
+
+    deduped.push(message);
+  }
+
+  return deduped;
+}
+
+function normalizedMessageText(text: string | undefined): string {
+  return text?.trim().replace(/\s+/g, " ").toLowerCase() ?? "";
 }
 
 function passengerFromFlowReply(message: WhatsAppInboundMessage): Passenger | undefined {

@@ -37,6 +37,7 @@ await rejectsInvalidMetaSignature();
 await dedupesProviderMessages();
 await prependsOnboardingForFirstTimeUsers();
 await includesConversationContextForFollowUpAnswers();
+await dedupesRepeatedRecentMessagesBeforeChatModel();
 await repliesWhenChatModelFails();
 await executesSearchTool();
 await startsBookingFromFlightSelection();
@@ -175,6 +176,56 @@ async function includesConversationContextForFollowUpAnswers(): Promise<void> {
     true
   );
   assert.equal(chatInput?.context.recentMessages?.at(-1)?.textBody, "Lagos");
+
+  await app.close();
+}
+
+async function dedupesRepeatedRecentMessagesBeforeChatModel(): Promise<void> {
+  const sentMessages: SentMessage[] = [];
+  let chatInput: DecideChatActionInput | undefined;
+  const messageRepository = createMemoryMessageRepository([
+    {
+      direction: "inbound",
+      textBody: "I want to book a flight to Lagos next week Tuesday. I’m coming from enugu",
+      receivedAt: new Date("2026-04-29T14:48:34.000Z"),
+    },
+    {
+      direction: "inbound",
+      textBody: "I want to book a flight to Lagos next week Tuesday. I’m coming from enugu",
+      receivedAt: new Date("2026-04-29T14:49:14.000Z"),
+    },
+    {
+      direction: "inbound",
+      textBody: "  I want to book a flight to Lagos next week Tuesday. I’m coming from enugu  ",
+      receivedAt: new Date("2026-04-29T14:54:40.000Z"),
+    },
+    {
+      direction: "outbound",
+      textBody: "Sure. Morning or afternoon?",
+      sentAt: new Date("2026-04-29T14:55:00.000Z"),
+    },
+  ]);
+  const app = buildToolRouteServer({
+    sentMessages,
+    messageRepository,
+    chatModel: async (input) => {
+      chatInput = input;
+      return { type: "reply", message: "Still checking that for you." };
+    },
+  });
+
+  const response = await signedPost(app, webhookBody({ id: "wamid.dedupe-context", text: "Morning" }));
+  assert.equal(response.statusCode, 200);
+  await waitFor(() => sentMessages.length === 1);
+
+  assert.deepEqual(
+    chatInput?.context.recentMessages?.map((message) => message.textBody),
+    [
+      "  I want to book a flight to Lagos next week Tuesday. I’m coming from enugu  ",
+      "Sure. Morning or afternoon?",
+      "Morning",
+    ]
+  );
 
   await app.close();
 }
