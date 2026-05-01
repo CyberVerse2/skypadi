@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
+import Fastify from "fastify";
+import fastifyRawBody from "fastify-raw-body";
 
-import { buildServer } from "../../src/app";
+import { registerWhatsAppWorkflowRoutes, type WhatsAppRoutesOptions } from "../../src/channels/whatsapp/whatsapp.routes";
 import type {
   ConversationRecord,
   ConversationRepository,
@@ -28,9 +30,9 @@ const conversationRepository: ConversationRepository = {
   },
 };
 
-const app = buildServer({
-  whatsappVerifyToken: "verify-token",
-  whatsappAppSecret: "",
+const app = buildWorkflowRouteServer({
+  verifyToken: "verify-token",
+  appSecret: "",
   conversationRepository,
   messageRepository: {
     async recordInboundMessage(input) {
@@ -106,9 +108,9 @@ const badVerify = await app.inject({
 
 assert.equal(badVerify.statusCode, 403);
 
-const signedApp = buildServer({
-  whatsappVerifyToken: "verify-token",
-  whatsappAppSecret: "test-app-secret",
+const signedApp = buildWorkflowRouteServer({
+  verifyToken: "verify-token",
+  appSecret: "test-app-secret",
   conversationRepository,
   whatsappClient: {
     async sendMessage() {},
@@ -358,4 +360,19 @@ console.log("whatsapp route tests passed");
 
 function metaSignature(appSecret: string, payload: string): string {
   return `sha256=${createHmac("sha256", appSecret).update(payload).digest("hex")}`;
+}
+
+function buildWorkflowRouteServer(options: WhatsAppRoutesOptions) {
+  const app = Fastify({ logger: true });
+  app.register(async (webhookRoutes) => {
+    await webhookRoutes.register(fastifyRawBody, {
+      field: "rawBody",
+      global: false,
+      encoding: "utf8",
+      runFirst: true,
+    });
+
+    registerWhatsAppWorkflowRoutes(webhookRoutes, options);
+  });
+  return app;
 }

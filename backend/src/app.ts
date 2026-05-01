@@ -5,19 +5,21 @@ import { env } from "./config";
 import { flightSearchRequestSchema } from "./schemas/flight-search";
 import { WakanowApiSearchError, searchFlightsApi } from "./integrations/wakanow/api-search";
 import { createWhatsAppCloudClient, type WhatsAppClient } from "./channels/whatsapp/whatsapp.client";
-import { registerWhatsAppWorkflowRoutes } from "./channels/whatsapp/whatsapp.routes";
+import { registerWhatsAppToolRoutes } from "./channels/whatsapp/whatsapp.tool-routes";
 import { registerResendWebhookRoutes } from "./integrations/resend/webhook.routes";
 import { db } from "./db/client";
 import { createDrizzleConversationRepository } from "./domain/conversation/conversation.repository";
 import type { ConversationRepository, WhatsAppMessageRepository } from "./domain/conversation/conversation.types";
 import { createFlightSearchPresentationHandler } from "./workflows/flight-search.workflow";
-import { collectPassengerDetailsAndCreateSupplierHold, createBookingFromSelectedOption } from "./workflows/booking.workflow";
+import { collectPassengerDetailsAndQueueSupplierBooking, createBookingFromSelectedOption } from "./workflows/booking.workflow";
 import { createDrizzleBookingRepository } from "./domain/booking/booking.repository";
 import type { BookingSelectionHandler, FlightSearchHandler } from "./channels/whatsapp/whatsapp.routes";
-import { createDrizzleSupplierBookingRepository } from "./workflows/supplier-booking.workflow";
-import { createWakanowBrowserHoldClient, type WakanowHoldClient } from "./integrations/wakanow/wakanow.booking";
+import type { WakanowHoldClient } from "./integrations/wakanow/wakanow.booking";
 import type { UiIntent } from "./channels/whatsapp/whatsapp.types";
-import { createOpenAIIntentExtractor, type IntentExtractor } from "./agent/intent-extractor";
+import type { IntentExtractor } from "./agent/intent-extractor";
+import { createOpenAIChatModel, type ChatModel } from "./tools/chat-agent";
+import { createDrizzleSupplierBookingJobRepository } from "./jobs/booking-job.repository";
+import { enqueueSupplierBookingJob } from "./jobs/booking-queue";
 
 export type BuildServerOptions = {
   whatsappVerifyToken?: string;
@@ -27,6 +29,7 @@ export type BuildServerOptions = {
   messageRepository?: WhatsAppMessageRepository;
   whatsappClient?: WhatsAppClient;
   intentExtractor?: IntentExtractor;
+  chatModel?: ChatModel;
   flightSearchHandler?: FlightSearchHandler;
   bookingHandler?: BookingSelectionHandler;
   supplierClient?: WakanowHoldClient;
@@ -49,15 +52,18 @@ export function buildServer(options: BuildServerOptions = {}) {
 
       if (whatsappVerifyToken) {
         const whatsappClient = options.whatsappClient ?? configuredWhatsAppClient();
-        registerWhatsAppWorkflowRoutes(webhookRoutes, {
+        registerWhatsAppToolRoutes(webhookRoutes, {
           verifyToken: whatsappVerifyToken,
           conversationRepository,
           messageRepository: options.messageRepository ?? messageRepositoryFromConversationRepository(conversationRepository),
           whatsappClient,
-          intentExtractor: options.intentExtractor ?? createLiveIntentExtractor(),
           appSecret: options.whatsappAppSecret ?? env.WHATSAPP_APP_SECRET,
+          chatModel: options.chatModel ?? createOpenAIChatModel({
+            apiKey: requireOpenAIApiKey(),
+            model: env.OPENAI_INTENT_MODEL,
+          }),
           flightSearchHandler: options.flightSearchHandler ?? createLiveFlightSearchHandler(),
-          bookingHandler: options.bookingHandler ?? createLiveBookingHandler(options.supplierClient),
+          bookingHandler: options.bookingHandler ?? createLiveBookingHandler(),
         });
       }
 
@@ -107,15 +113,12 @@ export function buildServer(options: BuildServerOptions = {}) {
   return app;
 }
 
-function createLiveIntentExtractor(): IntentExtractor {
+function requireOpenAIApiKey(): string {
   if (!env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is required when WhatsApp routes are enabled");
   }
 
-  return createOpenAIIntentExtractor({
-    apiKey: env.OPENAI_API_KEY,
-    model: env.OPENAI_INTENT_MODEL,
-  });
+  return env.OPENAI_API_KEY;
 }
 
 function createLiveFlightSearchHandler(): FlightSearchHandler {
@@ -128,7 +131,7 @@ function createLiveFlightSearchHandler(): FlightSearchHandler {
   });
 }
 
-function createLiveBookingHandler(supplierClient?: WakanowHoldClient): BookingSelectionHandler {
+function createLiveBookingHandler(): BookingSelectionHandler {
   if (!env.RESEND_INBOUND_DOMAIN) {
     throw new Error("RESEND_INBOUND_DOMAIN is required when WhatsApp booking is enabled");
   }
@@ -167,40 +170,21 @@ function createLiveBookingHandler(supplierClient?: WakanowHoldClient): BookingSe
       };
     },
     async collectPassengerDetails(input) {
-      const result = await collectPassengerDetailsAndCreateSupplierHold({
+      const result = await collectPassengerDetailsAndQueueSupplierBooking({
         userId: input.userId,
         conversationId: input.conversationId,
         passenger: input.passenger,
         repository: createDrizzleBookingRepository(db),
-        supplierClient: supplierClient ?? createWakanowBrowserHoldClient({ db }),
-        supplierRepository: createDrizzleSupplierBookingRepository(db),
+        jobRepository: createDrizzleSupplierBookingJobRepository(db),
+        enqueueSupplierBooking: enqueueSupplierBookingJob,
       });
 
       if (result.kind === "needs_user_input") return result.ui as UiIntent;
-      if (result.kind === "needs_manual_review") {
-        return {
-          type: "text",
-          body: "I could not confirm the supplier booking automatically. I have moved it to manual review.",
-        };
-      }
       if (result.kind !== "ok") return undefined;
 
-      const decision = result.value;
-      if (decision.status === "awaiting_payment_for_hold") {
-        return {
-          type: "text",
-          body: `Wakanow hold created. Reference: ${decision.supplierBookingRef}. Hold expires at ${decision.holdExpiresAt?.toLocaleString("en-NG", { timeZone: env.WAKANOW_TIMEZONE })}.`,
-        };
-      }
-      if (decision.status === "payment_pending") {
-        return {
-          type: "text",
-          body: "This flight requires payment before ticketing. I have saved the booking details.",
-        };
-      }
       return {
         type: "text",
-        body: "I could not confirm the supplier booking automatically. I have moved it to manual review.",
+        body: "Booking started. I’ll update you shortly.",
       };
     },
   };
