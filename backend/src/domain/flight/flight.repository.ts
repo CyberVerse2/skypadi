@@ -1,8 +1,8 @@
 import { sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
-import type { DbClient } from "../../db/client.js";
-import type { FlightSearchResponse, FlightSearchResult } from "../../schemas/flight-search.js";
+import type { DbClient } from "../../db/client";
+import type { FlightSearchResponse, FlightSearchResult } from "../../schemas/flight-search";
 
 export async function findRankedOptionsForSearch(db: DbClient, flightSearchId: string) {
   return db.execute(sql`

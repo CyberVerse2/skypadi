@@ -2,11 +2,13 @@ import {
   classifyInboundEmailContent,
   publicClassification,
   supplierEventTypeForClassification,
-  type InboundEmailContent,
-} from "../domain/inbound-email/inbound-email.service.js";
-import type { InboundEmailRepository } from "../domain/inbound-email/inbound-email.repository.js";
-import type { InboundEmailPublicClassification } from "../domain/inbound-email/inbound-email.types.js";
-import { makeOk, type WorkflowResult } from "./workflow-result.js";
+} from "../domain/inbound-email/inbound-email.service";
+import type {
+  InboundEmailContent,
+  InboundEmailPublicClassification,
+  InboundEmailRepository,
+} from "../domain/inbound-email/inbound-email.types";
+import { makeOk, type WorkflowResult } from "./workflow-result";
 
 export type HandleInboundEmailInput = InboundEmailContent & {
   resendEmailId: string;

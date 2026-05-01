@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { getReceivedEmail, type ResendClient } from "../../src/integrations/resend/resend.client.js";
+import { getReceivedEmail, type ResendClient } from "../../src/integrations/resend/resend.client";
 
 const email = await getReceivedEmail(
   {

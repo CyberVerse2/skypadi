@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 
-import { collectPassengerDetailsAndCreateSupplierHold, createBookingFromSelectedOption } from "../../src/workflows/booking.workflow.js";
+import { collectPassengerDetailsAndCreateSupplierHold, createBookingFromSelectedOption } from "../../src/workflows/booking.workflow";
 import type {
   ActiveBookingForPassengerCollection,
   BookingRepository,
   CollectedPassengerDetails,
   CreateBookingDraftRecord,
-} from "../../src/domain/booking/booking.repository.js";
+} from "../../src/domain/booking/booking.types";
 
 const writes: CreateBookingDraftRecord[] = [];
 const repository: BookingRepository = {

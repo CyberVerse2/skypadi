@@ -1,47 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 
-import type { DbClient } from "../../db/client.js";
-import type { BookingDraft, BookingStatus } from "./booking.types.js";
-import type { Passenger } from "../../schemas/flight-booking.js";
-
-export type CreateBookingDraftRecord = {
-  id: string;
-  userId: string;
-  conversationId: string;
-  selectedFlightOptionId: string;
-  status: BookingStatus;
-  bookingEmailAlias: string;
-  aliasLocalPart: string;
-  aliasDomain: string;
-  createdAt: Date;
-};
-
-export type BookingRepository = {
-  createDraft(input: CreateBookingDraftRecord): Promise<BookingDraft>;
-  findActiveBookingForPassengerCollection(input: {
-    userId: string;
-    conversationId: string;
-  }): Promise<ActiveBookingForPassengerCollection | undefined>;
-  collectPassengerDetails(input: CollectedPassengerDetails): Promise<void>;
-};
-
-export type ActiveBookingForPassengerCollection = {
-  id: string;
-  userId: string;
-  conversationId: string;
-  selectedFlightOptionId: string;
-  bookingEmailAlias: string;
-  status: BookingStatus;
-};
-
-export type CollectedPassengerDetails = {
-  bookingId: string;
-  userId: string;
-  conversationId: string;
-  passenger: Passenger;
-  supplierContactEmail: string;
-  collectedAt: Date;
-};
+import type { DbClient } from "../../db/client";
+import type { BookingRepository, BookingStatus } from "./booking.types";
 
 export function createDrizzleBookingRepository(db: DbClient): BookingRepository {
   return {

@@ -1,17 +1,14 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
-import { mapUiIntentToWhatsAppMessage } from "./whatsapp.mapper.js";
-import type { WhatsAppClient } from "./whatsapp.client.js";
-import type { Passenger } from "../../schemas/flight-booking.js";
-import { handleConversationEvent } from "../../workflows/conversation.workflow.js";
-import {
-  findOrCreateConversation,
-  type ConversationRepository,
-} from "../../domain/conversation/conversation.service.js";
-import type { WhatsAppMessageRepository } from "../../domain/conversation/conversation.repository.js";
-import type { IntentExtractor } from "../../agent/intent-extractor.js";
-import type { UiIntent } from "./whatsapp.types.js";
+import { mapUiIntentToWhatsAppMessage } from "./whatsapp.mapper";
+import type { WhatsAppClient } from "./whatsapp.client";
+import type { Passenger } from "../../schemas/flight-booking";
+import { handleConversationEvent } from "../../workflows/conversation.workflow";
+import { findOrCreateConversation } from "../../domain/conversation/conversation.service";
+import type { ConversationRepository, WhatsAppMessageRepository } from "../../domain/conversation/conversation.types";
+import type { IntentExtractor } from "../../agent/intent-extractor";
+import type { UiIntent } from "./whatsapp.types";
 
 export type WhatsAppRoutesOptions = {
   verifyToken: string;

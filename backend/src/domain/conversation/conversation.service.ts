@@ -1,37 +1,4 @@
-export type TripType = "one_way" | "return";
-export type ConversationExpectedField =
-  | "origin"
-  | "destination"
-  | "departure_date"
-  | "departure_window"
-  | "trip_type"
-  | "passengers"
-  | "return_date"
-  | "passenger_count";
-
-export type ConversationDraft = {
-  origin?: string;
-  destination?: string;
-  departureDate?: string;
-  returnDate?: string;
-  departureWindow?: string;
-  tripType?: TripType;
-  adults?: number;
-  expectedField?: ConversationExpectedField;
-};
-
-export type ConversationRecord = {
-  id: string;
-  userId?: string;
-  phoneNumber: string;
-  draft: ConversationDraft;
-  updatedAt: Date;
-};
-
-export type ConversationRepository = {
-  findByPhoneNumber(phoneNumber: string): Promise<ConversationRecord | undefined>;
-  save(conversation: ConversationRecord): Promise<ConversationRecord>;
-};
+import type { ConversationRecord, ConversationRepository } from "./conversation.types";
 
 export function createConversationRecord(phoneNumber: string, now: Date): ConversationRecord {
   return {

@@ -1,7 +1,7 @@
 import path from "node:path";
 import { promises as fs } from "node:fs";
-import { env } from "../../config.js";
-import type { Passenger } from "../../schemas/flight-booking.js";
+import { env } from "../../config";
+import type { Passenger } from "../../schemas/flight-booking";
 import type {
   BankTransferDetails,
   BookingContactContext,
@@ -9,7 +9,7 @@ import type {
   BookingVerificationStatus,
   ConfirmationEmail,
   BookingFlightSummary
-} from "../../schemas/booking-contract.js";
+} from "../../schemas/booking-contract";
 import type { Browser, BrowserContext, Locator, Page } from "patchright";
 import {
   launchStealthBrowser,
@@ -19,7 +19,7 @@ import {
   humanClick,
   humanPause,
   humanType
-} from "./stealth.js";
+} from "./stealth";
 
 const SESSION_STATE_PATH = path.resolve(process.cwd(), ".wakanow-session.json");
 const TRACE_DIR = path.resolve(process.cwd(), "traces");

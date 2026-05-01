@@ -1,26 +1,23 @@
 import Fastify from "fastify";
 import fastifyRawBody from "fastify-raw-body";
 import { ZodError } from "zod";
-import { env } from "./config.js";
-import { flightSearchRequestSchema } from "./schemas/flight-search.js";
-import { WakanowApiSearchError, searchFlightsApi } from "./integrations/wakanow/api-search.js";
-import { createWhatsAppCloudClient, type WhatsAppClient } from "./channels/whatsapp/whatsapp.client.js";
-import { registerWhatsAppWorkflowRoutes } from "./channels/whatsapp/whatsapp.routes.js";
-import { registerResendWebhookRoutes } from "./integrations/resend/webhook.routes.js";
-import { db } from "./db/client.js";
-import {
-  createDrizzleConversationRepository,
-  type WhatsAppMessageRepository,
-} from "./domain/conversation/conversation.repository.js";
-import type { ConversationRepository } from "./domain/conversation/conversation.service.js";
-import { createFlightSearchPresentationHandler } from "./workflows/flight-search.workflow.js";
-import { collectPassengerDetailsAndCreateSupplierHold, createBookingFromSelectedOption } from "./workflows/booking.workflow.js";
-import { createDrizzleBookingRepository } from "./domain/booking/booking.repository.js";
-import type { BookingSelectionHandler, FlightSearchHandler } from "./channels/whatsapp/whatsapp.routes.js";
-import { createDrizzleSupplierBookingRepository } from "./workflows/supplier-booking.workflow.js";
-import { createWakanowBrowserHoldClient, type WakanowHoldClient } from "./integrations/wakanow/wakanow.booking.js";
-import type { UiIntent } from "./channels/whatsapp/whatsapp.types.js";
-import { createOpenAIIntentExtractor, type IntentExtractor } from "./agent/intent-extractor.js";
+import { env } from "./config";
+import { flightSearchRequestSchema } from "./schemas/flight-search";
+import { WakanowApiSearchError, searchFlightsApi } from "./integrations/wakanow/api-search";
+import { createWhatsAppCloudClient, type WhatsAppClient } from "./channels/whatsapp/whatsapp.client";
+import { registerWhatsAppWorkflowRoutes } from "./channels/whatsapp/whatsapp.routes";
+import { registerResendWebhookRoutes } from "./integrations/resend/webhook.routes";
+import { db } from "./db/client";
+import { createDrizzleConversationRepository } from "./domain/conversation/conversation.repository";
+import type { ConversationRepository, WhatsAppMessageRepository } from "./domain/conversation/conversation.types";
+import { createFlightSearchPresentationHandler } from "./workflows/flight-search.workflow";
+import { collectPassengerDetailsAndCreateSupplierHold, createBookingFromSelectedOption } from "./workflows/booking.workflow";
+import { createDrizzleBookingRepository } from "./domain/booking/booking.repository";
+import type { BookingSelectionHandler, FlightSearchHandler } from "./channels/whatsapp/whatsapp.routes";
+import { createDrizzleSupplierBookingRepository } from "./workflows/supplier-booking.workflow";
+import { createWakanowBrowserHoldClient, type WakanowHoldClient } from "./integrations/wakanow/wakanow.booking";
+import type { UiIntent } from "./channels/whatsapp/whatsapp.types";
+import { createOpenAIIntentExtractor, type IntentExtractor } from "./agent/intent-extractor";
 
 export type BuildServerOptions = {
   whatsappVerifyToken?: string;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { classifyInboundEmail } from "../src/workflows/inbound-email.workflow.js";
+import { classifyInboundEmail } from "../src/workflows/inbound-email.workflow";
 
 function email(overrides: { from?: string; subject?: string; text?: string }) {
   return {

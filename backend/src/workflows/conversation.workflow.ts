@@ -1,12 +1,12 @@
-import type { UiIntent } from "../channels/whatsapp/whatsapp.types.js";
-import type { IntentExtractor, TripIntentExtraction } from "../agent/intent-extractor.js";
-import {
-  type ConversationExpectedField,
-  type ConversationDraft,
-  type ConversationRepository,
-  findOrCreateConversation,
-} from "../domain/conversation/conversation.service.js";
-import { makeNeedsUserInput, makeOk, type WorkflowResult } from "./workflow-result.js";
+import type { UiIntent } from "../channels/whatsapp/whatsapp.types";
+import type { IntentExtractor, TripIntentExtraction } from "../agent/intent-extractor";
+import { findOrCreateConversation } from "../domain/conversation/conversation.service";
+import type {
+  ConversationDraft,
+  ConversationExpectedField,
+  ConversationRepository,
+} from "../domain/conversation/conversation.types";
+import { makeNeedsUserInput, makeOk, type WorkflowResult } from "./workflow-result";
 
 type WorkflowContact = {
   phoneNumber: string;

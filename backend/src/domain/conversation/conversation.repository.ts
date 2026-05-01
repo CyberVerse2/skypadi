@@ -1,19 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 
-import type { DbClient } from "../../db/client.js";
-import type { ConversationRecord, ConversationRepository } from "./conversation.service.js";
-
-export type WhatsAppMessageRepository = {
-  recordInboundMessage(input: {
-    phoneNumber: string;
-    conversationId: string;
-    providerMessageId: string;
-    textBody?: string;
-    payload: Record<string, unknown>;
-    receivedAt: Date;
-  }): Promise<{ wasCreated: boolean }>;
-};
+import type { DbClient } from "../../db/client";
+import type { ConversationRecord, ConversationRepository, WhatsAppMessageRepository } from "./conversation.types";
 
 export function createDrizzleConversationRepository(db: DbClient): ConversationRepository & WhatsAppMessageRepository {
   return {

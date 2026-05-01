@@ -1,4 +1,4 @@
-import type { Passenger } from "../src/schemas/flight-booking.js";
+import type { Passenger } from "../src/schemas/flight-booking";
 
 const NAMES = {
   firstNames: {

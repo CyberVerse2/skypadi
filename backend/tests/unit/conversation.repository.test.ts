@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
-import { createDrizzleConversationRepository } from "../../src/domain/conversation/conversation.repository.js";
-import type { DbClient } from "../../src/db/client.js";
+import { createDrizzleConversationRepository } from "../../src/domain/conversation/conversation.repository";
+import type { DbClient } from "../../src/db/client";
 
 const executedQueries: unknown[] = [];
 const db = {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
-import { rankFlightOptionsForDisplay } from "../../src/domain/flight/flight-search.service.js";
-import { presentStoredFlightOptions } from "../../src/workflows/flight-search.workflow.js";
+import { rankFlightOptionsForDisplay } from "../../src/domain/flight/flight-search.service";
+import { presentStoredFlightOptions } from "../../src/workflows/flight-search.workflow";
 
 const ranked = rankFlightOptionsForDisplay([
   { id: "a", airline: "Air Peace", departureTime: "06:45", price: 171000, stops: 0, baggageIncluded: true },

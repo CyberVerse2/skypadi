@@ -1,4 +1,4 @@
-import type { WhatsAppMessagePayload } from "./whatsapp.types.js";
+import type { WhatsAppMessagePayload } from "./whatsapp.types";
 
 export type WhatsAppClient = {
   sendMessage(input: {

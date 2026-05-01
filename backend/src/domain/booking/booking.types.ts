@@ -1,3 +1,5 @@
+import type { Passenger } from "../../schemas/flight-booking";
+
 export const bookingStatuses = [
   "draft",
   "priced",
@@ -26,6 +28,56 @@ export type BookingDraft = {
   status: BookingStatus;
   bookingEmailAlias: string;
   createdAt: Date;
+};
+
+export type CreateBookingDraftRecord = {
+  id: string;
+  userId: string;
+  conversationId: string;
+  selectedFlightOptionId: string;
+  status: BookingStatus;
+  bookingEmailAlias: string;
+  aliasLocalPart: string;
+  aliasDomain: string;
+  createdAt: Date;
+};
+
+export type BookingRepository = {
+  createDraft(input: CreateBookingDraftRecord): Promise<BookingDraft>;
+  findActiveBookingForPassengerCollection(input: {
+    userId: string;
+    conversationId: string;
+  }): Promise<ActiveBookingForPassengerCollection | undefined>;
+  collectPassengerDetails(input: CollectedPassengerDetails): Promise<void>;
+};
+
+export type ActiveBookingForPassengerCollection = {
+  id: string;
+  userId: string;
+  conversationId: string;
+  selectedFlightOptionId: string;
+  bookingEmailAlias: string;
+  status: BookingStatus;
+};
+
+export type CollectedPassengerDetails = {
+  bookingId: string;
+  userId: string;
+  conversationId: string;
+  passenger: Passenger;
+  supplierContactEmail: string;
+  collectedAt: Date;
+};
+
+export type CreateBookingDraftInput = {
+  userId: string;
+  conversationId: string;
+  selectedFlightOptionId: string;
+  inboundDomain: string;
+  now?: Date;
+  idGenerator?: () => string;
+  aliasTokenGenerator?: () => string;
+  repository: BookingRepository;
 };
 
 const terminalBookingStatuses = new Set<BookingStatus>([

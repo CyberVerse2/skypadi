@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { env } from "../config.js";
+import { env } from "../config";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD");
 

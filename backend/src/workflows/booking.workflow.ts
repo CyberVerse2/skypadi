@@ -1,10 +1,9 @@
-import { createPricedBookingDraft, type CreateBookingDraftInput } from "../domain/booking/booking.service.js";
-import type { BookingRepository } from "../domain/booking/booking.repository.js";
-import type { BookingDraft } from "../domain/booking/booking.types.js";
-import { passengerSchema, type Passenger } from "../schemas/flight-booking.js";
-import type { WakanowHoldClient } from "../integrations/wakanow/wakanow.booking.js";
-import { handleSupplierHoldResult, recordSupplierHoldDecision, type SupplierBookingRepository, type SupplierHoldDecision } from "./supplier-booking.workflow.js";
-import { makeOk, type WorkflowResult } from "./workflow-result.js";
+import { createPricedBookingDraft } from "../domain/booking/booking.service";
+import type { BookingDraft, BookingRepository, CreateBookingDraftInput } from "../domain/booking/booking.types";
+import { passengerSchema, type Passenger } from "../schemas/flight-booking";
+import type { WakanowHoldClient } from "../integrations/wakanow/wakanow.booking";
+import { handleSupplierHoldResult, recordSupplierHoldDecision, type SupplierBookingRepository, type SupplierHoldDecision } from "./supplier-booking.workflow";
+import { makeOk, type WorkflowResult } from "./workflow-result";
 
 export async function createBookingFromSelectedOption(
   input: Omit<CreateBookingDraftInput, "repository"> & Partial<Pick<CreateBookingDraftInput, "repository">>

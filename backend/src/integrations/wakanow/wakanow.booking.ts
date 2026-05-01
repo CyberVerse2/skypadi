@@ -1,10 +1,10 @@
-import type { SupplierHoldResult } from "./wakanow.types.js";
-import type { DbClient } from "../../db/client.js";
-import type { Passenger } from "../../schemas/flight-booking.js";
-import { bookFlightApi } from "./api-book.js";
+import type { SupplierHoldResult } from "./wakanow.types";
+import type { DbClient } from "../../db/client";
+import type { Passenger } from "../../schemas/flight-booking";
+import { bookFlightApi } from "./api-book";
 import { sql } from "drizzle-orm";
-import { createDrizzleInboundEmailRepository } from "../../domain/inbound-email/inbound-email.repository.js";
-import { waitForInboundEmailOtp } from "../../workflows/inbound-email.workflow.js";
+import { createDrizzleInboundEmailRepository } from "../../domain/inbound-email/inbound-email.repository";
+import { waitForInboundEmailOtp } from "../../workflows/inbound-email.workflow";
 
 export type WakanowHoldClient = {
   createHold(input: WakanowHoldRequest): Promise<SupplierHoldResult>;

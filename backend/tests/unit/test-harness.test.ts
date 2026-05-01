@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { assertOk } from "../test-helpers/assert.js";
+import { assertOk } from "../test-helpers/assert";
 
 assertOk({ ok: true, value: "ready" });
 assert.throws(() => assertOk({ ok: false, error: "nope" }), /Expected ok result/);

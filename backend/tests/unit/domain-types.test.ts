@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
-import { isTerminalBookingStatus } from "../../src/domain/booking/booking.types.js";
-import { makeNeedsUserInput, makeOk } from "../../src/workflows/workflow-result.js";
+import { isTerminalBookingStatus } from "../../src/domain/booking/booking.types";
+import { makeNeedsUserInput, makeOk } from "../../src/workflows/workflow-result";
 
 assert.equal(isTerminalBookingStatus("issued"), true);
 assert.equal(isTerminalBookingStatus("hold_expired"), true);

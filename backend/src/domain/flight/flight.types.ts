@@ -37,3 +37,19 @@ export type RankedFlightOptions = {
   bestValue?: FlightOption;
   options: FlightOption[];
 };
+
+export type DisplayFlightOption = {
+  id: string;
+  airline: string;
+  departureTime: string;
+  price: number;
+  stops: number;
+  baggageIncluded: boolean;
+};
+
+export type DisplayRankedFlightOptions = {
+  cheapest: DisplayFlightOption;
+  earliest: DisplayFlightOption;
+  bestValue: DisplayFlightOption;
+  options: DisplayFlightOption[];
+};

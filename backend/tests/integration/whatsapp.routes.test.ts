@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 
-import { buildServer } from "../../src/app.js";
+import { buildServer } from "../../src/app";
 import type {
   ConversationRecord,
   ConversationRepository,
-} from "../../src/domain/conversation/conversation.service.js";
+} from "../../src/domain/conversation/conversation.types";
 
 const sentMessages: unknown[] = [];
 let passengerDetailsCollected = false;

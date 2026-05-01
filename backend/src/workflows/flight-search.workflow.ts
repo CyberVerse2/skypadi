@@ -1,14 +1,11 @@
-import type { DbClient } from "../db/client.js";
-import type { UiIntent } from "../channels/whatsapp/whatsapp.types.js";
-import type { FlightSearchResponse } from "../schemas/flight-search.js";
-import {
-  type DisplayFlightOption,
-  rankFlightOptionsForDisplay,
-  type DisplayRankedFlightOptions,
-} from "../domain/flight/flight-search.service.js";
-import { createStoredFlightSearchFromWakanow, findRankedOptionsForSearch } from "../domain/flight/flight.repository.js";
-import type { WorkflowResult } from "./workflow-result.js";
-import { makeOk } from "./workflow-result.js";
+import type { DbClient } from "../db/client";
+import type { UiIntent } from "../channels/whatsapp/whatsapp.types";
+import type { FlightSearchResponse } from "../schemas/flight-search";
+import { rankFlightOptionsForDisplay } from "../domain/flight/flight-search.service";
+import type { DisplayFlightOption, DisplayRankedFlightOptions } from "../domain/flight/flight.types";
+import { createStoredFlightSearchFromWakanow, findRankedOptionsForSearch } from "../domain/flight/flight.repository";
+import type { WorkflowResult } from "./workflow-result";
+import { makeOk } from "./workflow-result";
 
 type StoredFlightOptionRow = {
   id: string;

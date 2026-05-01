@@ -1,7 +1,7 @@
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 
-import { db } from "./client.js";
-import { closePool } from "./pool.js";
+import { db } from "./client";
+import { closePool } from "./pool";
 
 export async function runMigrations(): Promise<void> {
   await migrate(db, { migrationsFolder: "src/db/migrations" });

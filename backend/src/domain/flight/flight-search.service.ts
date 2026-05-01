@@ -1,18 +1,4 @@
-export type DisplayFlightOption = {
-  id: string;
-  airline: string;
-  departureTime: string;
-  price: number;
-  stops: number;
-  baggageIncluded: boolean;
-};
-
-export type DisplayRankedFlightOptions = {
-  cheapest: DisplayFlightOption;
-  earliest: DisplayFlightOption;
-  bestValue: DisplayFlightOption;
-  options: DisplayFlightOption[];
-};
+import type { DisplayFlightOption, DisplayRankedFlightOptions } from "./flight.types";
 
 export function rankFlightOptionsForDisplay(options: DisplayFlightOption[]): DisplayRankedFlightOptions {
   if (options.length === 0) {
