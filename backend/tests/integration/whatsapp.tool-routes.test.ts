@@ -34,6 +34,7 @@ const selectedFlightOptionId = "33333333-3333-4333-8333-333333333333";
 
 await rejectsInvalidMetaSignature();
 await dedupesProviderMessages();
+await prependsOnboardingForFirstTimeUsers();
 await includesConversationContextForFollowUpAnswers();
 await executesSearchTool();
 await startsBookingFromFlightSelection();
@@ -98,6 +99,28 @@ async function dedupesProviderMessages(): Promise<void> {
   await app.close();
 }
 
+async function prependsOnboardingForFirstTimeUsers(): Promise<void> {
+  const sentMessages: SentMessage[] = [];
+  const app = buildToolRouteServer({
+    sentMessages,
+    messageRepository: createMemoryMessageRepository(),
+    chatModel: async () => ({
+      type: "reply",
+      message: "Sure. Are you flying from Lagos?",
+    }),
+  });
+
+  const response = await signedPost(app, webhookBody({ id: "wamid.first-time", text: "I need a flight to Abuja tomorrow morning" }));
+  assert.equal(response.statusCode, 200);
+  await waitFor(() => sentMessages.length === 1);
+
+  const body = ((sentMessages[0]?.message as { text?: { body?: string } }).text?.body ?? "");
+  assert.match(body, /^Hi, I’m Skypadi/);
+  assert.match(body, /Sure\. Are you flying from Lagos\?/);
+
+  await app.close();
+}
+
 async function includesConversationContextForFollowUpAnswers(): Promise<void> {
   const sentMessages: SentMessage[] = [];
   let chatInput: DecideChatActionInput | undefined;
@@ -143,7 +166,7 @@ async function includesConversationContextForFollowUpAnswers(): Promise<void> {
   assert.equal(chatInput?.context.expectedField, "origin");
   assert.equal(
     chatInput?.context.recentMessages?.some(
-      (message) => message.direction === "outbound" && message.textBody === "Where are you flying from?"
+      (message) => message.direction === "outbound" && Boolean(message.textBody?.includes("Where are you flying from?"))
     ),
     true
   );
@@ -212,7 +235,7 @@ async function executesSearchTool(): Promise<void> {
     limit: 8,
   });
   const outbound = recentMessages.find((message) => message.direction === "outbound");
-  assert.equal(outbound?.textBody, "I found these flights.");
+  assert.equal(outbound?.textBody?.includes("I found these flights."), true);
   assert.equal(outbound?.payload?.type, "interactive");
 
   await app.close();

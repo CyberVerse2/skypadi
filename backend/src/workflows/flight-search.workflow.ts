@@ -1,5 +1,5 @@
 import type { DbClient } from "../db/client";
-import type { UiIntent } from "../channels/whatsapp/whatsapp.types";
+import type { FlightListIntent, UiIntent } from "../channels/whatsapp/whatsapp.types";
 import type { FlightSearchResponse } from "../schemas/flight-search";
 import { rankFlightOptionsForDisplay } from "../domain/flight/flight-search.service";
 import type { DisplayFlightOption, DisplayRankedFlightOptions } from "../domain/flight/flight.types";
@@ -92,17 +92,50 @@ export function createFlightSearchPresentationHandler(input: {
   };
 }
 
-function rankedFlightOptionsToListIntent(ranked: DisplayRankedFlightOptions): UiIntent {
+export function rankedFlightOptionsToListIntent(ranked: DisplayRankedFlightOptions): FlightListIntent {
+  const options = topDistinctAirlineOptions(ranked.options, 3);
+
   return {
     type: "flight_list",
-    body: "I found these flight options.",
+    body: comparisonBody(options, ranked.bestValue),
     buttonText: "Choose flight",
-    rows: ranked.options.slice(0, 10).map((option) => ({
+    rows: options.map((option) => ({
       id: `flight_option:${option.id}`,
       title: option.airline.slice(0, 24),
       description: `${option.departureTime} - NGN ${option.price.toLocaleString("en-NG")}`.slice(0, 72),
     })),
   };
+}
+
+function topDistinctAirlineOptions(options: DisplayFlightOption[], limit: number): DisplayFlightOption[] {
+  const selected = new Map<string, DisplayFlightOption>();
+  for (const option of [...options].sort((left, right) => left.price - right.price || left.departureTime.localeCompare(right.departureTime))) {
+    const key = option.airline.trim().toLowerCase();
+    if (!selected.has(key)) selected.set(key, option);
+    if (selected.size >= limit) break;
+  }
+  return [...selected.values()];
+}
+
+function comparisonBody(options: DisplayFlightOption[], bestValue: DisplayFlightOption): string {
+  const recommendation = options.find((option) => option.id === bestValue.id) ?? options[0]!;
+  const lines = options.map((option, index) => {
+    const label = index === 0 ? "Cheapest" : option.id === recommendation.id ? "Best Value" : "Next Cheapest";
+    const baggage = option.baggageIncluded ? "Baggage included." : "Check baggage before paying.";
+    return `${index + 1}. ${label} — ${option.airline}\n${option.departureTime} — ₦${option.price.toLocaleString("en-NG")}\n${baggage}`;
+  });
+  const cheapest = options[0]!;
+  const premium = recommendation.price - cheapest.price;
+  const reason =
+    premium > 0
+      ? `It is ₦${premium.toLocaleString("en-NG")} more than the cheapest, but it should be less rushed and not stressful overall.`
+      : "It is the cheapest solid option and keeps the trip simple.";
+
+  return [
+    `I found ${options.length} good options:`,
+    ...lines,
+    `My recommendation: ${recommendation.airline}. ${reason}`,
+  ].join("\n\n");
 }
 
 function toDisplayFlightOption(row: StoredFlightOptionRow, displayTimeZone = "Africa/Lagos"): DisplayFlightOption {

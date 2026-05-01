@@ -153,22 +153,41 @@ async function processMessages(
     const userText = chatTextFromMessage(message);
     if (!userText) continue;
 
+    const context = await chatContextFromConversation({ conversation, message, options });
     const action = await decideChatActionWithModel(options.chatModel, {
       userText,
       now,
-      context: await chatContextFromConversation({ conversation, message, options }),
+      context,
     });
 
-    const intent = await uiIntentFromChatAction(action, {
+    const intent = maybeAddFirstTimeOnboarding(await uiIntentFromChatAction(action, {
       conversation,
       message,
       options,
-    });
+    }), context);
     if (!intent) continue;
 
     await sendIntentReply(intent, conversation.id, message, options);
     request.log.info({ providerMessageId: message.id, resultKind: action.type }, "Processed WhatsApp tool message");
   }
+}
+
+const FIRST_TIME_ONBOARDING =
+  "Hi, I’m Skypadi — your AI travel agent.\n\nTell me where you want to travel, and I’ll help you find the cheapest flight that won’t give you stress.";
+
+function maybeAddFirstTimeOnboarding(intent: UiIntent | undefined, context: ChatContext): UiIntent | undefined {
+  if (!intent || !isFirstUserTurn(context)) return intent;
+  if (intent.type !== "text" && intent.type !== "flight_list" && intent.type !== "passenger_details_flow") return intent;
+  return {
+    ...intent,
+    body: `${FIRST_TIME_ONBOARDING}\n\n${intent.body}`,
+  };
+}
+
+function isFirstUserTurn(context: ChatContext): boolean {
+  const messages = context.recentMessages ?? [];
+  const hasDraft = Boolean(context.currentDraft && Object.keys(context.currentDraft).length > 0);
+  return !hasDraft && !messages.some((message) => message.direction === "outbound" || message.direction === "system");
 }
 
 export async function uiIntentFromChatAction(

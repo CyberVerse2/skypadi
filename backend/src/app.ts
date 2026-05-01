@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import fastifyRawBody from "fastify-raw-body";
+import { sql } from "drizzle-orm";
 import { ZodError } from "zod";
 import { env } from "./config";
 import { flightSearchRequestSchema } from "./schemas/flight-search";
@@ -20,6 +21,7 @@ import type { IntentExtractor } from "./agent/intent-extractor";
 import { createOpenAIChatModel, type ChatModel } from "./tools/chat-agent";
 import { createDrizzleSupplierBookingJobRepository } from "./jobs/booking-job.repository";
 import { enqueueSupplierBookingJob } from "./jobs/booking-queue";
+import { bookingSummaryPassengerFlowBody, type BookingSummaryDetails } from "./workflows/booking-summary";
 
 export type BuildServerOptions = {
   whatsappVerifyToken?: string;
@@ -157,9 +159,16 @@ function createLiveBookingHandler(): BookingSelectionHandler {
         return { type: "text", body: "I could not create that booking yet. Please try another flight." };
       }
 
+      const summary = await findBookingSummaryForSelectedFlight(result.value.selectedFlightOptionId).catch(() => undefined);
+
       return {
         type: "passenger_details_flow",
-        body: "Great choice. I need the passenger details to continue.",
+        body: summary
+          ? bookingSummaryPassengerFlowBody({
+              summary,
+              passengerPrompt: "I need the passenger details to continue.",
+            })
+          : "Great choice. I need the passenger details to continue.",
         buttonText: "Enter details",
         flowId: passengerDetailsFlowId,
         flowToken: result.value.id,
@@ -188,6 +197,52 @@ function createLiveBookingHandler(): BookingSelectionHandler {
       };
     },
   };
+}
+
+async function findBookingSummaryForSelectedFlight(selectedFlightOptionId: string): Promise<BookingSummaryDetails | undefined> {
+  const result = await db.execute(sql`
+    select
+      origin,
+      destination,
+      airline_name,
+      departure_at,
+      amount,
+      fare_rules
+    from skypadi_whatsapp.flight_options
+    where id = ${selectedFlightOptionId}
+    limit 1
+  `);
+  const row = result.rows[0] as
+    | {
+        origin: string;
+        destination: string;
+        airline_name: string | null;
+        departure_at: Date | string;
+        amount: string | number;
+        fare_rules?: Record<string, unknown> | null;
+      }
+    | undefined;
+  if (!row) return undefined;
+
+  return {
+    route: `${row.origin} → ${row.destination}`,
+    flight: `${row.airline_name ?? "Selected airline"}, ${formatFlightSummaryTime(row.departure_at)}`,
+    baggage: row.fare_rules?.baggageIncluded === false
+      ? "check baggage before paying"
+      : "standard cabin + checked baggage included",
+    fare: Number(row.amount),
+    currency: "NGN",
+    skypadiFee: 3000,
+  };
+}
+
+function formatFlightSummaryTime(value: Date | string): string {
+  const date = value instanceof Date ? value : new Date(value);
+  return new Intl.DateTimeFormat("en-NG", {
+    timeZone: env.WAKANOW_TIMEZONE,
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function configuredWhatsAppClient(): WhatsAppClient {

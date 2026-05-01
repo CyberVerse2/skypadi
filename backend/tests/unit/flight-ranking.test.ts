@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { rankFlightOptionsForDisplay } from "../../src/domain/flight/flight-search.service";
-import { presentStoredFlightOptions } from "../../src/workflows/flight-search.workflow";
+import { presentStoredFlightOptions, rankedFlightOptionsToListIntent } from "../../src/workflows/flight-search.workflow";
 
 const ranked = rankFlightOptionsForDisplay([
   { id: "a", airline: "Air Peace", departureTime: "06:45", price: 171000, stops: 0, baggageIncluded: true },
@@ -20,6 +20,27 @@ const lowStressRanked = rankFlightOptionsForDisplay([
 
 assert.equal(lowStressRanked.bestValue.id, "calmer");
 assert.throws(() => rankFlightOptionsForDisplay([]), /At least one flight option is required/);
+
+const distinctAirlineList = rankedFlightOptionsToListIntent(
+  rankFlightOptionsForDisplay([
+    { id: "value-early", airline: "ValueJet", departureTime: "07:30", price: 142000, stops: 0, baggageIncluded: false },
+    { id: "value-late", airline: "ValueJet", departureTime: "10:30", price: 139000, stops: 0, baggageIncluded: false },
+    { id: "ibom", airline: "Ibom Air", departureTime: "08:45", price: 158000, stops: 0, baggageIncluded: true },
+    { id: "air-peace", airline: "Air Peace", departureTime: "06:45", price: 171000, stops: 0, baggageIncluded: true },
+    { id: "green", airline: "Green Africa", departureTime: "09:15", price: 160000, stops: 0, baggageIncluded: false },
+  ])
+);
+
+assert.deepEqual(
+  distinctAirlineList.rows.map((row) => row.id),
+  ["flight_option:value-late", "flight_option:ibom", "flight_option:green"]
+);
+assert.equal(distinctAirlineList.rows.length, 3);
+assert.match(distinctAirlineList.body, /I found 3 good options/);
+assert.match(distinctAirlineList.body, /Cheapest — ValueJet/);
+assert.match(distinctAirlineList.body, /Best Value — Ibom Air/);
+assert.match(distinctAirlineList.body, /My recommendation: Ibom Air/);
+assert.match(distinctAirlineList.body, /not stressful/i);
 
 const presented = await presentStoredFlightOptions("search_123", {
   displayTimeZone: "Africa/Lagos",
