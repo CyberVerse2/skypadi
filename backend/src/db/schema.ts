@@ -81,6 +81,14 @@ export const bookingEmailAliasStatusEnum = skypadi.enum("booking_email_alias_sta
   "disabled",
 ]);
 
+export const supplierBookingJobStatusEnum = skypadi.enum("supplier_booking_job_status", [
+  "queued",
+  "running",
+  "succeeded",
+  "retryable_failed",
+  "terminal_failed",
+]);
+
 export const users = skypadi.table(
   "users",
   {
@@ -260,6 +268,27 @@ export const bookings = skypadi.table(
     userIdIdx: index("bookings_user_id_idx").on(table.userId),
     statusIdx: index("bookings_status_idx").on(table.status),
     supplierReferenceIdx: index("bookings_supplier_reference_idx").on(table.supplier, table.supplierBookingReference),
+  }),
+);
+
+export const supplierBookingJobs = skypadi.table(
+  "supplier_booking_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bookingId: uuid("booking_id").notNull().references(() => bookings.id, { onDelete: "cascade" }),
+    graphileJobKey: text("graphile_job_key").notNull(),
+    status: supplierBookingJobStatusEnum("status").notNull().default("queued"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    lastError: text("last_error"),
+    queuedAt: timestamp("queued_at", { withTimezone: true }).notNull().defaultNow(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => ({
+    bookingIdIdx: uniqueIndex("supplier_booking_jobs_booking_id_idx").on(table.bookingId),
+    graphileJobKeyIdx: uniqueIndex("supplier_booking_jobs_graphile_job_key_idx").on(table.graphileJobKey),
+    statusIdx: index("supplier_booking_jobs_status_idx").on(table.status),
   }),
 );
 
