@@ -100,10 +100,13 @@ export function rankedFlightOptionsToListIntent(ranked: DisplayRankedFlightOptio
     type: "flight_list",
     body: comparisonBody(options, ranked.bestValue),
     buttonText: "Choose flight",
-    rows: options.map((option) => ({
+    rows: options.map((option, index) => ({
       id: flightOptionReplyId(option.id),
-      title: option.airline.slice(0, 24),
-      description: `${option.departureTime} - NGN ${option.price.toLocaleString("en-NG")}`.slice(0, 72),
+      title: truncate(`${index + 1} ${listRowLabel(option, index, ranked.bestValue)}: ${option.airline}`, 24),
+      description: truncate(
+        `${option.departureTime} - NGN ${option.price.toLocaleString("en-NG")} - ${baggageSummary(option)}`,
+        72
+      ),
     })),
   };
 }
@@ -121,9 +124,8 @@ function topDistinctAirlineOptions(options: DisplayFlightOption[], limit: number
 function comparisonBody(options: DisplayFlightOption[], bestValue: DisplayFlightOption): string {
   const recommendation = options.find((option) => option.id === bestValue.id) ?? options[0]!;
   const lines = options.map((option, index) => {
-    const label = index === 0 ? "Cheapest" : option.id === recommendation.id ? "Best Value" : "Next Cheapest";
-    const baggage = option.baggageIncluded ? "Baggage included." : "Check baggage before paying.";
-    return `${index + 1}. ${label} — ${option.airline}\n${option.departureTime} — ₦${option.price.toLocaleString("en-NG")}\n${baggage}`;
+    const label = comparisonLabel(option, index, recommendation);
+    return `${index + 1}. ${label} — ${option.airline}\n${option.departureTime} — ₦${option.price.toLocaleString("en-NG")}\n${comparisonBaggageSummary(option)}`;
   });
   const cheapest = options[0]!;
   const premium = recommendation.price - cheapest.price;
@@ -137,6 +139,30 @@ function comparisonBody(options: DisplayFlightOption[], bestValue: DisplayFlight
     ...lines,
     `My recommendation: ${recommendation.airline}. ${reason}`,
   ].join("\n\n");
+}
+
+function comparisonLabel(option: DisplayFlightOption, index: number, recommendation: DisplayFlightOption): string {
+  if (index === 0) return "Cheapest";
+  if (option.id === recommendation.id) return "Best Value";
+  return "Next Cheapest";
+}
+
+function listRowLabel(option: DisplayFlightOption, index: number, recommendation: DisplayFlightOption): string {
+  if (index === 0) return "Cheapest";
+  if (option.id === recommendation.id) return "Best";
+  return "Next";
+}
+
+function baggageSummary(option: DisplayFlightOption): string {
+  return option.baggageIncluded ? "Bag included" : "Check bag";
+}
+
+function comparisonBaggageSummary(option: DisplayFlightOption): string {
+  return option.baggageIncluded ? "Baggage included." : "Check baggage before paying.";
+}
+
+function truncate(value: string, maxLength: number): string {
+  return value.length <= maxLength ? value : value.slice(0, maxLength);
 }
 
 function toDisplayFlightOption(row: StoredFlightOptionRow, displayTimeZone = "Africa/Lagos"): DisplayFlightOption {

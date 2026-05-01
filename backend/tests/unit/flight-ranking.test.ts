@@ -37,6 +37,14 @@ assert.deepEqual(
   [flightOptionReplyId("value-late"), flightOptionReplyId("ibom"), flightOptionReplyId("green")]
 );
 assert.equal(distinctAirlineList.rows.length, 3);
+assert.deepEqual(
+  distinctAirlineList.rows.map((row) => row.title),
+  ["1 Cheapest: ValueJet", "2 Best: Ibom Air", "3 Next: Green Africa"]
+);
+assert.deepEqual(
+  distinctAirlineList.rows.map((row) => row.description),
+  ["10:30 - NGN 139,000 - Check bag", "08:45 - NGN 158,000 - Bag included", "09:15 - NGN 160,000 - Check bag"]
+);
 assert.match(distinctAirlineList.body, /I found 3 good options/);
 assert.match(distinctAirlineList.body, /Cheapest — ValueJet/);
 assert.match(distinctAirlineList.body, /Best Value — Ibom Air/);
