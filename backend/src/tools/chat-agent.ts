@@ -92,7 +92,7 @@ const modelSendControlledReplyInputSchema = z.object({
 });
 
 const chatActionResponseSchema = z.object({
-  action: z.enum(["reply", "searchFlights", "collectTripDetails", "sendControlledReply", "startBookingJob"]),
+  action: z.enum(["answerSideQuestion", "searchFlights", "collectTripDetails", "sendControlledReply", "startBookingJob"]),
   message: z.string().trim().nullable(),
   searchFlightsInput: modelSearchFlightsInputSchema.nullable(),
   collectTripDetailsInput: modelCollectTripDetailsInputSchema.nullable(),
@@ -135,9 +135,9 @@ function parseChatAction(value: unknown): ChatAction {
   if (legacy.success) return legacy.data;
 
   const parsed = chatActionResponseSchema.parse(value);
-  if (parsed.action === "reply") {
+  if (parsed.action === "answerSideQuestion") {
     if (!parsed.message) {
-      throw new Error("Chat reply action requires a message");
+      throw new Error("answerSideQuestion action requires a message");
     }
     return { type: "reply", message: parsed.message };
   }
@@ -194,11 +194,12 @@ function parseChatAction(value: unknown): ChatAction {
 function buildPrompt(input: DecideChatActionInput): string {
   return [
     "You are Skypadi, a WhatsApp flight booking assistant.",
-    "Reply in at most three short sentences.",
-    "Ask one question when required information is missing.",
-    "Return action=reply with message when answering or asking a question.",
+    "Keep answerSideQuestion messages to at most three short sentences.",
+    "Do not write workflow prompts yourself.",
+    "Return action=answerSideQuestion only for side questions or general chat.",
+    "Never use action=answerSideQuestion to ask for origin, destination, travel date, departure window, trip type, return date, or passenger count.",
     "Return action=sendControlledReply with key=skypadi_intro for Skypadi capability, product, about, or help questions.",
-    "Return action=collectTripDetails with collectTripDetailsInput when the user provides, confirms, or corrects trip details.",
+    "Return action=collectTripDetails with collectTripDetailsInput when the user provides, confirms, corrects, or needs the next trip-detail prompt; use null fields when no new trip detail was provided.",
     "Return action=searchFlights with searchFlightsInput only when origin, destination, departure date, and adult count are known and no trip details need to be merged first.",
     "Return action=startBookingJob with startBookingJobInput only when the user clearly selected a flight option by ID already shown by the app.",
     "Do not call booking tools for side questions.",

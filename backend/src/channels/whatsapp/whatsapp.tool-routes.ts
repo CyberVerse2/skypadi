@@ -17,7 +17,7 @@ import type {
 } from "../../tools/chat-tool.types";
 import { executeSearchFlightsTool } from "../../tools/search-flights.tool";
 import type { BookingSelectionHandler, FlightSearchHandler } from "./whatsapp.handlers";
-import { addFirstTimeOnboarding, SKYPADI_ONBOARDING_MESSAGE } from "./whatsapp.onboarding";
+import { addFirstTimeOnboarding, isFirstUserReply, SKYPADI_ONBOARDING_MESSAGE } from "./whatsapp.onboarding";
 import { passengerActionFromReplyId, selectedFlightOptionIdFromReplyId } from "./whatsapp.reply-ids";
 
 export type WhatsAppToolRoutesOptions = {
@@ -193,6 +193,12 @@ async function processMessages(
     if (!userText) continue;
 
     const context = await chatContextFromConversation({ conversation, message, options });
+    if (isFirstTimeGreetingOnly(userText, context)) {
+      await sendIntentReply({ type: "text", body: SKYPADI_ONBOARDING_MESSAGE }, conversation.id, message, options);
+      request.log.info({ providerMessageId: message.id, resultKind: "controlled_onboarding" }, "Processed WhatsApp tool message");
+      continue;
+    }
+
     const action = await decideChatActionWithModel(options.chatModel, {
       userText,
       now,
@@ -218,6 +224,10 @@ async function processMessages(
     if (!intent) continue;
 
     await sendIntentReply(intent, conversation.id, message, options);
+    const resumeIntent = promptToResumeAfterSideAnswer(action, conversation.draft);
+    if (resumeIntent) {
+      await sendIntentReply(resumeIntent, conversation.id, message, options);
+    }
     request.log.info({ providerMessageId: message.id, resultKind: action.type }, "Processed WhatsApp tool message");
   }
 }
@@ -236,6 +246,19 @@ function chatDecisionFailureIntent(context: ChatContext): UiIntent {
     type: "text",
     body: "I’m having trouble responding right now. Please message me again shortly.",
   };
+}
+
+function isFirstTimeGreetingOnly(userText: string, context: ChatContext): boolean {
+  if (!isFirstUserReply(context)) return false;
+  return /^(hi|hello|hey|heyy|heyyy|good morning|good afternoon|good evening)[!. ]*$/i.test(userText.trim());
+}
+
+function promptToResumeAfterSideAnswer(
+  action: ChatAction,
+  draft: PersistedInboundMessage["conversation"]["draft"]
+): UiIntent | undefined {
+  if (action.type !== "reply" || !draft.expectedField) return undefined;
+  return promptForMissingTripField(draft.expectedField);
 }
 
 export async function uiIntentFromChatAction(
@@ -362,7 +385,14 @@ function promptForMissingTripField(
   field: NonNullable<PersistedInboundMessage["conversation"]["draft"]["expectedField"]>
 ): UiIntent {
   if (field === "origin") {
-    return { type: "text", body: "Where are you flying from?" };
+    return {
+      type: "origin_list",
+      body: "Where are you flying from?",
+      rows: [
+        { id: "origin:LOS", title: "Lagos", description: "Murtala Muhammed Airport" },
+        { id: "origin:ABV", title: "Abuja", description: "Nnamdi Azikiwe Airport" },
+      ],
+    };
   }
 
   if (field === "destination") {
@@ -371,6 +401,29 @@ function promptForMissingTripField(
 
   if (field === "departure_date") {
     return { type: "text", body: "What date do you want to travel?" };
+  }
+
+  if (field === "departure_window") {
+    return {
+      type: "reply_buttons",
+      body: "What time of day works best?",
+      buttons: [
+        { id: "departure_window:morning", title: "Morning" },
+        { id: "departure_window:afternoon", title: "Afternoon" },
+        { id: "departure_window:evening", title: "Evening" },
+      ],
+    };
+  }
+
+  if (field === "trip_type") {
+    return {
+      type: "reply_buttons",
+      body: "Is this one-way or return?",
+      buttons: [
+        { id: "trip_type:one_way", title: "One-way" },
+        { id: "trip_type:return", title: "Return" },
+      ],
+    };
   }
 
   return {
@@ -522,6 +575,9 @@ function chatTextFromMessage(message: WhatsAppInboundMessage): string | undefine
   }
   if (replyId.startsWith("trip_type:")) {
     return selectedReplyText("Trip type selected", replyId.slice("trip_type:".length), title);
+  }
+  if (replyId.startsWith("departure_window:")) {
+    return selectedReplyText("Departure window selected", replyId.slice("departure_window:".length), title);
   }
   if (replyId.startsWith("passengers:")) {
     return selectedReplyText("Passengers selected", replyId.slice("passengers:".length), title);

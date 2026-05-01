@@ -6,12 +6,6 @@ export const SKYPADI_ONBOARDING_MESSAGE =
 
 export function addFirstTimeOnboarding(intent: UiIntent | undefined, context: ChatContext): UiIntent | undefined {
   if (!intent || !isFirstUserReply(context)) return intent;
-  if (isGenericGreetingReply(intent)) {
-    return {
-      ...intent,
-      body: SKYPADI_ONBOARDING_MESSAGE,
-    };
-  }
   if (!supportsOnboardingPrefix(intent)) return intent;
   return {
     ...intent,
@@ -19,7 +13,7 @@ export function addFirstTimeOnboarding(intent: UiIntent | undefined, context: Ch
   };
 }
 
-function isFirstUserReply(context: ChatContext): boolean {
+export function isFirstUserReply(context: ChatContext): boolean {
   const messages = context.recentMessages ?? [];
   const hasDraft = Boolean(context.currentDraft && Object.keys(context.currentDraft).length > 0);
   return !hasDraft && !messages.some((message) => message.direction === "outbound" || message.direction === "system");
@@ -28,20 +22,10 @@ function isFirstUserReply(context: ChatContext): boolean {
 function supportsOnboardingPrefix(intent: UiIntent): boolean {
   return (
     intent.type === "text" ||
+    intent.type === "origin_list" ||
     intent.type === "flight_list" ||
     intent.type === "reply_buttons" ||
     intent.type === "cta_button" ||
     intent.type === "passenger_details_flow"
   );
-}
-
-function isGenericGreetingReply(intent: UiIntent): boolean {
-  if (intent.type !== "text") return false;
-  const normalized = intent.body.trim().toLowerCase();
-  return (
-    normalized.startsWith("hi") ||
-    normalized.startsWith("hello") ||
-    normalized.startsWith("hey") ||
-    normalized.startsWith("sure.")
-  ) && /where are you flying|where to|what date|how many adult/.test(normalized);
 }
