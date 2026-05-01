@@ -45,6 +45,45 @@ assert.deepEqual(replyDecision, {
   message: "Sure. Which city are you flying from?",
 });
 
+const modelShapeSearchDecision = await decideChatActionWithModel(
+  async () => ({
+    action: "searchFlights",
+    searchFlightsInput: {
+      origin: "LOS",
+      destination: "ENU",
+      departureDate: "2026-05-09",
+      departureWindow: "morning",
+      adults: 1,
+    },
+  }),
+  baseDecisionInput
+);
+
+assert.deepEqual(modelShapeSearchDecision, {
+  type: "tool",
+  tool: "searchFlights",
+  input: {
+    origin: "LOS",
+    destination: "ENU",
+    departureDate: "2026-05-09",
+    departureWindow: "morning",
+    adults: 1,
+  },
+});
+
+const modelShapeReplyDecision = await decideChatActionWithModel(
+  async () => ({
+    action: "reply",
+    message: "Sure. Which city are you flying from?",
+  }),
+  baseDecisionInput
+);
+
+assert.deepEqual(modelShapeReplyDecision, {
+  type: "reply",
+  message: "Sure. Which city are you flying from?",
+});
+
 const longReply = await decideChatActionWithModel(
   async () => ({
     type: "reply",
@@ -57,6 +96,16 @@ assert.equal(longReply.type, "reply");
 if (longReply.type === "reply") {
   assert.equal(longReply.message, "A. B. C.");
 }
+
+await assert.rejects(
+  decideChatActionWithModel(
+    async () => ({
+      action: "searchFlights",
+    }),
+    baseDecisionInput
+  ),
+  /searchFlights action requires searchFlightsInput/
+);
 
 await assert.rejects(
   decideChatActionWithModel(

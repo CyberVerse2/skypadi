@@ -25,7 +25,7 @@ const searchFlightsInputSchema = z
     }
   });
 
-const chatActionSchema = z.union([
+const legacyChatActionSchema = z.union([
   z.object({
     type: z.literal("reply"),
     message: z.string().trim().min(1),
@@ -46,13 +46,24 @@ const chatActionSchema = z.union([
   ]),
 ]);
 
+const chatActionResponseSchema = z.object({
+  action: z.enum(["reply", "searchFlights", "startBookingJob"]),
+  message: z.string().trim().optional(),
+  searchFlightsInput: searchFlightsInputSchema.optional(),
+  startBookingJobInput: z
+    .object({
+      selectedFlightOptionId: z.string().uuid(),
+    })
+    .optional(),
+});
+
 export type ChatModel = (input: DecideChatActionInput) => Promise<unknown>;
 
 export async function decideChatActionWithModel(
   model: ChatModel,
   input: DecideChatActionInput
 ): Promise<ChatAction> {
-  const parsed = chatActionSchema.parse(await model(input));
+  const parsed = parseChatAction(await model(input));
   if (parsed.type === "reply") {
     return { type: "reply", message: trimToThreeSentences(parsed.message) };
   }
@@ -64,12 +75,37 @@ export function createOpenAIChatModel(input: { apiKey: string; model: string }):
   return async (decisionInput) => {
     const result = await generateObject({
       model: openai.chat(input.model),
-      schema: chatActionSchema,
+      schema: chatActionResponseSchema,
       prompt: buildPrompt(decisionInput),
       maxRetries: 0,
     });
-    return result.object;
+    return parseChatAction(result.object);
   };
+}
+
+function parseChatAction(value: unknown): ChatAction {
+  const legacy = legacyChatActionSchema.safeParse(value);
+  if (legacy.success) return legacy.data;
+
+  const parsed = chatActionResponseSchema.parse(value);
+  if (parsed.action === "reply") {
+    if (!parsed.message) {
+      throw new Error("Chat reply action requires a message");
+    }
+    return { type: "reply", message: parsed.message };
+  }
+
+  if (parsed.action === "searchFlights") {
+    if (!parsed.searchFlightsInput) {
+      throw new Error("searchFlights action requires searchFlightsInput");
+    }
+    return { type: "tool", tool: "searchFlights", input: parsed.searchFlightsInput };
+  }
+
+  if (!parsed.startBookingJobInput) {
+    throw new Error("startBookingJob action requires startBookingJobInput");
+  }
+  return { type: "tool", tool: "startBookingJob", input: parsed.startBookingJobInput };
 }
 
 function buildPrompt(input: DecideChatActionInput): string {
@@ -77,8 +113,9 @@ function buildPrompt(input: DecideChatActionInput): string {
     "You are Skypadi, a WhatsApp flight booking assistant.",
     "Reply in at most three short sentences.",
     "Ask one question when required information is missing.",
-    "Use searchFlights only when origin, destination, departure date, and adult count are known.",
-    "Use startBookingJob only when the user clearly selected a flight option by ID already shown by the app.",
+    "Return action=reply with message when answering or asking a question.",
+    "Return action=searchFlights with searchFlightsInput only when origin, destination, departure date, and adult count are known.",
+    "Return action=startBookingJob with startBookingJobInput only when the user clearly selected a flight option by ID already shown by the app.",
     "Do not call booking tools for side questions.",
     `Current date: ${input.now.toISOString().slice(0, 10)}`,
     `Context: ${JSON.stringify(input.context)}`,
