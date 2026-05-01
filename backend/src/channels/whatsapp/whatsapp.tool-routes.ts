@@ -17,7 +17,7 @@ import type {
 } from "../../tools/chat-tool.types";
 import { executeSearchFlightsTool } from "../../tools/search-flights.tool";
 import type { BookingSelectionHandler, FlightSearchHandler } from "./whatsapp.handlers";
-import { addFirstTimeOnboarding, SKYPADI_ONBOARDING_MESSAGE } from "./whatsapp.onboarding";
+import { addFirstTimeOnboarding, isFirstUserReply, SKYPADI_ONBOARDING_MESSAGE } from "./whatsapp.onboarding";
 import { passengerActionFromReplyId, selectedFlightOptionIdFromReplyId } from "./whatsapp.reply-ids";
 
 export type WhatsAppToolRoutesOptions = {
@@ -193,6 +193,12 @@ async function processMessages(
     if (!userText) continue;
 
     const context = await chatContextFromConversation({ conversation, message, options });
+    if (isFirstTimeGreetingOnly(userText, context)) {
+      await sendIntentReply({ type: "text", body: SKYPADI_ONBOARDING_MESSAGE }, conversation.id, message, options);
+      request.log.info({ providerMessageId: message.id, resultKind: "controlled_onboarding" }, "Processed WhatsApp tool message");
+      continue;
+    }
+
     const action = await decideChatActionWithModel(options.chatModel, {
       userText,
       now,
@@ -236,6 +242,11 @@ function chatDecisionFailureIntent(context: ChatContext): UiIntent {
     type: "text",
     body: "I’m having trouble responding right now. Please message me again shortly.",
   };
+}
+
+function isFirstTimeGreetingOnly(userText: string, context: ChatContext): boolean {
+  if (!isFirstUserReply(context)) return false;
+  return /^(hi|hello|hey|heyy|heyyy|good morning|good afternoon|good evening)[!. ]*$/i.test(userText.trim());
 }
 
 export async function uiIntentFromChatAction(

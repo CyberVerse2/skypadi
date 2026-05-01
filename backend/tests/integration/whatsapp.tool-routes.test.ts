@@ -90,7 +90,14 @@ async function dedupesProviderMessages(): Promise<void> {
     messageRepository,
     chatModel: async () => {
       chatModelCalls += 1;
-      return { type: "reply", message: "Sure. Where are you flying from?" };
+      return {
+        action: "answerSideQuestion",
+        message: "I can help with that.",
+        searchFlightsInput: null,
+        collectTripDetailsInput: null,
+        sendControlledReplyInput: null,
+        startBookingJobInput: null,
+      };
     },
   });
 
@@ -116,8 +123,13 @@ async function prependsOnboardingForFirstTimeUsers(): Promise<void> {
     sentMessages,
     messageRepository: createMemoryMessageRepository(),
     chatModel: async () => ({
-      type: "reply",
-      message: "Sure. Are you flying from Lagos?",
+      type: "tool",
+      tool: "collectTripDetails",
+      input: {
+        destination: "ABV",
+        departureDate: "2026-05-02",
+        departureWindow: "morning",
+      },
     }),
   });
 
@@ -125,22 +137,23 @@ async function prependsOnboardingForFirstTimeUsers(): Promise<void> {
   assert.equal(response.statusCode, 200);
   await waitFor(() => sentMessages.length === 1);
 
-  const body = ((sentMessages[0]?.message as { text?: { body?: string } }).text?.body ?? "");
+  const body = ((sentMessages[0]?.message as { interactive?: { body?: { text?: string } } }).interactive?.body?.text ?? "");
   assert.match(body, /^Hi, I’m Skypadi/);
-  assert.match(body, /Sure\. Are you flying from Lagos\?/);
+  assert.match(body, /Where are you flying from\?/);
 
   await app.close();
 }
 
 async function usesSavedOnboardingForFirstTimeGreetingOnlyUsers(): Promise<void> {
   const sentMessages: SentMessage[] = [];
+  let chatModelCalls = 0;
   const app = buildToolRouteServer({
     sentMessages,
     messageRepository: createMemoryMessageRepository(),
-    chatModel: async () => ({
-      type: "reply",
-      message: "Hi! Where are you flying from, where to, what date, and how many adults?",
-    }),
+    chatModel: async () => {
+      chatModelCalls += 1;
+      throw new Error("first-time greeting should not call chat model");
+    },
   });
 
   const response = await signedPost(app, webhookBody({ id: "wamid.first-time-hi", text: "hi" }));
@@ -150,6 +163,7 @@ async function usesSavedOnboardingForFirstTimeGreetingOnlyUsers(): Promise<void>
   const body = ((sentMessages[0]?.message as { text?: { body?: string } }).text?.body ?? "");
   assert.match(body, /^Hi, I’m Skypadi/);
   assert.doesNotMatch(body, /Where are you flying from, where to/);
+  assert.equal(chatModelCalls, 0);
 
   await app.close();
 }
@@ -195,8 +209,12 @@ async function letsModelAnswerReturningGreetingWithoutTripPrompt(): Promise<void
       },
     ]),
     chatModel: async () => ({
-      type: "reply",
+      action: "answerSideQuestion",
       message: "Hi! I can help you search and book flights when you’re ready.",
+      searchFlightsInput: null,
+      collectTripDetailsInput: null,
+      sendControlledReplyInput: null,
+      startBookingJobInput: null,
     }),
   });
 
@@ -230,9 +248,17 @@ async function includesConversationContextForFollowUpAnswers(): Promise<void> {
       chatModelCalls += 1;
       chatInput = input;
       if (chatModelCalls === 1) {
-        return { type: "reply", message: "Where are you flying from?" };
+        return {
+          type: "tool",
+          tool: "collectTripDetails",
+          input: {},
+        };
       }
-      return { type: "reply", message: "Got Lagos. What time works best?" };
+      return {
+        type: "tool",
+        tool: "collectTripDetails",
+        input: { origin: "LOS" },
+      };
     },
   });
 
@@ -294,7 +320,14 @@ async function dedupesRepeatedRecentMessagesBeforeChatModel(): Promise<void> {
     messageRepository,
     chatModel: async (input) => {
       chatInput = input;
-      return { type: "reply", message: "Still checking that for you." };
+      return {
+        action: "answerSideQuestion",
+        message: "Still checking that for you.",
+        searchFlightsInput: null,
+        collectTripDetailsInput: null,
+        sendControlledReplyInput: null,
+        startBookingJobInput: null,
+      };
     },
   });
 
@@ -860,8 +893,12 @@ function buildToolRouteServer(input: {
     chatModel:
       input.chatModel ??
       (async () => ({
-        type: "reply",
-        message: "Sure. Where are you flying from?",
+        action: "answerSideQuestion",
+        message: "I can help with that.",
+        searchFlightsInput: null,
+        collectTripDetailsInput: null,
+        sendControlledReplyInput: null,
+        startBookingJobInput: null,
       })),
     intentExtractor: {
       async extractTripIntent() {

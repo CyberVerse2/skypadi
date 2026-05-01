@@ -35,14 +35,14 @@ if (searchDecision.type === "tool") {
 const replyDecision = await decideChatActionWithModel(
   async () => ({
     type: "reply",
-    message: "Sure. Which city are you flying from?",
+    message: "Domestic flights usually need a valid ID at check-in.",
   }),
-  { ...baseDecisionInput, userText: "I want to travel" }
+  { ...baseDecisionInput, userText: "Do I need an ID?" }
 );
 
 assert.deepEqual(replyDecision, {
   type: "reply",
-  message: "Sure. Which city are you flying from?",
+  message: "Domestic flights usually need a valid ID at check-in.",
 });
 
 const modelShapeSearchDecision = await decideChatActionWithModel(
@@ -124,10 +124,10 @@ assert.deepEqual(modelShapeControlledReplyDecision, {
   input: { key: "skypadi_intro" },
 });
 
-const modelShapeReplyDecision = await decideChatActionWithModel(
+const modelShapeSideQuestionDecision = await decideChatActionWithModel(
   async () => ({
-    action: "reply",
-    message: "Sure. Which city are you flying from?",
+    action: "answerSideQuestion",
+    message: "Domestic flights usually need a valid ID at check-in.",
     searchFlightsInput: null,
     collectTripDetailsInput: null,
     sendControlledReplyInput: null,
@@ -136,9 +136,9 @@ const modelShapeReplyDecision = await decideChatActionWithModel(
   baseDecisionInput
 );
 
-assert.deepEqual(modelShapeReplyDecision, {
+assert.deepEqual(modelShapeSideQuestionDecision, {
   type: "reply",
-  message: "Sure. Which city are you flying from?",
+  message: "Domestic flights usually need a valid ID at check-in.",
 });
 
 const longReply = await decideChatActionWithModel(
