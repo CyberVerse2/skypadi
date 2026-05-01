@@ -11,6 +11,7 @@ const searchIntent = await executeSearchFlightsTool({
     origin: "LOS",
     destination: "ENU",
     departureDate: "2026-05-09",
+    departureWindow: "morning",
     adults: 1,
   },
   flightSearchHandler: {
@@ -23,7 +24,7 @@ const searchIntent = await executeSearchFlightsTool({
           origin: "LOS",
           destination: "ENU",
           departureDate: "2026-05-09",
-          departureWindow: "anytime",
+          departureWindow: "morning",
           tripType: "one_way",
           returnDate: undefined,
           adults: 1,

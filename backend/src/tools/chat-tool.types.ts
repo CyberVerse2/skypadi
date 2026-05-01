@@ -26,6 +26,7 @@ export type SearchFlightsToolInput = {
   origin: string;
   destination: string;
   departureDate: string;
+  departureWindow?: string;
   returnDate?: string;
   adults: number;
 };

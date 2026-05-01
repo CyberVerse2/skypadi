@@ -18,7 +18,7 @@ export async function executeSearchFlightsTool(input: {
         origin: input.input.origin,
         destination: input.input.destination,
         departureDate: input.input.departureDate,
-        departureWindow: "anytime",
+        departureWindow: input.input.departureWindow ?? "anytime",
         tripType: input.input.returnDate ? "return" : "one_way",
         returnDate: input.input.returnDate,
         adults: input.input.adults,

@@ -64,6 +64,7 @@ export function createFlightSearchPresentationHandler(input: {
         origin: string;
         destination: string;
         departureDate: string;
+        departureWindow?: string;
         returnDate?: string;
       };
     }): Promise<UiIntent> {
@@ -89,17 +90,25 @@ export function createFlightSearchPresentationHandler(input: {
         return { type: "text", body: "I could not prepare flight options yet. Please try again." };
       }
 
-      return rankedFlightOptionsToListIntent(ranked.value);
+      return rankedFlightOptionsToListIntent(ranked.value, request.search.departureWindow);
     },
   };
 }
 
-export function rankedFlightOptionsToListIntent(ranked: DisplayRankedFlightOptions): FlightListIntent {
-  const options = recommendedOptions(ranked);
+export function rankedFlightOptionsToListIntent(
+  ranked: DisplayRankedFlightOptions,
+  departureWindow = "anytime"
+): FlightListIntent {
+  const requestedWindow = normalizedDepartureWindow(departureWindow);
+  const options = requestedWindow
+    ? focusedWindowOptions(ranked, requestedWindow)
+    : recommendedOptions(ranked);
 
   return {
     type: "flight_list",
-    body: comparisonBody(options, ranked.bestValue),
+    body: requestedWindow
+      ? focusedWindowBody(options, requestedWindow, ranked.cheapest)
+      : comparisonBody(options, ranked.bestValue),
     buttonText: "Choose flight",
     rows: options.map((option, index) => ({
       id: flightOptionReplyId(option.flight.id),
@@ -114,7 +123,7 @@ export function rankedFlightOptionsToListIntent(ranked: DisplayRankedFlightOptio
 
 type RecommendedFlightOption = {
   label: "Cheapest" | "Best" | "Fastest" | "Evening";
-  bodyLabel: "Cheapest" | "Best Value" | "Fastest" | "Evening";
+  bodyLabel: "Cheapest" | "Best Value" | "Best Morning" | "Best Evening" | "Fastest" | "Evening";
   flight: DisplayFlightOption;
 };
 
@@ -140,6 +149,20 @@ function recommendedOptions(ranked: DisplayRankedFlightOptions): RecommendedFlig
   }
 
   return selected;
+}
+
+function focusedWindowOptions(
+  ranked: DisplayRankedFlightOptions,
+  departureWindow: DepartureWindow
+): RecommendedFlightOption[] {
+  const flight = cheapestInDepartureWindow(ranked.options, departureWindow) ?? ranked.cheapest;
+  return [
+    {
+      label: "Best",
+      bodyLabel: bestWindowLabel(departureWindow),
+      flight,
+    },
+  ];
 }
 
 function findReplacementFlight(input: {
@@ -169,6 +192,36 @@ function candidatesForCategory(category: RecommendedFlightOption, options: Displ
   return [...options].sort(compareByPriceThenDeparture);
 }
 
+type DepartureWindow = "morning" | "afternoon" | "evening";
+
+function normalizedDepartureWindow(value: string | undefined): DepartureWindow | undefined {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "morning" || normalized === "afternoon" || normalized === "evening") {
+    return normalized;
+  }
+  return undefined;
+}
+
+function cheapestInDepartureWindow(
+  options: DisplayFlightOption[],
+  departureWindow: DepartureWindow
+): DisplayFlightOption | undefined {
+  const [startHour, endHour] = departureWindowHours(departureWindow);
+  return options.filter((option) => isInDepartureWindow(option, startHour, endHour)).sort(compareByPriceThenDeparture)[0];
+}
+
+function departureWindowHours(departureWindow: DepartureWindow): [number, number] {
+  if (departureWindow === "morning") return [5, 12];
+  if (departureWindow === "afternoon") return [12, 17];
+  return [17, 24];
+}
+
+function bestWindowLabel(departureWindow: DepartureWindow): RecommendedFlightOption["bodyLabel"] {
+  if (departureWindow === "morning") return "Best Morning";
+  if (departureWindow === "afternoon") return "Best Value";
+  return "Best Evening";
+}
+
 function comparisonBody(options: RecommendedFlightOption[], bestValue: DisplayFlightOption): string {
   const recommendation = options.find((option) => option.flight.id === bestValue.id) ?? options[0]!;
   const lines = options.map((option, index) => {
@@ -183,6 +236,30 @@ function comparisonBody(options: RecommendedFlightOption[], bestValue: DisplayFl
     ...lines,
     `My recommendation: ${recommendation.flight.airline}. ${reason}`,
   ].join("\n\n");
+}
+
+function focusedWindowBody(
+  options: RecommendedFlightOption[],
+  requestedWindow: DepartureWindow,
+  cheapest: DisplayFlightOption
+): string {
+  const selected = options[0]!;
+  const savings = selected.flight.price - cheapest.price;
+  const lines = [
+    `${selected.bodyLabel} — ${selected.flight.airline}`,
+    `${selected.flight.departureTime} → ${selected.flight.arrivalTime} — ₦${selected.flight.price.toLocaleString("en-NG")}`,
+    `This is the cheapest ${requestedWindow} option I found.`,
+  ];
+
+  if (savings > 0 && cheapest.id !== selected.flight.id) {
+    lines.push(
+      `You could save ₦${savings.toLocaleString("en-NG")} if you travel at ${timeWindowName(cheapest)} instead: ${cheapest.airline}, ${cheapest.departureTime} → ${cheapest.arrivalTime}.`
+    );
+  } else {
+    lines.push("This is also the cheapest option I found.");
+  }
+
+  return lines.join("\n\n");
 }
 
 function detailLine(option: RecommendedFlightOption): string {
@@ -200,6 +277,14 @@ function recommendationReason(recommendation: RecommendedFlightOption, premium: 
     return `It is ₦${premium.toLocaleString("en-NG")} more than the cheapest, but it gives you an afternoon departure.`;
   }
   return "It is the cheapest afternoon option, so it keeps the trip calm without adding cost.";
+}
+
+function timeWindowName(option: DisplayFlightOption): string {
+  const minutes = parseDepartureMinutes(option.departureTime);
+  if (minutes >= 5 * 60 && minutes < 12 * 60) return "morning";
+  if (minutes >= 12 * 60 && minutes < 17 * 60) return "afternoon";
+  if (minutes >= 17 * 60) return "evening";
+  return "that time";
 }
 
 function compareByPriceThenDeparture(left: DisplayFlightOption, right: DisplayFlightOption): number {

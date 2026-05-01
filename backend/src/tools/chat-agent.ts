@@ -11,6 +11,7 @@ const searchFlightsInputSchema = z
     origin: airportCodeSchema,
     destination: airportCodeSchema,
     departureDate: dateSchema,
+    departureWindow: z.enum(["morning", "afternoon", "evening", "anytime"]).optional(),
     returnDate: dateSchema.optional(),
     adults: z.number().int().positive(),
   })

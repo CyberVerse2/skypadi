@@ -65,6 +65,40 @@ assert.match(distinctAirlineList.body, /Evening — Green Africa/);
 assert.match(distinctAirlineList.body, /My recommendation: Ibom Air/);
 assert.match(distinctAirlineList.body, /cheapest afternoon/i);
 
+const morningList = rankedFlightOptionsToListIntent(
+  rankFlightOptionsForDisplay([
+    option({ id: "cheap-evening", airline: "Arik Air", departureTime: "17:50", arrivalTime: "19:05", price: 104405 }),
+    option({ id: "best-morning", airline: "Aero", departureTime: "10:20", arrivalTime: "11:35", price: 106286 }),
+    option({ id: "later-morning", airline: "Air Peace", departureTime: "11:20", arrivalTime: "12:40", price: 136678 }),
+  ]),
+  "morning"
+);
+
+assert.deepEqual(morningList.rows, [
+  {
+    id: flightOptionReplyId("best-morning"),
+    title: "1 Best: Aero",
+    description: "10:20-11:35 - NGN 106,286",
+  },
+]);
+assert.match(morningList.body, /Best Morning — Aero/);
+assert.match(morningList.body, /cheapest morning option/i);
+assert.match(morningList.body, /save ₦1,881/i);
+assert.match(morningList.body, /travel at evening/i);
+
+const eveningList = rankedFlightOptionsToListIntent(
+  rankFlightOptionsForDisplay([
+    option({ id: "cheap-morning", airline: "Aero", departureTime: "10:20", arrivalTime: "11:35", price: 106286 }),
+    option({ id: "best-evening", airline: "United Nigeria", departureTime: "18:55", arrivalTime: "20:10", price: 130050 }),
+  ]),
+  "evening"
+);
+
+assert.equal(eveningList.rows.length, 1);
+assert.equal(eveningList.rows[0]?.id, flightOptionReplyId("best-evening"));
+assert.match(eveningList.body, /Best Evening — United Nigeria/);
+assert.match(eveningList.body, /save ₦23,764/i);
+
 const presented = await presentStoredFlightOptions("search_123", {
   displayTimeZone: "Africa/Lagos",
   db: {
