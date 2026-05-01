@@ -94,6 +94,8 @@ test("booking job notifier", async () => {
       async sendMessage(input) {
         sentMessages.push(input);
       },
+      async markMessageRead() {},
+      async showTypingIndicator() {},
     },
     messageRepository: {
       async recordOutboundMessage(input) {
@@ -139,6 +141,8 @@ test("booking job notifier", async () => {
       async sendMessage() {
         throw new Error("WhatsApp unavailable");
       },
+      async markMessageRead() {},
+      async showTypingIndicator() {},
     },
     messageRepository: {
       async recordOutboundMessage() {

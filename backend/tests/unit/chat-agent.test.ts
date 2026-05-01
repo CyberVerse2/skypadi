@@ -109,6 +109,37 @@ test("chat agent", async () => {
     },
   });
 
+  const abujaAliasSearchDecision = await decideChatActionWithModel(
+    async () => ({
+      action: "searchFlights",
+      message: null,
+      searchFlightsInput: {
+        origin: "ENU",
+        destination: "ABU",
+        departureDate: "2026-05-03",
+        departureWindow: "morning",
+        returnDate: null,
+        adults: 2,
+      },
+      collectTripDetailsInput: null,
+      sendControlledReplyInput: null,
+      startBookingJobInput: null,
+    }),
+    baseDecisionInput
+  );
+
+  assert.deepEqual(abujaAliasSearchDecision, {
+    type: "tool",
+    tool: "searchFlights",
+    input: {
+      origin: "ENU",
+      destination: "ABV",
+      departureDate: "2026-05-03",
+      departureWindow: "morning",
+      adults: 2,
+    },
+  });
+
   const modelShapeCollectTripDetailsDecision = await decideChatActionWithModel(
     async () => ({
       action: "collectTripDetails",

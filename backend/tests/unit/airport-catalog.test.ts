@@ -20,8 +20,11 @@ test("airport catalog", async () => {
   assert.equal(airportByCode("ENU")?.city, "Enugu");
   assert.equal(airportByCode("PHC")?.city, "Port Harcourt");
   assert.equal(airportByCode("LAG")?.code, "LOS");
+  assert.equal(airportByCode("ABU")?.code, "ABV");
   assert.equal(normalizeAirportCode("lag"), "LOS");
+  assert.equal(normalizeAirportCode("abu"), "ABV");
   assert.equal(resolveAirport("lagos")?.code, "LOS");
+  assert.equal(resolveAirport("abuja")?.code, "ABV");
   assert.equal(resolveAirport("Accra")?.code, "ACC");
   assert.equal(resolveAirport("Heathrow Airport")?.code, "LHR");
   assert.equal(airportByCode("xxx"), undefined);

@@ -20,6 +20,7 @@ type WakanowAirportJsonEntry = {
 };
 
 const airportCodeAliases: Record<string, string> = {
+  ABU: "ABV",
   LAG: "LOS",
 };
 
