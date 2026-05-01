@@ -38,6 +38,8 @@ await prependsOnboardingForFirstTimeUsers();
 await includesConversationContextForFollowUpAnswers();
 await executesSearchTool();
 await startsBookingFromFlightSelection();
+await continuesBookingWithSavedPassenger();
+await opensPassengerFlowForDifferentPassenger();
 await repliesWhenPassengerDetailsQueueFails();
 await sendsLegacyInteractiveRepliesToChatModel();
 
@@ -293,6 +295,102 @@ async function startsBookingFromFlightSelection(): Promise<void> {
   const outbound = recentMessages.find((message) => message.direction === "outbound");
   assert.equal(outbound?.textBody, "Great choice. I need passenger details.");
   assert.equal(outbound?.payload?.type, "interactive");
+
+  await app.close();
+}
+
+async function continuesBookingWithSavedPassenger(): Promise<void> {
+  const sentMessages: SentMessage[] = [];
+  let continueCalls = 0;
+  const app = buildToolRouteServer({
+    sentMessages,
+    bookingHandler: {
+      async createFromFlightSelection() {
+        return { type: "text", body: "unused" };
+      },
+      async continueWithDefaultPassenger(input) {
+        continueCalls += 1;
+        assert.equal(input.userId, savedUserId);
+        assert.equal(input.conversationId, savedConversationId);
+        assert.equal(input.phoneNumber, "2348012345678");
+        return { type: "text", body: "Booking started. I’ll update you shortly." };
+      },
+      async collectPassengerDetails() {
+        return undefined;
+      },
+    },
+  });
+
+  const response = await signedPost(
+    app,
+    interactiveWebhookBody({
+      id: "wamid.saved-passenger",
+      interactive: {
+        type: "button_reply",
+        button_reply: { id: "passenger:use_default", title: "Continue as Celestine" },
+      },
+    })
+  );
+  assert.equal(response.statusCode, 200);
+  await waitFor(() => sentMessages.length === 1);
+
+  assert.equal(continueCalls, 1);
+  assert.deepEqual(sentMessages[0], {
+    to: "2348012345678",
+    message: {
+      type: "text",
+      text: { body: "Booking started. I’ll update you shortly." },
+    },
+  });
+
+  await app.close();
+}
+
+async function opensPassengerFlowForDifferentPassenger(): Promise<void> {
+  const sentMessages: SentMessage[] = [];
+  let passengerDetailRequests = 0;
+  const app = buildToolRouteServer({
+    sentMessages,
+    bookingHandler: {
+      async createFromFlightSelection() {
+        return { type: "text", body: "unused" };
+      },
+      async requestPassengerDetails(input) {
+        passengerDetailRequests += 1;
+        assert.equal(input.userId, savedUserId);
+        assert.equal(input.conversationId, savedConversationId);
+        assert.equal(input.phoneNumber, "2348012345678");
+        return {
+          type: "passenger_details_flow",
+          body: "No problem. Enter the passenger details for this booking.",
+          buttonText: "Enter details",
+          flowId: "flow-1",
+          flowToken: "booking-1",
+          data: { bookingId: "booking-1" },
+        };
+      },
+      async collectPassengerDetails() {
+        return undefined;
+      },
+    },
+  });
+
+  const response = await signedPost(
+    app,
+    interactiveWebhookBody({
+      id: "wamid.different-passenger",
+      interactive: {
+        type: "button_reply",
+        button_reply: { id: "passenger:different", title: "Different passenger" },
+      },
+    })
+  );
+  assert.equal(response.statusCode, 200);
+  await waitFor(() => sentMessages.length === 1);
+
+  assert.equal(passengerDetailRequests, 1);
+  assert.equal(sentMessages[0]?.message.type, "interactive");
+  assert.equal((sentMessages[0]?.message.interactive as { type?: string } | undefined)?.type, "flow");
 
   await app.close();
 }

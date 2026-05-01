@@ -52,6 +52,16 @@ export type BookingSelectionHandler = {
     text: string;
     passenger?: Passenger;
   }): Promise<UiIntent | undefined>;
+  continueWithDefaultPassenger?(input: {
+    userId: string;
+    conversationId: string;
+    phoneNumber: string;
+  }): Promise<UiIntent | undefined>;
+  requestPassengerDetails?(input: {
+    userId: string;
+    conversationId: string;
+    phoneNumber: string;
+  }): Promise<UiIntent | undefined>;
 };
 
 type RawBodyRequest = FastifyRequest & { rawBody?: string | Buffer };

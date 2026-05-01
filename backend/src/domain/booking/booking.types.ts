@@ -49,11 +49,18 @@ export type CreateBookingDraftRecord = {
 
 export type BookingRepository = {
   createDraft(input: CreateBookingDraftRecord): Promise<BookingDraft>;
+  findDefaultPassengerForUser?(userId: string): Promise<SavedPassenger | undefined>;
   findActiveBookingForPassengerCollection(input: {
     userId: string;
     conversationId: string;
   }): Promise<ActiveBookingForPassengerCollection | undefined>;
   collectPassengerDetails(input: CollectedPassengerDetails): Promise<void>;
+  collectSavedPassengerDetails?(input: CollectedSavedPassengerDetails): Promise<void>;
+};
+
+export type SavedPassenger = {
+  id: string;
+  passenger: Passenger;
 };
 
 export type ActiveBookingForPassengerCollection = {
@@ -72,6 +79,10 @@ export type CollectedPassengerDetails = {
   passenger: Passenger;
   supplierContactEmail: string;
   collectedAt: Date;
+};
+
+export type CollectedSavedPassengerDetails = CollectedPassengerDetails & {
+  passengerId: string;
 };
 
 export type CreateBookingDraftInput = {

@@ -126,6 +126,37 @@ async function processMessages(
   request: FastifyRequest
 ): Promise<void> {
   for (const { message, now, conversation } of persistedMessages) {
+    const passengerAction = passengerActionFromMessage(message);
+    if (passengerAction === "use_default") {
+      await sendIntentReply(
+        (await options.bookingHandler.continueWithDefaultPassenger?.({
+          userId: requiredUserId(conversation),
+          conversationId: conversation.id,
+          phoneNumber: message.from,
+        })) ?? supplierBookingStartFailureIntent(),
+        conversation.id,
+        message,
+        options
+      );
+      request.log.info({ providerMessageId: message.id, resultKind: "booking_saved_passenger" }, "Processed WhatsApp booking message");
+      continue;
+    }
+
+    if (passengerAction === "different") {
+      await sendIntentReply(
+        (await options.bookingHandler.requestPassengerDetails?.({
+          userId: requiredUserId(conversation),
+          conversationId: conversation.id,
+          phoneNumber: message.from,
+        })) ?? supplierBookingStartFailureIntent(),
+        conversation.id,
+        message,
+        options
+      );
+      request.log.info({ providerMessageId: message.id, resultKind: "booking_different_passenger" }, "Processed WhatsApp booking message");
+      continue;
+    }
+
     const selectedFlightOptionId = selectedFlightOptionIdFromMessage(message);
     if (selectedFlightOptionId) {
       await sendIntentReply(
@@ -316,6 +347,13 @@ function selectedFlightOptionIdFromMessage(message: WhatsAppInboundMessage): str
   const prefix = "flight_option:";
   if (!replyId?.startsWith(prefix)) return undefined;
   return replyId.slice(prefix.length);
+}
+
+function passengerActionFromMessage(message: WhatsAppInboundMessage): "use_default" | "different" | undefined {
+  const replyId = message.interactive?.button_reply?.id ?? message.interactive?.list_reply?.id;
+  if (replyId === "passenger:use_default") return "use_default";
+  if (replyId === "passenger:different") return "different";
+  return undefined;
 }
 
 function chatTextFromMessage(message: WhatsAppInboundMessage): string | undefined {

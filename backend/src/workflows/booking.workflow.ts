@@ -185,6 +185,100 @@ export async function collectPassengerDetailsAndQueueSupplierBooking(
   });
 }
 
+export async function collectDefaultPassengerAndQueueSupplierBooking(
+  input: Omit<QueueSupplierBookingInput, "passenger">
+): Promise<WorkflowResult<QueuedSupplierBooking>> {
+  if (!input.repository) {
+    return { kind: "temporary_failure", reason: "booking repository dependency is required" };
+  }
+  if (!input.repository.findDefaultPassengerForUser) {
+    return { kind: "temporary_failure", reason: "default passenger dependency is required" };
+  }
+  if (!input.repository.collectSavedPassengerDetails) {
+    return { kind: "temporary_failure", reason: "saved passenger collection dependency is required" };
+  }
+  if (!input.jobRepository) {
+    return { kind: "temporary_failure", reason: "supplier booking job repository dependency is required" };
+  }
+  if (!input.enqueueSupplierBooking) {
+    return { kind: "temporary_failure", reason: "supplier booking enqueue dependency is required" };
+  }
+
+  const booking = await input.repository.findActiveBookingForPassengerCollection({
+    userId: input.userId,
+    conversationId: input.conversationId,
+  });
+  if (!booking) {
+    return { kind: "permanent_failure", reason: "no active priced booking found for passenger collection" };
+  }
+
+  const savedPassenger = await input.repository.findDefaultPassengerForUser(input.userId);
+  if (!savedPassenger) {
+    return { kind: "permanent_failure", reason: "no saved passenger found" };
+  }
+
+  const passenger = validatePassenger(savedPassenger.passenger);
+  if (!passenger.ok) {
+    return {
+      kind: "needs_user_input",
+      field: "passenger_details",
+      ui: {
+        type: "text",
+        body: passenger.message,
+      },
+    };
+  }
+
+  const collectedAt = input.now ?? new Date();
+  const job = await input.jobRepository.createQueued({
+    bookingId: booking.id,
+    graphileJobKey: supplierBookingJobKey(booking.id),
+    now: collectedAt,
+  });
+
+  try {
+    await input.repository.collectSavedPassengerDetails({
+      bookingId: booking.id,
+      userId: input.userId,
+      conversationId: input.conversationId,
+      passengerId: savedPassenger.id,
+      passenger: passenger.value,
+      supplierContactEmail: booking.bookingEmailAlias,
+      collectedAt,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Saved passenger queue preparation failed";
+    await input.jobRepository.markFailed({
+      bookingId: booking.id,
+      failedAt: new Date(),
+      errorMessage: message,
+      retryable: true,
+    });
+
+    return { kind: "temporary_failure", reason: "supplier booking queue preparation failed" };
+  }
+
+  try {
+    await input.enqueueSupplierBooking({ bookingId: booking.id });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Supplier booking enqueue failed";
+    await input.jobRepository.markFailed({
+      bookingId: booking.id,
+      failedAt: new Date(),
+      errorMessage: message,
+      retryable: true,
+    });
+
+    return { kind: "temporary_failure", reason: "supplier booking enqueue failed" };
+  }
+
+  return makeOk({
+    bookingId: booking.id,
+    status: "supplier_booking_pending",
+    job,
+  });
+}
+
 type PassengerParseResult = { ok: true; value: Passenger } | { ok: false; message: string };
 
 function validatePassenger(passenger: Passenger): PassengerParseResult {

@@ -12,7 +12,11 @@ import { db } from "./db/client";
 import { createDrizzleConversationRepository } from "./domain/conversation/conversation.repository";
 import type { ConversationRepository, WhatsAppMessageRepository } from "./domain/conversation/conversation.types";
 import { createFlightSearchPresentationHandler } from "./workflows/flight-search.workflow";
-import { collectPassengerDetailsAndQueueSupplierBooking, createBookingFromSelectedOption } from "./workflows/booking.workflow";
+import {
+  collectDefaultPassengerAndQueueSupplierBooking,
+  collectPassengerDetailsAndQueueSupplierBooking,
+  createBookingFromSelectedOption,
+} from "./workflows/booking.workflow";
 import { createDrizzleBookingRepository } from "./domain/booking/booking.repository";
 import type { BookingSelectionHandler, FlightSearchHandler } from "./channels/whatsapp/whatsapp.routes";
 import type { WakanowHoldClient } from "./integrations/wakanow/wakanow.booking";
@@ -144,6 +148,7 @@ function createLiveBookingHandler(): BookingSelectionHandler {
 
   const inboundDomain = env.RESEND_INBOUND_DOMAIN;
   const passengerDetailsFlowId = env.WHATSAPP_PASSENGER_DETAILS_FLOW_ID;
+  const repository = createDrizzleBookingRepository(db);
 
   return {
     async createFromFlightSelection(input) {
@@ -152,7 +157,7 @@ function createLiveBookingHandler(): BookingSelectionHandler {
         conversationId: input.conversationId,
         selectedFlightOptionId: input.selectedFlightOptionId,
         inboundDomain,
-        repository: createDrizzleBookingRepository(db),
+        repository,
       });
 
       if (result.kind !== "ok") {
@@ -160,30 +165,45 @@ function createLiveBookingHandler(): BookingSelectionHandler {
       }
 
       const summary = await findBookingSummaryForSelectedFlight(result.value.selectedFlightOptionId).catch(() => undefined);
+      const passenger = await repository.findDefaultPassengerForUser?.(input.userId);
 
-      return {
-        type: "passenger_details_flow",
+      if (passenger) {
+        const name = `${passenger.passenger.firstName} ${passenger.passenger.lastName}`;
+        return {
+          type: "reply_buttons",
+          body: [
+            summary
+              ? bookingSummaryPassengerFlowBody({
+                  summary,
+                  passengerPrompt: `Continue booking for ${name}?`,
+                })
+              : `Continue booking for ${name}?`,
+          ].join("\n"),
+          buttons: [
+            { id: "passenger:use_default", title: `Use ${passenger.passenger.firstName}`.slice(0, 20) },
+            { id: "passenger:different", title: "Different passenger" },
+          ],
+        };
+      }
+
+      return passengerDetailsFlowIntent({
+        bookingId: result.value.id,
+        selectedFlightOptionId: result.value.selectedFlightOptionId,
         body: summary
           ? bookingSummaryPassengerFlowBody({
               summary,
               passengerPrompt: "I need the passenger details to continue.",
             })
           : "Great choice. I need the passenger details to continue.",
-        buttonText: "Enter details",
-        flowId: passengerDetailsFlowId,
-        flowToken: result.value.id,
-        data: {
-          bookingId: result.value.id,
-          selectedFlightOptionId: result.value.selectedFlightOptionId,
-        },
-      };
+        passengerDetailsFlowId,
+      });
     },
     async collectPassengerDetails(input) {
       const result = await collectPassengerDetailsAndQueueSupplierBooking({
         userId: input.userId,
         conversationId: input.conversationId,
         passenger: input.passenger,
-        repository: createDrizzleBookingRepository(db),
+        repository,
         jobRepository: createDrizzleSupplierBookingJobRepository(db),
         enqueueSupplierBooking: enqueueSupplierBookingJob,
       });
@@ -195,6 +215,58 @@ function createLiveBookingHandler(): BookingSelectionHandler {
         type: "text",
         body: "Booking started. I’ll update you shortly.",
       };
+    },
+    async continueWithDefaultPassenger(input) {
+      const result = await collectDefaultPassengerAndQueueSupplierBooking({
+        userId: input.userId,
+        conversationId: input.conversationId,
+        repository,
+        jobRepository: createDrizzleSupplierBookingJobRepository(db),
+        enqueueSupplierBooking: enqueueSupplierBookingJob,
+      });
+
+      if (result.kind === "needs_user_input") return result.ui as UiIntent;
+      if (result.kind !== "ok") return { type: "text", body: "I could not start that booking yet. Please enter passenger details again." };
+
+      return {
+        type: "text",
+        body: "Booking started. I’ll update you shortly.",
+      };
+    },
+    async requestPassengerDetails(input) {
+      const booking = await repository.findActiveBookingForPassengerCollection({
+        userId: input.userId,
+        conversationId: input.conversationId,
+      });
+      if (!booking) {
+        return { type: "text", body: "I could not find an active booking to update. Please choose the flight again." };
+      }
+
+      return passengerDetailsFlowIntent({
+        bookingId: booking.id,
+        selectedFlightOptionId: booking.selectedFlightOptionId,
+        body: "No problem. Enter the passenger details for this booking.",
+        passengerDetailsFlowId,
+      });
+    },
+  };
+}
+
+function passengerDetailsFlowIntent(input: {
+  bookingId: string;
+  selectedFlightOptionId: string;
+  body: string;
+  passengerDetailsFlowId: string;
+}): UiIntent {
+  return {
+    type: "passenger_details_flow",
+    body: input.body,
+    buttonText: "Enter details",
+    flowId: input.passengerDetailsFlowId,
+    flowToken: input.bookingId,
+    data: {
+      bookingId: input.bookingId,
+      selectedFlightOptionId: input.selectedFlightOptionId,
     },
   };
 }

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   collectPassengerDetailsAndCreateSupplierHold,
   collectPassengerDetailsAndQueueSupplierBooking,
+  collectDefaultPassengerAndQueueSupplierBooking,
   createBookingFromSelectedOption,
 } from "../../src/workflows/booking.workflow";
 import type {
@@ -144,6 +145,83 @@ if (queuedResult.kind === "ok") {
 assert.equal(collectedPassengerDetails.length, 1);
 assert.equal(collectedPassengerDetails[0]?.passenger.email, "celestine@email.com");
 assert.equal(collectedPassengerDetails[0]?.supplierContactEmail, "book_abc123@bookings.wakanow.com");
+
+const savedPassengerCollections: unknown[] = [];
+const defaultPassengerEnqueues: string[] = [];
+const defaultPassengerResult = await collectDefaultPassengerAndQueueSupplierBooking({
+  userId: "user_123",
+  conversationId: "conv_123",
+  repository: {
+    ...repository,
+    async findDefaultPassengerForUser(userId) {
+      assert.equal(userId, "user_123");
+      return {
+        id: "passenger_123",
+        passenger: {
+          title: "Mr",
+          firstName: "Celestine",
+          lastName: "Ejiofor",
+          dateOfBirth: "1990-04-12",
+          nationality: "Nigerian",
+          gender: "Male",
+          phone: "08012345678",
+          email: "celestine@email.com",
+        },
+      };
+    },
+    async collectSavedPassengerDetails(input) {
+      savedPassengerCollections.push(input);
+    },
+  },
+  jobRepository: {
+    async createQueued(input) {
+      return {
+        id: "job_saved_passenger",
+        bookingId: input.bookingId,
+        graphileJobKey: input.graphileJobKey,
+        status: "queued",
+        attemptCount: 0,
+        queuedAt: input.now,
+        updatedAt: input.now,
+      };
+    },
+    async markRunning() {
+      throw new Error("not used in this test");
+    },
+    async markSucceeded() {
+      throw new Error("not used in this test");
+    },
+    async markFailed() {
+      throw new Error("not used in this test");
+    },
+  },
+  async enqueueSupplierBooking(payload) {
+    defaultPassengerEnqueues.push(payload.bookingId);
+  },
+  now: new Date("2026-05-01T12:03:00.000Z"),
+});
+
+assert.equal(defaultPassengerResult.kind, "ok");
+assert.deepEqual(defaultPassengerEnqueues, ["11111111-1111-4111-8111-111111111111"]);
+assert.equal(savedPassengerCollections.length, 1);
+assert.deepEqual(savedPassengerCollections[0], {
+  bookingId: "11111111-1111-4111-8111-111111111111",
+  userId: "user_123",
+  conversationId: "conv_123",
+  passengerId: "passenger_123",
+  passenger: {
+    title: "Mr",
+    firstName: "Celestine",
+    lastName: "Ejiofor",
+    dateOfBirth: "1990-04-12",
+    nationality: "Nigerian",
+    gender: "Male",
+    phone: "08012345678",
+    email: "celestine@email.com",
+  },
+  supplierContactEmail: "book_abc123@bookings.wakanow.com",
+  collectedAt: new Date("2026-05-01T12:03:00.000Z"),
+});
 
 const failedJobMarks: Array<{ bookingId: string; errorMessage: string; retryable: boolean }> = [];
 const enqueueFailure = await collectPassengerDetailsAndQueueSupplierBooking({
