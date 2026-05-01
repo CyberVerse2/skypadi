@@ -7,6 +7,7 @@ import type { UiIntent, WhatsAppMessagePayload } from "./whatsapp.types";
 import type { Passenger } from "../../schemas/flight-booking";
 import { findOrCreateConversation } from "../../domain/conversation/conversation.service";
 import type { ConversationRepository, WhatsAppMessageRepository } from "../../domain/conversation/conversation.types";
+import { whatsappOriginRows } from "../../domain/flight/airport-catalog";
 import { decideChatActionWithModel, type ChatModel } from "../../tools/chat-agent";
 import type {
   ChatAction,
@@ -388,10 +389,7 @@ function promptForMissingTripField(
     return {
       type: "origin_list",
       body: "Where are you flying from?",
-      rows: [
-        { id: "origin:LOS", title: "Lagos", description: "Murtala Muhammed Airport" },
-        { id: "origin:ABV", title: "Abuja", description: "Nnamdi Azikiwe Airport" },
-      ],
+      rows: whatsappOriginRows,
     };
   }
 

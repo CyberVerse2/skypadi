@@ -6,6 +6,7 @@ import type {
   ConversationExpectedField,
   ConversationRepository,
 } from "../domain/conversation/conversation.types";
+import { airportByCode, whatsappOriginRows } from "../domain/flight/airport-catalog";
 import { makeNeedsUserInput, makeOk, type WorkflowResult } from "./workflow-result";
 
 type WorkflowContact = {
@@ -161,13 +162,9 @@ function assignMissingNonEmptyString(
 }
 
 function applyReplyId(draft: ConversationDraft, replyId: string): boolean {
-  if (replyId === "origin:LOS") {
-    draft.origin = "LOS";
-    return true;
-  }
-
-  if (replyId === "origin:ABV") {
-    draft.origin = "ABV";
+  const originCode = originCodeFromReplyId(replyId);
+  if (originCode) {
+    draft.origin = originCode;
     return true;
   }
 
@@ -268,7 +265,7 @@ function replyMatchesExpectedField(replyId: string, expectedField: ConversationE
   }
 
   if (expectedField === "origin") {
-    return replyId === "origin:LOS" || replyId === "origin:ABV";
+    return Boolean(originCodeFromReplyId(replyId));
   }
 
   if (expectedField === "trip_type") {
@@ -280,6 +277,12 @@ function replyMatchesExpectedField(replyId: string, expectedField: ConversationE
   }
 
   return false;
+}
+
+function originCodeFromReplyId(replyId: string): string | undefined {
+  if (!replyId.startsWith("origin:")) return undefined;
+  const code = replyId.slice("origin:".length);
+  return airportByCode(code)?.code;
 }
 
 function promptForExpectedField(draft: ConversationDraft): WorkflowResult<SearchReadyPayload> {
@@ -331,10 +334,7 @@ function originListIntent(): UiIntent {
   return {
     type: "origin_list",
     body: "Where are you flying from?",
-    rows: [
-      { id: "origin:LOS", title: "Lagos", description: "Murtala Muhammed Airport" },
-      { id: "origin:ABV", title: "Abuja", description: "Nnamdi Azikiwe Airport" },
-    ],
+    rows: whatsappOriginRows,
   };
 }
 

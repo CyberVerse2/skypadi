@@ -11,6 +11,7 @@ import type {
 import type { ChatModel } from "../../src/tools/chat-agent";
 import type { DecideChatActionInput } from "../../src/tools/chat-tool.types";
 import { flightOptionReplyId, passengerReplyIds } from "../../src/channels/whatsapp/whatsapp.reply-ids";
+import { whatsappOriginRows } from "../../src/domain/flight/airport-catalog";
 
 type FlightSearchHandlerInput = Parameters<FlightSearchHandler["searchAndPresent"]>[0];
 type BookingSelectionInput = Parameters<BookingSelectionHandler["createFromFlightSelection"]>[0];
@@ -273,10 +274,7 @@ async function resumesPendingPromptAfterSideQuestionAnswer(): Promise<void> {
           button: "Choose city",
           sections: [
             {
-              rows: [
-                { id: "origin:LOS", title: "Lagos", description: "Murtala Muhammed Airport" },
-                { id: "origin:ABV", title: "Abuja", description: "Nnamdi Azikiwe Airport" },
-              ],
+              rows: whatsappOriginRows,
             },
           ],
         },
@@ -484,10 +482,7 @@ async function usesControlledPromptWhenModelRequestsTripCollection(): Promise<vo
           button: "Choose city",
           sections: [
             {
-              rows: [
-                { id: "origin:LOS", title: "Lagos", description: "Murtala Muhammed Airport" },
-                { id: "origin:ABV", title: "Abuja", description: "Nnamdi Azikiwe Airport" },
-              ],
+              rows: whatsappOriginRows,
             },
           ],
         },
@@ -539,10 +534,7 @@ async function asksControlledNextQuestionAfterTripDetailExtraction(): Promise<vo
           button: "Choose city",
           sections: [
             {
-              rows: [
-                { id: "origin:LOS", title: "Lagos", description: "Murtala Muhammed Airport" },
-                { id: "origin:ABV", title: "Abuja", description: "Nnamdi Azikiwe Airport" },
-              ],
+              rows: whatsappOriginRows,
             },
           ],
         },
