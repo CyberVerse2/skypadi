@@ -8,6 +8,15 @@ export async function executeSearchFlightsTool(input: {
   phoneNumber: string;
   input: SearchFlightsToolInput;
   flightSearchHandler: FlightSearchHandler;
+  onFailure?: (
+    error: unknown,
+    context: {
+      userId: string;
+      conversationId: string;
+      phoneNumber: string;
+      input: SearchFlightsToolInput;
+    }
+  ) => void;
 }): Promise<UiIntent> {
   try {
     return await input.flightSearchHandler.searchAndPresent({
@@ -24,7 +33,13 @@ export async function executeSearchFlightsTool(input: {
         adults: input.input.adults,
       },
     });
-  } catch {
+  } catch (error) {
+    input.onFailure?.(error, {
+      userId: input.userId,
+      conversationId: input.conversationId,
+      phoneNumber: input.phoneNumber,
+      input: input.input,
+    });
     return { type: "text", body: "I could not search flights right now. Please try again shortly." };
   }
 }

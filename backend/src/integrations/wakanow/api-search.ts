@@ -5,6 +5,7 @@ import type {
   FlightSearchResult
 } from "../../schemas/flight-search";
 import { ProxyAgent, fetch as undiciFetch } from "undici";
+import { nigerianOriginAirports } from "../../domain/flight/airport-catalog";
 
 const FLIGHTS_API_BASE = "https://flights.wakanow.com/api/flights";
 const POLL_INTERVAL_MS = 1_500;
@@ -21,16 +22,15 @@ function proxyFetch(url: string, opts: any = {}): Promise<Response> {
 }
 
 const AIRPORT_CODES: Record<string, { code: string; description: string; city: string; country: string }> = {
-  lagos: { code: "LOS", description: "Murtala Muhammed International Airport (LOS)", city: "Lagos", country: "Nigeria" },
-  abuja: { code: "ABV", description: "Nnamdi Azikwe International Airport (ABV)", city: "Abuja", country: "Nigeria" },
-  "port harcourt": { code: "PHC", description: "Port Harcourt International Airport (PHC)", city: "Port Harcourt", country: "Nigeria" },
-  kano: { code: "KAN", description: "Mallam Aminu Kano International Airport (KAN)", city: "Kano", country: "Nigeria" },
-  enugu: { code: "ENU", description: "Akanu Ibiam International Airport (ENU)", city: "Enugu", country: "Nigeria" },
-  owerri: { code: "QOW", description: "Sam Mbakwe Airport (QOW)", city: "Owerri", country: "Nigeria" },
-  asaba: { code: "ABB", description: "Asaba International Airport (ABB)", city: "Asaba", country: "Nigeria" },
-  benin: { code: "BNI", description: "Benin Airport (BNI)", city: "Benin City", country: "Nigeria" },
-  uyo: { code: "QUO", description: "Victor Attah International Airport (QUO)", city: "Uyo", country: "Nigeria" },
-  warri: { code: "QRW", description: "Osubi Airport (QRW)", city: "Warri", country: "Nigeria" },
+  ...Object.fromEntries(nigerianOriginAirports.map((airport) => [
+    airport.city.toLowerCase(),
+    {
+      code: airport.code,
+      description: `${airport.airportName} (${airport.code})`,
+      city: airport.city,
+      country: airport.country,
+    },
+  ])),
   dubai: { code: "DXB", description: "Dubai International Airport (DXB)", city: "Dubai", country: "UAE" },
   london: { code: "LHR", description: "Heathrow Airport (LHR)", city: "London", country: "UK" },
   accra: { code: "ACC", description: "Kotoka International Airport (ACC)", city: "Accra", country: "Ghana" },
