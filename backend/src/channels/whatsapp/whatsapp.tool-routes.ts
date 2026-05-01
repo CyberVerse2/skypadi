@@ -191,7 +191,18 @@ async function processMessages(
       userText,
       now,
       context,
+    }).catch(async (error) => {
+      request.log.warn(
+        {
+          providerMessageId: message.id,
+          errorMessage: error instanceof Error ? error.message : "Chat model decision failed",
+        },
+        "WhatsApp chat model decision failed; sending fallback reply"
+      );
+      await sendIntentReply(chatDecisionFailureIntent(context), conversation.id, message, options);
+      return undefined;
     });
+    if (!action) continue;
 
     const intent = addFirstTimeOnboarding(await uiIntentFromChatAction(action, {
       conversation,
@@ -203,6 +214,22 @@ async function processMessages(
     await sendIntentReply(intent, conversation.id, message, options);
     request.log.info({ providerMessageId: message.id, resultKind: action.type }, "Processed WhatsApp tool message");
   }
+}
+
+function chatDecisionFailureIntent(context: ChatContext): UiIntent {
+  const draft = context.currentDraft;
+  if (draft?.origin && draft.destination && draft.departureDate) {
+    const window = draft.departureWindow && draft.departureWindow !== "anytime" ? `${draft.departureWindow} ` : "";
+    return {
+      type: "text",
+      body: `I’m having trouble responding right now. I still have your ${draft.origin} to ${draft.destination} ${window}trip for ${draft.departureDate}. Please message me again shortly.`,
+    };
+  }
+
+  return {
+    type: "text",
+    body: "I’m having trouble responding right now. Please message me again shortly.",
+  };
 }
 
 export async function uiIntentFromChatAction(
