@@ -5,6 +5,24 @@ import { z } from "zod";
 import type { ChatAction, DecideChatActionInput } from "./chat-tool.types";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const airportCodeSchema = z.string().regex(/^[A-Z]{3}$/);
+const searchFlightsInputSchema = z
+  .object({
+    origin: airportCodeSchema,
+    destination: airportCodeSchema,
+    departureDate: dateSchema,
+    returnDate: dateSchema.optional(),
+    adults: z.number().int().positive(),
+  })
+  .superRefine((input, context) => {
+    if (input.returnDate && input.returnDate < input.departureDate) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "returnDate must be on or after departureDate",
+        path: ["returnDate"],
+      });
+    }
+  });
 
 const chatActionSchema = z.union([
   z.object({
@@ -15,13 +33,7 @@ const chatActionSchema = z.union([
     z.object({
       type: z.literal("tool"),
       tool: z.literal("searchFlights"),
-      input: z.object({
-        origin: z.string().trim().min(2),
-        destination: z.string().trim().min(2),
-        departureDate: dateSchema,
-        returnDate: dateSchema.optional(),
-        adults: z.number().int().positive().default(1),
-      }),
+      input: searchFlightsInputSchema,
     }),
     z.object({
       type: z.literal("tool"),

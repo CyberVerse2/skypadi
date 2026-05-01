@@ -2,6 +2,16 @@ import assert from "node:assert/strict";
 
 import { decideChatActionWithModel } from "../../src/tools/chat-agent";
 
+const baseDecisionInput = {
+  userText: "Find Lagos to Enugu next Saturday",
+  now: new Date("2026-05-01T09:00:00.000Z"),
+  context: {
+    conversationId: "conversation-1",
+    userId: "user-1",
+    phoneNumber: "2348012345678",
+  },
+};
+
 const searchDecision = await decideChatActionWithModel(
   async () => ({
     type: "tool",
@@ -13,15 +23,7 @@ const searchDecision = await decideChatActionWithModel(
       adults: 1,
     },
   }),
-  {
-    userText: "Find Lagos to Enugu next Saturday",
-    now: new Date("2026-05-01T09:00:00.000Z"),
-    context: {
-      conversationId: "conversation-1",
-      userId: "user-1",
-      phoneNumber: "2348012345678",
-    },
-  }
+  baseDecisionInput
 );
 
 assert.equal(searchDecision.type, "tool");
@@ -35,15 +37,7 @@ const replyDecision = await decideChatActionWithModel(
     type: "reply",
     message: "Sure. Which city are you flying from?",
   }),
-  {
-    userText: "I want to travel",
-    now: new Date("2026-05-01T09:00:00.000Z"),
-    context: {
-      conversationId: "conversation-1",
-      userId: "user-1",
-      phoneNumber: "2348012345678",
-    },
-  }
+  { ...baseDecisionInput, userText: "I want to travel" }
 );
 
 assert.deepEqual(replyDecision, {
@@ -56,20 +50,60 @@ const longReply = await decideChatActionWithModel(
     type: "reply",
     message: "A. B. C. D.",
   }),
-  {
-    userText: "Explain everything",
-    now: new Date("2026-05-01T09:00:00.000Z"),
-    context: {
-      conversationId: "conversation-1",
-      userId: "user-1",
-      phoneNumber: "2348012345678",
-    },
-  }
+  { ...baseDecisionInput, userText: "Explain everything" }
 );
 
 assert.equal(longReply.type, "reply");
 if (longReply.type === "reply") {
   assert.equal(longReply.message, "A. B. C.");
 }
+
+await assert.rejects(
+  decideChatActionWithModel(
+    async () => ({
+      type: "tool",
+      tool: "searchFlights",
+      input: {
+        origin: "LOS",
+        destination: "ENU",
+        departureDate: "2026-05-09",
+      },
+    }),
+    baseDecisionInput
+  )
+);
+
+await assert.rejects(
+  decideChatActionWithModel(
+    async () => ({
+      type: "tool",
+      tool: "searchFlights",
+      input: {
+        origin: "LO",
+        destination: "ENU",
+        departureDate: "2026-05-09",
+        adults: 1,
+      },
+    }),
+    baseDecisionInput
+  )
+);
+
+await assert.rejects(
+  decideChatActionWithModel(
+    async () => ({
+      type: "tool",
+      tool: "searchFlights",
+      input: {
+        origin: "LOS",
+        destination: "ENU",
+        departureDate: "2026-05-09",
+        returnDate: "2026-05-08",
+        adults: 1,
+      },
+    }),
+    baseDecisionInput
+  )
+);
 
 console.log("chat agent tests passed");
