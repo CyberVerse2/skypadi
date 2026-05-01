@@ -135,8 +135,11 @@ async function processMessages(
   request: FastifyRequest
 ): Promise<void> {
   for (const { message, now, conversation } of persistedMessages) {
+    await markMessageRead(message, options, request);
+
     const passengerAction = passengerActionFromMessage(message);
     if (passengerAction === "use_default") {
+      await showTypingIndicator(message, options, request);
       await sendIntentReply(
         (await options.bookingHandler.continueWithDefaultPassenger?.({
           userId: requiredUserId(conversation),
@@ -152,6 +155,7 @@ async function processMessages(
     }
 
     if (passengerAction === "different") {
+      await showTypingIndicator(message, options, request);
       await sendIntentReply(
         (await options.bookingHandler.requestPassengerDetails?.({
           userId: requiredUserId(conversation),
@@ -168,6 +172,7 @@ async function processMessages(
 
     const selectedFlightOptionId = selectedFlightOptionIdFromMessage(message);
     if (selectedFlightOptionId) {
+      await showTypingIndicator(message, options, request);
       await sendIntentReply(
         await options.bookingHandler.createFromFlightSelection({
           userId: requiredUserId(conversation),
@@ -183,6 +188,9 @@ async function processMessages(
       continue;
     }
 
+    if (isPassengerDetailsFlowReply(message)) {
+      await showTypingIndicator(message, options, request);
+    }
     const bookingIntent = await passengerDetailsIntentFromMessage(message, conversation, options);
     if (bookingIntent) {
       await sendIntentReply(bookingIntent, conversation.id, message, options);
@@ -200,6 +208,7 @@ async function processMessages(
       continue;
     }
 
+    await showTypingIndicator(message, options, request);
     const action = await decideChatActionWithModel(options.chatModel, {
       userText,
       now,
@@ -231,6 +240,46 @@ async function processMessages(
       await sendIntentReply(resumeIntent, conversation.id, message, options);
     }
     request.log.info({ providerMessageId: message.id, resultKind: action.type }, "Processed WhatsApp tool message");
+  }
+}
+
+async function markMessageRead(
+  message: WhatsAppInboundMessage,
+  options: WhatsAppToolRoutesOptions,
+  request: FastifyRequest
+): Promise<void> {
+  try {
+    await options.whatsappClient.markMessageRead({
+      messageId: message.id,
+    });
+  } catch (error) {
+    request.log.warn(
+      {
+        err: error,
+        providerMessageId: message.id,
+      },
+      "WhatsApp read receipt failed"
+    );
+  }
+}
+
+async function showTypingIndicator(
+  message: WhatsAppInboundMessage,
+  options: WhatsAppToolRoutesOptions,
+  request: FastifyRequest
+): Promise<void> {
+  try {
+    await options.whatsappClient.showTypingIndicator({
+      messageId: message.id,
+    });
+  } catch (error) {
+    request.log.warn(
+      {
+        err: error,
+        providerMessageId: message.id,
+      },
+      "WhatsApp typing indicator failed"
+    );
   }
 }
 
@@ -546,7 +595,7 @@ function normalizedMessageText(text: string | undefined): string {
 }
 
 function passengerFromFlowReply(message: WhatsAppInboundMessage): Passenger | undefined {
-  if (message.type !== "interactive" || message.interactive?.type !== "nfm_reply") return undefined;
+  if (!isPassengerDetailsFlowReply(message)) return undefined;
   const responseJson = message.interactive.nfm_reply?.response_json;
   if (!responseJson) return undefined;
   try {
@@ -565,6 +614,12 @@ function passengerFromFlowReply(message: WhatsAppInboundMessage): Passenger | un
   } catch {
     return undefined;
   }
+}
+
+function isPassengerDetailsFlowReply(
+  message: WhatsAppInboundMessage
+): message is WhatsAppInboundMessage & { interactive: { type: "nfm_reply"; nfm_reply?: { response_json?: string; body?: string } } } {
+  return message.type === "interactive" && message.interactive?.type === "nfm_reply";
 }
 
 function stringValue(value: unknown): string | undefined {

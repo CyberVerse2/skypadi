@@ -23,6 +23,8 @@ test("whatsapp tool routes", async () => {
     to: string;
     message: Record<string, unknown>;
   };
+  type ReadEvent = { messageId: string };
+  type TypingEvent = { messageId: string };
 
   type RecentMessage = {
     direction: "inbound" | "outbound" | "system";
@@ -37,6 +39,8 @@ test("whatsapp tool routes", async () => {
   const selectedFlightOptionId = "33333333-3333-4333-8333-333333333333";
 
   await rejectsInvalidMetaSignature();
+  await marksInboundMessagesReadAndShowsTyping();
+  await ignoresReadAndTypingIndicatorFailures();
   await dedupesProviderMessages();
   await prependsOnboardingForFirstTimeUsers();
   await usesSavedOnboardingForFirstTimeGreetingOnlyUsers();
@@ -81,6 +85,64 @@ test("whatsapp tool routes", async () => {
       reason: "signature_mismatch",
     });
     assert.equal(sentMessages.length, 0);
+
+    await app.close();
+  }
+
+  async function marksInboundMessagesReadAndShowsTyping(): Promise<void> {
+    const sentMessages: SentMessage[] = [];
+    const readEvents: ReadEvent[] = [];
+    const typingEvents: TypingEvent[] = [];
+    const app = buildToolRouteServer({
+      sentMessages,
+      readEvents,
+      typingEvents,
+      chatModel: async () => ({
+        action: "answerSideQuestion",
+        message: "I can help with that.",
+        searchFlightsInput: null,
+        collectTripDetailsInput: null,
+        sendControlledReplyInput: null,
+        startBookingJobInput: null,
+      }),
+    });
+
+    const response = await signedPost(app, webhookBody({ id: "wamid.read-typing", text: "I want to travel" }));
+    assert.equal(response.statusCode, 200);
+    await waitFor(() => sentMessages.length === 1);
+
+    assert.deepEqual(readEvents, [{ messageId: "wamid.read-typing" }]);
+    assert.deepEqual(typingEvents, [{ messageId: "wamid.read-typing" }]);
+
+    await app.close();
+  }
+
+  async function ignoresReadAndTypingIndicatorFailures(): Promise<void> {
+    const sentMessages: SentMessage[] = [];
+    const app = buildToolRouteServer({
+      sentMessages,
+      whatsappClientOverrides: {
+        async markMessageRead() {
+          throw new Error("read failed");
+        },
+        async showTypingIndicator() {
+          throw new Error("typing failed");
+        },
+      },
+      chatModel: async () => ({
+        action: "answerSideQuestion",
+        message: "I can still reply.",
+        searchFlightsInput: null,
+        collectTripDetailsInput: null,
+        sendControlledReplyInput: null,
+        startBookingJobInput: null,
+      }),
+    });
+
+    const response = await signedPost(app, webhookBody({ id: "wamid.read-typing-fail", text: "I want to travel" }));
+    assert.equal(response.statusCode, 200);
+    await waitFor(() => sentMessages.length === 1);
+    assert.match(((sentMessages[0]?.message as { text?: { body?: string } }).text?.body ?? ""), /I can still reply\./);
 
     await app.close();
   }
@@ -919,6 +981,12 @@ test("whatsapp tool routes", async () => {
 
   function buildToolRouteServer(input: {
     sentMessages: SentMessage[];
+    readEvents?: ReadEvent[];
+    typingEvents?: TypingEvent[];
+    whatsappClientOverrides?: {
+      markMessageRead?: (input: { messageId: string }) => Promise<void>;
+      showTypingIndicator?: (input: { messageId: string }) => Promise<void>;
+    };
     whatsappAppSecret?: string;
     conversationRepository?: ConversationRepository;
     messageRepository?: WhatsAppMessageRepository & {
@@ -941,6 +1009,18 @@ test("whatsapp tool routes", async () => {
       whatsappClient: {
         async sendMessage(message) {
           input.sentMessages.push(message as SentMessage);
+        },
+        async markMessageRead(message) {
+          if (input.whatsappClientOverrides?.markMessageRead) {
+            return input.whatsappClientOverrides.markMessageRead(message);
+          }
+          input.readEvents?.push(message);
+        },
+        async showTypingIndicator(message) {
+          if (input.whatsappClientOverrides?.showTypingIndicator) {
+            return input.whatsappClientOverrides.showTypingIndicator(message);
+          }
+          input.typingEvents?.push(message);
         },
       },
       chatModel:
