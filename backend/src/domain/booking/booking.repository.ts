@@ -1,9 +1,19 @@
 import { sql, type SQL } from "drizzle-orm";
 
 import type { DbClient } from "../../db/client";
-import type { BookingRepository, BookingStatus } from "./booking.types";
+import type {
+  BookingPassengerRepository,
+  BookingRepository,
+  BookingStatus,
+  PassengerRepository,
+} from "./booking.types";
 
-export function createDrizzleBookingRepository(db: DbClient): BookingRepository {
+export type DrizzleBookingRepository =
+  & BookingRepository
+  & PassengerRepository
+  & BookingPassengerRepository;
+
+export function createDrizzleBookingRepository(db: DbClient): DrizzleBookingRepository {
   return {
     async createDraft(input) {
       const result = await db.execute(sql`
@@ -94,9 +104,9 @@ export function createDrizzleBookingRepository(db: DbClient): BookingRepository 
         status: input.status,
         bookingEmailAlias: input.bookingEmailAlias,
         createdAt: input.createdAt,
-        };
-      },
-      async findDefaultPassengerForUser(userId) {
+      };
+    },
+    async findDefaultPassengerForUser(userId) {
         const result = await db.execute(sql`
           select
             id,

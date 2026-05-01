@@ -1,4 +1,4 @@
-import type { FlightSearchHandler } from "../channels/whatsapp/whatsapp.routes";
+import type { FlightSearchHandler } from "../channels/whatsapp/whatsapp.handlers";
 import type { UiIntent } from "../channels/whatsapp/whatsapp.types";
 import type { SearchFlightsToolInput } from "./chat-tool.types";
 

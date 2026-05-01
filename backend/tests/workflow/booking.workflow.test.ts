@@ -9,8 +9,10 @@ import {
 import type {
   ActiveBookingForPassengerCollection,
   BookingRepository,
+  BookingPassengerRepository,
   CollectedPassengerDetails,
   CreateBookingDraftRecord,
+  PassengerRepository,
 } from "../../src/domain/booking/booking.types";
 
 const writes: CreateBookingDraftRecord[] = [];
@@ -37,11 +39,14 @@ const repository: BookingRepository = {
       status: "priced",
     };
   },
+};
+const collectedPassengerDetails: CollectedPassengerDetails[] = [];
+const passengerCollectingRepository: BookingRepository & Pick<BookingPassengerRepository, "collectPassengerDetails"> = {
+  ...repository,
   async collectPassengerDetails(input) {
     collectedPassengerDetails.push(input);
   },
 };
-const collectedPassengerDetails: CollectedPassengerDetails[] = [];
 
 const result = await createBookingFromSelectedOption({
   userId: "user_123",
@@ -51,7 +56,7 @@ const result = await createBookingFromSelectedOption({
   now: new Date("2026-04-29T09:00:00.000Z"),
   idGenerator: () => "11111111-1111-4111-8111-111111111111",
   aliasTokenGenerator: () => "abc123",
-  repository,
+  repository: passengerCollectingRepository,
 });
 
 assert.equal(result.kind, "ok");
@@ -102,7 +107,7 @@ const queuedResult = await collectPassengerDetailsAndQueueSupplierBooking({
     phone: "08012345678",
     email: "celestine@email.com",
   },
-  repository,
+  repository: passengerCollectingRepository,
   jobRepository: {
     async createQueued(input) {
       queuedJobInputs.push(input);
@@ -148,31 +153,38 @@ assert.equal(collectedPassengerDetails[0]?.supplierContactEmail, "book_abc123@bo
 
 const savedPassengerCollections: unknown[] = [];
 const defaultPassengerEnqueues: string[] = [];
+const passengerRepository: PassengerRepository = {
+  async findDefaultPassengerForUser(userId) {
+    assert.equal(userId, "user_123");
+    return {
+      id: "passenger_123",
+      passenger: {
+        title: "Mr",
+        firstName: "Celestine",
+        lastName: "Ejiofor",
+        dateOfBirth: "1990-04-12",
+        nationality: "Nigerian",
+        gender: "Male",
+        phone: "08012345678",
+        email: "celestine@email.com",
+      },
+    };
+  },
+};
+const bookingPassengerRepository: BookingPassengerRepository = {
+  async collectPassengerDetails(input) {
+    collectedPassengerDetails.push(input);
+  },
+  async collectSavedPassengerDetails(input) {
+    savedPassengerCollections.push(input);
+  },
+};
 const defaultPassengerResult = await collectDefaultPassengerAndQueueSupplierBooking({
   userId: "user_123",
   conversationId: "conv_123",
-  repository: {
-    ...repository,
-    async findDefaultPassengerForUser(userId) {
-      assert.equal(userId, "user_123");
-      return {
-        id: "passenger_123",
-        passenger: {
-          title: "Mr",
-          firstName: "Celestine",
-          lastName: "Ejiofor",
-          dateOfBirth: "1990-04-12",
-          nationality: "Nigerian",
-          gender: "Male",
-          phone: "08012345678",
-          email: "celestine@email.com",
-        },
-      };
-    },
-    async collectSavedPassengerDetails(input) {
-      savedPassengerCollections.push(input);
-    },
-  },
+  repository,
+  passengerRepository,
+  bookingPassengerRepository,
   jobRepository: {
     async createQueued(input) {
       return {
@@ -237,7 +249,7 @@ const enqueueFailure = await collectPassengerDetailsAndQueueSupplierBooking({
     phone: "08012345678",
     email: "celestine@email.com",
   },
-  repository,
+  repository: passengerCollectingRepository,
   jobRepository: {
     async createQueued(input) {
       return {
@@ -303,7 +315,7 @@ const supplierHold = await collectPassengerDetailsAndCreateSupplierHold({
     phone: "08012345678",
     email: "celestine@email.com",
   },
-  repository,
+  repository: passengerCollectingRepository,
   supplierClient: {
     async createHold(input) {
       supplierCalls.push({
@@ -358,7 +370,7 @@ const invalidPassengerDetails = await collectPassengerDetailsAndCreateSupplierHo
     phone: "08012345678",
     email: "not-an-email",
   },
-  repository,
+  repository: passengerCollectingRepository,
   supplierClient: {
     async createHold() {
       throw new Error("should not call supplier");
@@ -387,7 +399,7 @@ const supplierFailure = await collectPassengerDetailsAndCreateSupplierHold({
     phone: "08012345678",
     email: "celestine@email.com",
   },
-  repository,
+  repository: passengerCollectingRepository,
   supplierClient: {
     async createHold() {
       throw new Error("supplier unavailable");

@@ -1,6 +1,5 @@
 import Fastify from "fastify";
 import fastifyRawBody from "fastify-raw-body";
-import { sql } from "drizzle-orm";
 import { ZodError } from "zod";
 import { env } from "./config";
 import { flightSearchRequestSchema } from "./schemas/flight-search";
@@ -12,20 +11,11 @@ import { db } from "./db/client";
 import { createDrizzleConversationRepository } from "./domain/conversation/conversation.repository";
 import type { ConversationRepository, WhatsAppMessageRepository } from "./domain/conversation/conversation.types";
 import { createFlightSearchPresentationHandler } from "./workflows/flight-search.workflow";
-import {
-  collectDefaultPassengerAndQueueSupplierBooking,
-  collectPassengerDetailsAndQueueSupplierBooking,
-  createBookingFromSelectedOption,
-} from "./workflows/booking.workflow";
-import { createDrizzleBookingRepository } from "./domain/booking/booking.repository";
-import type { BookingSelectionHandler, FlightSearchHandler } from "./channels/whatsapp/whatsapp.routes";
+import { createLiveBookingHandler } from "./channels/whatsapp/live-booking.handler";
+import type { BookingSelectionHandler, FlightSearchHandler } from "./channels/whatsapp/whatsapp.handlers";
 import type { WakanowHoldClient } from "./integrations/wakanow/wakanow.booking";
-import type { UiIntent } from "./channels/whatsapp/whatsapp.types";
 import type { IntentExtractor } from "./agent/intent-extractor";
 import { createOpenAIChatModel, type ChatModel } from "./tools/chat-agent";
-import { createDrizzleSupplierBookingJobRepository } from "./jobs/booking-job.repository";
-import { enqueueSupplierBookingJob } from "./jobs/booking-queue";
-import { bookingSummaryPassengerFlowBody, type BookingSummaryDetails } from "./workflows/booking-summary";
 
 export type BuildServerOptions = {
   whatsappVerifyToken?: string;
@@ -69,7 +59,7 @@ export function buildServer(options: BuildServerOptions = {}) {
             model: env.OPENAI_INTENT_MODEL,
           }),
           flightSearchHandler: options.flightSearchHandler ?? createLiveFlightSearchHandler(),
-          bookingHandler: options.bookingHandler ?? createLiveBookingHandler(),
+          bookingHandler: options.bookingHandler ?? createConfiguredLiveBookingHandler(),
         });
       }
 
@@ -137,7 +127,7 @@ function createLiveFlightSearchHandler(): FlightSearchHandler {
   });
 }
 
-function createLiveBookingHandler(): BookingSelectionHandler {
+function createConfiguredLiveBookingHandler(): BookingSelectionHandler {
   if (!env.RESEND_INBOUND_DOMAIN) {
     throw new Error("RESEND_INBOUND_DOMAIN is required when WhatsApp booking is enabled");
   }
@@ -146,175 +136,12 @@ function createLiveBookingHandler(): BookingSelectionHandler {
     throw new Error("WHATSAPP_PASSENGER_DETAILS_FLOW_ID is required when WhatsApp booking is enabled");
   }
 
-  const inboundDomain = env.RESEND_INBOUND_DOMAIN;
-  const passengerDetailsFlowId = env.WHATSAPP_PASSENGER_DETAILS_FLOW_ID;
-  const repository = createDrizzleBookingRepository(db);
-
-  return {
-    async createFromFlightSelection(input) {
-      const result = await createBookingFromSelectedOption({
-        userId: input.userId,
-        conversationId: input.conversationId,
-        selectedFlightOptionId: input.selectedFlightOptionId,
-        inboundDomain,
-        repository,
-      });
-
-      if (result.kind !== "ok") {
-        return { type: "text", body: "I could not create that booking yet. Please try another flight." };
-      }
-
-      const summary = await findBookingSummaryForSelectedFlight(result.value.selectedFlightOptionId).catch(() => undefined);
-      const passenger = await repository.findDefaultPassengerForUser?.(input.userId);
-
-      if (passenger) {
-        const name = `${passenger.passenger.firstName} ${passenger.passenger.lastName}`;
-        return {
-          type: "reply_buttons",
-          body: [
-            summary
-              ? bookingSummaryPassengerFlowBody({
-                  summary,
-                  passengerPrompt: `Continue booking for ${name}?`,
-                })
-              : `Continue booking for ${name}?`,
-          ].join("\n"),
-          buttons: [
-            { id: "passenger:use_default", title: `Use ${passenger.passenger.firstName}`.slice(0, 20) },
-            { id: "passenger:different", title: "Different passenger" },
-          ],
-        };
-      }
-
-      return passengerDetailsFlowIntent({
-        bookingId: result.value.id,
-        selectedFlightOptionId: result.value.selectedFlightOptionId,
-        body: summary
-          ? bookingSummaryPassengerFlowBody({
-              summary,
-              passengerPrompt: "I need the passenger details to continue.",
-            })
-          : "Great choice. I need the passenger details to continue.",
-        passengerDetailsFlowId,
-      });
-    },
-    async collectPassengerDetails(input) {
-      const result = await collectPassengerDetailsAndQueueSupplierBooking({
-        userId: input.userId,
-        conversationId: input.conversationId,
-        passenger: input.passenger,
-        repository,
-        jobRepository: createDrizzleSupplierBookingJobRepository(db),
-        enqueueSupplierBooking: enqueueSupplierBookingJob,
-      });
-
-      if (result.kind === "needs_user_input") return result.ui as UiIntent;
-      if (result.kind !== "ok") return undefined;
-
-      return {
-        type: "text",
-        body: "Booking started. I’ll update you shortly.",
-      };
-    },
-    async continueWithDefaultPassenger(input) {
-      const result = await collectDefaultPassengerAndQueueSupplierBooking({
-        userId: input.userId,
-        conversationId: input.conversationId,
-        repository,
-        jobRepository: createDrizzleSupplierBookingJobRepository(db),
-        enqueueSupplierBooking: enqueueSupplierBookingJob,
-      });
-
-      if (result.kind === "needs_user_input") return result.ui as UiIntent;
-      if (result.kind !== "ok") return { type: "text", body: "I could not start that booking yet. Please enter passenger details again." };
-
-      return {
-        type: "text",
-        body: "Booking started. I’ll update you shortly.",
-      };
-    },
-    async requestPassengerDetails(input) {
-      const booking = await repository.findActiveBookingForPassengerCollection({
-        userId: input.userId,
-        conversationId: input.conversationId,
-      });
-      if (!booking) {
-        return { type: "text", body: "I could not find an active booking to update. Please choose the flight again." };
-      }
-
-      return passengerDetailsFlowIntent({
-        bookingId: booking.id,
-        selectedFlightOptionId: booking.selectedFlightOptionId,
-        body: "No problem. Enter the passenger details for this booking.",
-        passengerDetailsFlowId,
-      });
-    },
-  };
-}
-
-function passengerDetailsFlowIntent(input: {
-  bookingId: string;
-  selectedFlightOptionId: string;
-  body: string;
-  passengerDetailsFlowId: string;
-}): UiIntent {
-  return {
-    type: "passenger_details_flow",
-    body: input.body,
-    buttonText: "Enter details",
-    flowId: input.passengerDetailsFlowId,
-    flowToken: input.bookingId,
-    data: {
-      bookingId: input.bookingId,
-      selectedFlightOptionId: input.selectedFlightOptionId,
-    },
-  };
-}
-
-async function findBookingSummaryForSelectedFlight(selectedFlightOptionId: string): Promise<BookingSummaryDetails | undefined> {
-  const result = await db.execute(sql`
-    select
-      origin,
-      destination,
-      airline_name,
-      departure_at,
-      amount,
-      fare_rules
-    from skypadi_whatsapp.flight_options
-    where id = ${selectedFlightOptionId}
-    limit 1
-  `);
-  const row = result.rows[0] as
-    | {
-        origin: string;
-        destination: string;
-        airline_name: string | null;
-        departure_at: Date | string;
-        amount: string | number;
-        fare_rules?: Record<string, unknown> | null;
-      }
-    | undefined;
-  if (!row) return undefined;
-
-  return {
-    route: `${row.origin} → ${row.destination}`,
-    flight: `${row.airline_name ?? "Selected airline"}, ${formatFlightSummaryTime(row.departure_at)}`,
-    baggage: row.fare_rules?.baggageIncluded === false
-      ? "check baggage before paying"
-      : "standard cabin + checked baggage included",
-    fare: Number(row.amount),
-    currency: "NGN",
-    skypadiFee: 3000,
-  };
-}
-
-function formatFlightSummaryTime(value: Date | string): string {
-  const date = value instanceof Date ? value : new Date(value);
-  return new Intl.DateTimeFormat("en-NG", {
-    timeZone: env.WAKANOW_TIMEZONE,
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
+  return createLiveBookingHandler({
+    db,
+    inboundDomain: env.RESEND_INBOUND_DOMAIN,
+    passengerDetailsFlowId: env.WHATSAPP_PASSENGER_DETAILS_FLOW_ID,
+    displayTimeZone: env.WAKANOW_TIMEZONE,
+  });
 }
 
 function configuredWhatsAppClient(): WhatsAppClient {

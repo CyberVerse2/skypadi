@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import { rankFlightOptionsForDisplay } from "../../src/domain/flight/flight-search.service";
 import { presentStoredFlightOptions, rankedFlightOptionsToListIntent } from "../../src/workflows/flight-search.workflow";
+import { flightOptionReplyId } from "../../src/channels/whatsapp/whatsapp.reply-ids";
 
 const ranked = rankFlightOptionsForDisplay([
   { id: "a", airline: "Air Peace", departureTime: "06:45", price: 171000, stops: 0, baggageIncluded: true },
@@ -33,7 +34,7 @@ const distinctAirlineList = rankedFlightOptionsToListIntent(
 
 assert.deepEqual(
   distinctAirlineList.rows.map((row) => row.id),
-  ["flight_option:value-late", "flight_option:ibom", "flight_option:green"]
+  [flightOptionReplyId("value-late"), flightOptionReplyId("ibom"), flightOptionReplyId("green")]
 );
 assert.equal(distinctAirlineList.rows.length, 3);
 assert.match(distinctAirlineList.body, /I found 3 good options/);

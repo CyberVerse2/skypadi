@@ -1,5 +1,6 @@
 import type { DbClient } from "../db/client";
 import type { FlightListIntent, UiIntent } from "../channels/whatsapp/whatsapp.types";
+import { flightOptionReplyId } from "../channels/whatsapp/whatsapp.reply-ids";
 import type { FlightSearchResponse } from "../schemas/flight-search";
 import { rankFlightOptionsForDisplay } from "../domain/flight/flight-search.service";
 import type { DisplayFlightOption, DisplayRankedFlightOptions } from "../domain/flight/flight.types";
@@ -100,7 +101,7 @@ export function rankedFlightOptionsToListIntent(ranked: DisplayRankedFlightOptio
     body: comparisonBody(options, ranked.bestValue),
     buttonText: "Choose flight",
     rows: options.map((option) => ({
-      id: `flight_option:${option.id}`,
+      id: flightOptionReplyId(option.id),
       title: option.airline.slice(0, 24),
       description: `${option.departureTime} - NGN ${option.price.toLocaleString("en-NG")}`.slice(0, 72),
     })),

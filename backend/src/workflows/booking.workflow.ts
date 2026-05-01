@@ -1,10 +1,12 @@
 import { createPricedBookingDraft } from "../domain/booking/booking.service";
 import type {
   BookingDraft,
+  BookingPassengerRepository,
   BookingRepository,
   CreateBookingDraftInput,
   QueuedSupplierBooking,
   QueueSupplierBookingInput,
+  QueueSavedPassengerSupplierBookingInput,
 } from "../domain/booking/booking.types";
 import { passengerSchema, type Passenger } from "../schemas/flight-booking";
 import type { WakanowHoldClient } from "../integrations/wakanow/wakanow.booking";
@@ -33,7 +35,7 @@ export async function collectPassengerDetailsAndCreateSupplierHold(input: {
   userId: string;
   conversationId: string;
   passenger?: Passenger;
-  repository?: BookingRepository;
+  repository?: BookingRepository & Pick<BookingPassengerRepository, "collectPassengerDetails">;
   supplierClient?: Pick<WakanowHoldClient, "createHold">;
   supplierRepository?: SupplierBookingRepository;
   now?: Date;
@@ -115,8 +117,9 @@ export async function collectPassengerDetailsAndQueueSupplierBooking(
   if (!input.enqueueSupplierBooking) {
     return { kind: "temporary_failure", reason: "supplier booking enqueue dependency is required" };
   }
+  const repository = input.repository;
 
-  const booking = await input.repository.findActiveBookingForPassengerCollection({
+  const booking = await repository.findActiveBookingForPassengerCollection({
     userId: input.userId,
     conversationId: input.conversationId,
   });
@@ -136,65 +139,33 @@ export async function collectPassengerDetailsAndQueueSupplierBooking(
     };
   }
 
-  const collectedAt = input.now ?? new Date();
-  const job = await input.jobRepository.createQueued({
-    bookingId: booking.id,
-    graphileJobKey: supplierBookingJobKey(booking.id),
-    now: collectedAt,
-  });
-
-  try {
-    await input.repository.collectPassengerDetails({
-      bookingId: booking.id,
-      userId: input.userId,
-      conversationId: input.conversationId,
-      passenger: passenger.value,
-      supplierContactEmail: booking.bookingEmailAlias,
-      collectedAt,
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Supplier booking queue preparation failed";
-    await input.jobRepository.markFailed({
-      bookingId: booking.id,
-      failedAt: new Date(),
-      errorMessage: message,
-      retryable: true,
-    });
-
-    return { kind: "temporary_failure", reason: "supplier booking queue preparation failed" };
-  }
-
-  try {
-    await input.enqueueSupplierBooking({ bookingId: booking.id });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Supplier booking enqueue failed";
-    await input.jobRepository.markFailed({
-      bookingId: booking.id,
-      failedAt: new Date(),
-      errorMessage: message,
-      retryable: true,
-    });
-
-    return { kind: "temporary_failure", reason: "supplier booking enqueue failed" };
-  }
-
-  return makeOk({
-    bookingId: booking.id,
-    status: "supplier_booking_pending",
-    job,
+  return queueSupplierBookingWithPassenger({
+    booking,
+    jobRepository: input.jobRepository,
+    enqueueSupplierBooking: input.enqueueSupplierBooking,
+    now: input.now,
+    collectPassenger: (collectedAt) =>
+      repository.collectPassengerDetails({
+        bookingId: booking.id,
+        userId: input.userId,
+        conversationId: input.conversationId,
+        passenger: passenger.value,
+        supplierContactEmail: booking.bookingEmailAlias,
+        collectedAt,
+      }),
   });
 }
 
 export async function collectDefaultPassengerAndQueueSupplierBooking(
-  input: Omit<QueueSupplierBookingInput, "passenger">
+  input: QueueSavedPassengerSupplierBookingInput
 ): Promise<WorkflowResult<QueuedSupplierBooking>> {
   if (!input.repository) {
     return { kind: "temporary_failure", reason: "booking repository dependency is required" };
   }
-  if (!input.repository.findDefaultPassengerForUser) {
+  if (!input.passengerRepository) {
     return { kind: "temporary_failure", reason: "default passenger dependency is required" };
   }
-  if (!input.repository.collectSavedPassengerDetails) {
+  if (!input.bookingPassengerRepository) {
     return { kind: "temporary_failure", reason: "saved passenger collection dependency is required" };
   }
   if (!input.jobRepository) {
@@ -203,8 +174,11 @@ export async function collectDefaultPassengerAndQueueSupplierBooking(
   if (!input.enqueueSupplierBooking) {
     return { kind: "temporary_failure", reason: "supplier booking enqueue dependency is required" };
   }
+  const repository = input.repository;
+  const passengerRepository = input.passengerRepository;
+  const bookingPassengerRepository = input.bookingPassengerRepository;
 
-  const booking = await input.repository.findActiveBookingForPassengerCollection({
+  const booking = await repository.findActiveBookingForPassengerCollection({
     userId: input.userId,
     conversationId: input.conversationId,
   });
@@ -212,7 +186,7 @@ export async function collectDefaultPassengerAndQueueSupplierBooking(
     return { kind: "permanent_failure", reason: "no active priced booking found for passenger collection" };
   }
 
-  const savedPassenger = await input.repository.findDefaultPassengerForUser(input.userId);
+  const savedPassenger = await passengerRepository.findDefaultPassengerForUser(input.userId);
   if (!savedPassenger) {
     return { kind: "permanent_failure", reason: "no saved passenger found" };
   }
@@ -229,27 +203,47 @@ export async function collectDefaultPassengerAndQueueSupplierBooking(
     };
   }
 
+  return queueSupplierBookingWithPassenger({
+    booking,
+    jobRepository: input.jobRepository,
+    enqueueSupplierBooking: input.enqueueSupplierBooking,
+    now: input.now,
+    collectPassenger: (collectedAt) =>
+      bookingPassengerRepository.collectSavedPassengerDetails({
+        bookingId: booking.id,
+        userId: input.userId,
+        conversationId: input.conversationId,
+        passengerId: savedPassenger.id,
+        passenger: passenger.value,
+        supplierContactEmail: booking.bookingEmailAlias,
+        collectedAt,
+      }),
+  });
+}
+
+async function queueSupplierBookingWithPassenger(input: {
+  booking: {
+    id: string;
+    bookingEmailAlias: string;
+  };
+  jobRepository: NonNullable<QueueSupplierBookingInput["jobRepository"]>;
+  enqueueSupplierBooking: NonNullable<QueueSupplierBookingInput["enqueueSupplierBooking"]>;
+  collectPassenger: (collectedAt: Date) => Promise<void>;
+  now?: Date;
+}): Promise<WorkflowResult<QueuedSupplierBooking>> {
   const collectedAt = input.now ?? new Date();
   const job = await input.jobRepository.createQueued({
-    bookingId: booking.id,
-    graphileJobKey: supplierBookingJobKey(booking.id),
+    bookingId: input.booking.id,
+    graphileJobKey: supplierBookingJobKey(input.booking.id),
     now: collectedAt,
   });
 
   try {
-    await input.repository.collectSavedPassengerDetails({
-      bookingId: booking.id,
-      userId: input.userId,
-      conversationId: input.conversationId,
-      passengerId: savedPassenger.id,
-      passenger: passenger.value,
-      supplierContactEmail: booking.bookingEmailAlias,
-      collectedAt,
-    });
+    await input.collectPassenger(collectedAt);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Saved passenger queue preparation failed";
+    const message = error instanceof Error ? error.message : "Supplier booking queue preparation failed";
     await input.jobRepository.markFailed({
-      bookingId: booking.id,
+      bookingId: input.booking.id,
       failedAt: new Date(),
       errorMessage: message,
       retryable: true,
@@ -259,11 +253,11 @@ export async function collectDefaultPassengerAndQueueSupplierBooking(
   }
 
   try {
-    await input.enqueueSupplierBooking({ bookingId: booking.id });
+    await input.enqueueSupplierBooking({ bookingId: input.booking.id });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Supplier booking enqueue failed";
     await input.jobRepository.markFailed({
-      bookingId: booking.id,
+      bookingId: input.booking.id,
       failedAt: new Date(),
       errorMessage: message,
       retryable: true,
@@ -273,7 +267,7 @@ export async function collectDefaultPassengerAndQueueSupplierBooking(
   }
 
   return makeOk({
-    bookingId: booking.id,
+    bookingId: input.booking.id,
     status: "supplier_booking_pending",
     job,
   });

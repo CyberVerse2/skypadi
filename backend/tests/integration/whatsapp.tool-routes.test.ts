@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 
 import { buildServer, type BuildServerOptions } from "../../src/app";
-import type { BookingSelectionHandler, FlightSearchHandler } from "../../src/channels/whatsapp/whatsapp.routes";
+import type { BookingSelectionHandler, FlightSearchHandler } from "../../src/channels/whatsapp/whatsapp.handlers";
 import type {
   ConversationRecord,
   ConversationRepository,
@@ -10,6 +10,7 @@ import type {
 } from "../../src/domain/conversation/conversation.types";
 import type { ChatModel } from "../../src/tools/chat-agent";
 import type { DecideChatActionInput } from "../../src/tools/chat-tool.types";
+import { flightOptionReplyId, passengerReplyIds } from "../../src/channels/whatsapp/whatsapp.reply-ids";
 
 type FlightSearchHandlerInput = Parameters<FlightSearchHandler["searchAndPresent"]>[0];
 type BookingSelectionInput = Parameters<BookingSelectionHandler["createFromFlightSelection"]>[0];
@@ -216,7 +217,7 @@ async function executesSearchTool(): Promise<void> {
           buttonText: "Choose flight",
           rows: [
             {
-              id: `flight_option:${selectedFlightOptionId}`,
+              id: flightOptionReplyId(selectedFlightOptionId),
               title: "SkyPadi Air",
               description: "08:45 - NGN 158,000",
             },
@@ -278,7 +279,7 @@ async function startsBookingFromFlightSelection(): Promise<void> {
       id: "wamid.flight-selection",
       interactive: {
         type: "list_reply",
-        list_reply: { id: `flight_option:${selectedFlightOptionId}`, title: "SkyPadi Air" },
+        list_reply: { id: flightOptionReplyId(selectedFlightOptionId), title: "SkyPadi Air" },
       },
     })
   );
@@ -327,7 +328,7 @@ async function continuesBookingWithSavedPassenger(): Promise<void> {
       id: "wamid.saved-passenger",
       interactive: {
         type: "button_reply",
-        button_reply: { id: "passenger:use_default", title: "Continue as Celestine" },
+        button_reply: { id: passengerReplyIds.useDefault, title: "Continue as Celestine" },
       },
     })
   );
@@ -381,7 +382,7 @@ async function opensPassengerFlowForDifferentPassenger(): Promise<void> {
       id: "wamid.different-passenger",
       interactive: {
         type: "button_reply",
-        button_reply: { id: "passenger:different", title: "Different passenger" },
+        button_reply: { id: passengerReplyIds.different, title: "Different passenger" },
       },
     })
   );

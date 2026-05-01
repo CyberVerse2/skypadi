@@ -49,13 +49,19 @@ export type CreateBookingDraftRecord = {
 
 export type BookingRepository = {
   createDraft(input: CreateBookingDraftRecord): Promise<BookingDraft>;
-  findDefaultPassengerForUser?(userId: string): Promise<SavedPassenger | undefined>;
   findActiveBookingForPassengerCollection(input: {
     userId: string;
     conversationId: string;
   }): Promise<ActiveBookingForPassengerCollection | undefined>;
+};
+
+export type PassengerRepository = {
+  findDefaultPassengerForUser(userId: string): Promise<SavedPassenger | undefined>;
+};
+
+export type BookingPassengerRepository = {
   collectPassengerDetails(input: CollectedPassengerDetails): Promise<void>;
-  collectSavedPassengerDetails?(input: CollectedSavedPassengerDetails): Promise<void>;
+  collectSavedPassengerDetails(input: CollectedSavedPassengerDetails): Promise<void>;
 };
 
 export type SavedPassenger = {
@@ -100,7 +106,18 @@ export type QueueSupplierBookingInput = {
   userId: string;
   conversationId: string;
   passenger?: Passenger;
+  repository?: BookingRepository & Pick<BookingPassengerRepository, "collectPassengerDetails">;
+  jobRepository?: SupplierBookingJobRepository;
+  enqueueSupplierBooking?: (payload: SupplierBookingJobPayload) => Promise<void>;
+  now?: Date;
+};
+
+export type QueueSavedPassengerSupplierBookingInput = {
+  userId: string;
+  conversationId: string;
   repository?: BookingRepository;
+  passengerRepository?: PassengerRepository;
+  bookingPassengerRepository?: BookingPassengerRepository;
   jobRepository?: SupplierBookingJobRepository;
   enqueueSupplierBooking?: (payload: SupplierBookingJobPayload) => Promise<void>;
   now?: Date;
