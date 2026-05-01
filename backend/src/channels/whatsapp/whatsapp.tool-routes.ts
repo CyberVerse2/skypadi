@@ -224,6 +224,10 @@ async function processMessages(
     if (!intent) continue;
 
     await sendIntentReply(intent, conversation.id, message, options);
+    const resumeIntent = promptToResumeAfterSideAnswer(action, conversation.draft);
+    if (resumeIntent) {
+      await sendIntentReply(resumeIntent, conversation.id, message, options);
+    }
     request.log.info({ providerMessageId: message.id, resultKind: action.type }, "Processed WhatsApp tool message");
   }
 }
@@ -247,6 +251,14 @@ function chatDecisionFailureIntent(context: ChatContext): UiIntent {
 function isFirstTimeGreetingOnly(userText: string, context: ChatContext): boolean {
   if (!isFirstUserReply(context)) return false;
   return /^(hi|hello|hey|heyy|heyyy|good morning|good afternoon|good evening)[!. ]*$/i.test(userText.trim());
+}
+
+function promptToResumeAfterSideAnswer(
+  action: ChatAction,
+  draft: PersistedInboundMessage["conversation"]["draft"]
+): UiIntent | undefined {
+  if (action.type !== "reply" || !draft.expectedField) return undefined;
+  return promptForMissingTripField(draft.expectedField);
 }
 
 export async function uiIntentFromChatAction(

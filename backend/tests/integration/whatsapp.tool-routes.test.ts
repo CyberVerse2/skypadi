@@ -39,6 +39,7 @@ await prependsOnboardingForFirstTimeUsers();
 await usesSavedOnboardingForFirstTimeGreetingOnlyUsers();
 await usesControlledCopyWhenChatModelSelectsIt();
 await letsModelAnswerReturningGreetingWithoutTripPrompt();
+await resumesPendingPromptAfterSideQuestionAnswer();
 await includesConversationContextForFollowUpAnswers();
 await dedupesRepeatedRecentMessagesBeforeChatModel();
 await repliesWhenChatModelFails();
@@ -224,6 +225,64 @@ async function letsModelAnswerReturningGreetingWithoutTripPrompt(): Promise<void
 
   const body = ((sentMessages[0]?.message as { text?: { body?: string } }).text?.body ?? "");
   assert.equal(body, "Hi! I can help you search and book flights when you’re ready.");
+
+  await app.close();
+}
+
+async function resumesPendingPromptAfterSideQuestionAnswer(): Promise<void> {
+  const sentMessages: SentMessage[] = [];
+  const app = buildToolRouteServer({
+    sentMessages,
+    initialConversation: {
+      draft: {
+        destination: "LOS",
+        departureDate: "2026-05-05",
+        adults: 1,
+        expectedField: "origin",
+      },
+    },
+    chatModel: async () => ({
+      action: "answerSideQuestion",
+      message: "Yes, bring a valid ID for check-in.",
+      searchFlightsInput: null,
+      collectTripDetailsInput: null,
+      sendControlledReplyInput: null,
+      startBookingJobInput: null,
+    }),
+  });
+
+  const response = await signedPost(app, webhookBody({ id: "wamid.side-question-during-trip", text: "Do I need an ID?" }));
+  assert.equal(response.statusCode, 200);
+  await waitFor(() => sentMessages.length === 2);
+
+  assert.deepEqual(sentMessages[0], {
+    to: "2348012345678",
+    message: {
+      type: "text",
+      text: { body: "Yes, bring a valid ID for check-in." },
+    },
+  });
+  assert.deepEqual(sentMessages[1], {
+    to: "2348012345678",
+    message: {
+      type: "interactive",
+      interactive: {
+        type: "list",
+        body: { text: "Where are you flying from?" },
+        action: {
+          button: "Choose city",
+          sections: [
+            {
+              rows: [
+                { id: "origin:LOS", title: "Lagos", description: "Murtala Muhammed Airport" },
+                { id: "origin:ABV", title: "Abuja", description: "Nnamdi Azikiwe Airport" },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  });
 
   await app.close();
 }
