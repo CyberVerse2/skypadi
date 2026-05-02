@@ -42,7 +42,7 @@ test("whatsapp tool routes", async () => {
   await marksInboundMessagesReadAndShowsTyping();
   await ignoresReadAndTypingIndicatorFailures();
   await dedupesProviderMessages();
-  await prependsOnboardingForFirstTimeUsers();
+  await asksOnlyTheWorkflowPromptForFirstTimeTripRequests();
   await usesSavedOnboardingForFirstTimeGreetingOnlyUsers();
   await usesControlledCopyWhenChatModelSelectsIt();
   await sendsSafeCustomClarificationWidgets();
@@ -190,7 +190,7 @@ test("whatsapp tool routes", async () => {
     await app.close();
   }
 
-  async function prependsOnboardingForFirstTimeUsers(): Promise<void> {
+  async function asksOnlyTheWorkflowPromptForFirstTimeTripRequests(): Promise<void> {
     const sentMessages: SentMessage[] = [];
     const app = buildToolRouteServer({
       sentMessages,
@@ -211,8 +211,7 @@ test("whatsapp tool routes", async () => {
     await waitFor(() => sentMessages.length === 1);
 
     const body = ((sentMessages[0]?.message as { interactive?: { body?: { text?: string } } }).interactive?.body?.text ?? "");
-    assert.match(body, /^Hi, I’m Skypadi/);
-    assert.match(body, /Where are you flying from\?/);
+    assert.equal(body, "Where are you flying from?");
 
     await app.close();
   }
