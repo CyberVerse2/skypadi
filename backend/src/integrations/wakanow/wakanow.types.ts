@@ -1,3 +1,5 @@
+import type { BankTransferDetails } from "../../schemas/booking-contract";
+
 export type WakanowSupplier = "wakanow";
 
 export type SupplierHoldResult =
@@ -9,6 +11,7 @@ export type SupplierHoldResult =
       amountDue: number;
       currency: "NGN";
       paymentUrl?: string;
+      bankTransfers?: BankTransferDetails[];
       rawStatus: string;
     }
   | {

@@ -7,7 +7,7 @@ import type { UiIntent, WhatsAppMessagePayload } from "./whatsapp.types";
 import type { Passenger } from "../../schemas/flight-booking";
 import { findOrCreateConversation } from "../../domain/conversation/conversation.service";
 import type { ConversationRepository, WhatsAppMessageRepository } from "../../domain/conversation/conversation.types";
-import { whatsappOriginRows } from "../../domain/flight/airport-catalog";
+import { airportByCode, whatsappOriginRows } from "../../domain/flight/airport-catalog";
 import { decideChatActionWithModel, type ChatModel } from "../../tools/chat-agent";
 import type {
   ChatAction,
@@ -15,6 +15,7 @@ import type {
   ChatContextMessage,
   CollectTripDetailsToolInput,
   SearchFlightsToolInput,
+  SendCustomClarificationToolInput,
 } from "../../tools/chat-tool.types";
 import { executeSearchFlightsTool } from "../../tools/search-flights.tool";
 import type { BookingSelectionHandler, FlightSearchHandler } from "./whatsapp.handlers";
@@ -26,11 +27,20 @@ export type WhatsAppToolRoutesOptions = {
   conversationRepository: ConversationRepository;
   messageRepository?: WhatsAppMessageRepository;
   whatsappClient: WhatsAppClient;
+  typingIndicatorMinimumMs?: number;
   appSecret?: string;
   chatModel: ChatModel;
   flightSearchHandler: FlightSearchHandler;
   bookingHandler: BookingSelectionHandler;
 };
+
+type TypingIndicatorState = {
+  shownAtMs: number;
+  minimumMs: number;
+};
+
+const defaultTypingIndicatorMinimumMs = 900;
+const searchTypingRefreshMs = 8_000;
 
 type RawBodyRequest = FastifyRequest & { rawBody?: string | Buffer };
 
@@ -136,10 +146,11 @@ async function processMessages(
 ): Promise<void> {
   for (const { message, now, conversation } of persistedMessages) {
     await markMessageRead(message, options, request);
+    let activeConversation = conversation;
 
     const passengerAction = passengerActionFromMessage(message);
     if (passengerAction === "use_default") {
-      await showTypingIndicator(message, options, request);
+      const typing = await showTypingIndicator(message, options, request);
       await sendIntentReply(
         (await options.bookingHandler.continueWithDefaultPassenger?.({
           userId: requiredUserId(conversation),
@@ -148,14 +159,15 @@ async function processMessages(
         })) ?? supplierBookingStartFailureIntent(),
         conversation.id,
         message,
-        options
+        options,
+        typing
       );
       request.log.info({ providerMessageId: message.id, resultKind: "booking_saved_passenger" }, "Processed WhatsApp booking message");
       continue;
     }
 
     if (passengerAction === "different") {
-      await showTypingIndicator(message, options, request);
+      const typing = await showTypingIndicator(message, options, request);
       await sendIntentReply(
         (await options.bookingHandler.requestPassengerDetails?.({
           userId: requiredUserId(conversation),
@@ -164,7 +176,8 @@ async function processMessages(
         })) ?? supplierBookingStartFailureIntent(),
         conversation.id,
         message,
-        options
+        options,
+        typing
       );
       request.log.info({ providerMessageId: message.id, resultKind: "booking_different_passenger" }, "Processed WhatsApp booking message");
       continue;
@@ -172,7 +185,7 @@ async function processMessages(
 
     const selectedFlightOptionId = selectedFlightOptionIdFromMessage(message);
     if (selectedFlightOptionId) {
-      await showTypingIndicator(message, options, request);
+      const typing = await showTypingIndicator(message, options, request);
       await sendIntentReply(
         await options.bookingHandler.createFromFlightSelection({
           userId: requiredUserId(conversation),
@@ -182,18 +195,20 @@ async function processMessages(
         }),
         conversation.id,
         message,
-        options
+        options,
+        typing
       );
       request.log.info({ providerMessageId: message.id, resultKind: "booking_selection" }, "Processed WhatsApp booking message");
       continue;
     }
 
+    let typing: TypingIndicatorState | undefined;
     if (isPassengerDetailsFlowReply(message)) {
-      await showTypingIndicator(message, options, request);
+      typing = await showTypingIndicator(message, options, request);
     }
     const bookingIntent = await passengerDetailsIntentFromMessage(message, conversation, options);
     if (bookingIntent) {
-      await sendIntentReply(bookingIntent, conversation.id, message, options);
+      await sendIntentReply(bookingIntent, conversation.id, message, options, typing);
       request.log.info({ providerMessageId: message.id, resultKind: "booking_passenger_details" }, "Processed WhatsApp booking message");
       continue;
     }
@@ -201,14 +216,15 @@ async function processMessages(
     const userText = chatTextFromMessage(message);
     if (!userText) continue;
 
-    const context = await chatContextFromConversation({ conversation, message, options });
+    const context = await chatContextFromConversation({ conversation: activeConversation, message, options });
     if (isFirstTimeGreetingOnly(userText, context)) {
-      await sendIntentReply({ type: "text", body: SKYPADI_ONBOARDING_MESSAGE }, conversation.id, message, options);
+      const onboardingTyping = await showTypingIndicator(message, options, request);
+      await sendIntentReply({ type: "text", body: SKYPADI_ONBOARDING_MESSAGE }, activeConversation.id, message, options, onboardingTyping);
       request.log.info({ providerMessageId: message.id, resultKind: "controlled_onboarding" }, "Processed WhatsApp tool message");
       continue;
     }
 
-    await showTypingIndicator(message, options, request);
+    typing = await showTypingIndicator(message, options, request);
     const action = await decideChatActionWithModel(options.chatModel, {
       userText,
       now,
@@ -221,23 +237,26 @@ async function processMessages(
         },
         "WhatsApp chat model decision failed; sending fallback reply"
       );
-      await sendIntentReply(chatDecisionFailureIntent(context), conversation.id, message, options);
+      await sendIntentReply(chatDecisionFailureIntent(context), activeConversation.id, message, options, typing);
       return undefined;
     });
     if (!action) continue;
 
     const intent = addFirstTimeOnboarding(await uiIntentFromChatAction(action, {
-      conversation,
+      conversation: activeConversation,
       message,
       options,
       request,
+      showTypingIndicator: async () => {
+        typing = await showTypingIndicator(message, options, request);
+      },
     }), context);
     if (!intent) continue;
 
-    await sendIntentReply(intent, conversation.id, message, options);
-    const resumeIntent = promptToResumeAfterSideAnswer(action, conversation.draft);
+    await sendIntentReply(intent, activeConversation.id, message, options, typing);
+    const resumeIntent = promptToResumeAfterSideAnswer(action, activeConversation.draft);
     if (resumeIntent) {
-      await sendIntentReply(resumeIntent, conversation.id, message, options);
+      await sendIntentReply(resumeIntent, activeConversation.id, message, options);
     }
     request.log.info({ providerMessageId: message.id, resultKind: action.type }, "Processed WhatsApp tool message");
   }
@@ -267,11 +286,15 @@ async function showTypingIndicator(
   message: WhatsAppInboundMessage,
   options: WhatsAppToolRoutesOptions,
   request: FastifyRequest
-): Promise<void> {
+): Promise<TypingIndicatorState | undefined> {
   try {
     await options.whatsappClient.showTypingIndicator({
       messageId: message.id,
     });
+    return {
+      shownAtMs: Date.now(),
+      minimumMs: options.typingIndicatorMinimumMs ?? defaultTypingIndicatorMinimumMs,
+    };
   } catch (error) {
     request.log.warn(
       {
@@ -280,6 +303,7 @@ async function showTypingIndicator(
       },
       "WhatsApp typing indicator failed"
     );
+    return undefined;
   }
 }
 
@@ -319,6 +343,7 @@ export async function uiIntentFromChatAction(
     message: WhatsAppInboundMessage;
     options: WhatsAppToolRoutesOptions;
     request?: FastifyRequest;
+    showTypingIndicator?: () => Promise<void>;
   }
 ): Promise<UiIntent | undefined> {
   const userId = requiredUserId(input.conversation);
@@ -331,19 +356,29 @@ export async function uiIntentFromChatAction(
     return controlledReplyIntent(action.input.key);
   }
 
+  if (action.tool === "sendCustomClarification") {
+    return customClarificationIntent(action.input);
+  }
+
   if (action.tool === "collectTripDetails") {
     return handleCollectedTripDetails(action.input, input);
   }
 
+  if (action.tool === "startNewTrip") {
+    return handleCollectedTripDetails(action.input, { ...input, resetDraft: true });
+  }
+
   if (action.tool === "searchFlights") {
-    return executeSearchFlightsTool({
-      userId,
-      conversationId: input.conversation.id,
-      phoneNumber: input.message.from,
-      input: action.input,
-      flightSearchHandler: input.options.flightSearchHandler,
-      onFailure: createFlightSearchFailureLogger(input.request, input.message),
-    });
+    return withSearchTypingRefresh(input.showTypingIndicator, () =>
+      executeSearchFlightsTool({
+        userId,
+        conversationId: input.conversation.id,
+        phoneNumber: input.message.from,
+        input: action.input,
+        flightSearchHandler: input.options.flightSearchHandler,
+        onFailure: createFlightSearchFailureLogger(input.request, input.message),
+      })
+    );
   }
 
   return input.options.bookingHandler.createFromFlightSelection({
@@ -362,6 +397,74 @@ function controlledReplyIntent(key: "skypadi_intro"): UiIntent {
   return { type: "text", body: SKYPADI_ONBOARDING_MESSAGE };
 }
 
+function customClarificationIntent(input: SendCustomClarificationToolInput): UiIntent {
+  if (!isSafeCustomClarification(input)) {
+    return {
+      type: "text",
+      body: "I can only help with Nigerian domestic direct flights and simple trip clarifications right now.",
+    };
+  }
+
+  if (input.widget.type === "reply_buttons") {
+    return {
+      type: "reply_buttons",
+      body: input.body,
+      buttons: input.widget.options.map((option) => ({
+        id: option.id,
+        title: option.title,
+      })),
+    };
+  }
+
+  return {
+    type: "flight_list",
+    body: input.body,
+    buttonText: input.widget.buttonText ?? "Choose",
+    rows: input.widget.options,
+  };
+}
+
+function isSafeCustomClarification(input: SendCustomClarificationToolInput): boolean {
+  if (unsafeClarificationBodyPattern.test(input.body)) return false;
+  if (input.widget.type === "reply_buttons" && input.widget.options.length > 3) return false;
+  if (input.widget.type === "list" && input.widget.options.length > 10) return false;
+  if (input.widget.options.length < 1) return false;
+  return input.widget.options.every((option) => isSafeCustomClarificationOptionId(option.id));
+}
+
+const unsafeClarificationBodyPattern =
+  /\b(booked|confirmed|ticket issued|payment|pay|transfer|account|fare|price|fee|baggage|wakanow|supplier|connecting|connection|international)\b|₦|ngn/i;
+
+function isSafeCustomClarificationOptionId(id: string): boolean {
+  if (id.startsWith("date:")) {
+    return /^date:\d{4}-\d{2}-\d{2}$/.test(id);
+  }
+
+  if (id.startsWith("origin:") || id.startsWith("destination:")) {
+    const code = id.slice(id.indexOf(":") + 1);
+    const airport = airportByCode(code);
+    return airport?.country.trim().toLowerCase() === "nigeria";
+  }
+
+  if (id.startsWith("departure_window:")) {
+    return /^departure_window:(morning|afternoon|evening|anytime)$/.test(id);
+  }
+
+  if (id.startsWith("passengers:")) {
+    return /^passengers:([1-9]\d?|more)$/.test(id);
+  }
+
+  if (id.startsWith("trip_type:")) {
+    return /^trip_type:(one_way|return)$/.test(id);
+  }
+
+  if (id.startsWith("new_trip:")) {
+    return /^new_trip:(start|yes|no)$/.test(id);
+  }
+
+  return false;
+}
+
 async function handleCollectedTripDetails(
   details: CollectTripDetailsToolInput,
   input: {
@@ -369,9 +472,11 @@ async function handleCollectedTripDetails(
     message: WhatsAppInboundMessage;
     options: WhatsAppToolRoutesOptions;
     request?: FastifyRequest;
+    showTypingIndicator?: () => Promise<void>;
+    resetDraft?: boolean;
   }
 ): Promise<UiIntent | undefined> {
-  const draft = mergeCollectedTripDetails(input.conversation.draft, details);
+  const draft = mergeCollectedTripDetails(input.resetDraft ? {} : input.conversation.draft, details);
   const nextMissingField = firstMissingSearchField(draft);
   const savedConversation = await input.options.conversationRepository.save({
     ...input.conversation,
@@ -384,17 +489,37 @@ async function handleCollectedTripDetails(
 
   const searchInput = searchInputFromDraft(savedConversation.draft);
   if (searchInput) {
-    return executeSearchFlightsTool({
-      userId: requiredUserId(savedConversation),
-      conversationId: savedConversation.id,
-      phoneNumber: input.message.from,
-      input: searchInput,
-      flightSearchHandler: input.options.flightSearchHandler,
-      onFailure: createFlightSearchFailureLogger(input.request, input.message),
-    });
+    return withSearchTypingRefresh(input.showTypingIndicator, () =>
+      executeSearchFlightsTool({
+        userId: requiredUserId(savedConversation),
+        conversationId: savedConversation.id,
+        phoneNumber: input.message.from,
+        input: searchInput,
+        flightSearchHandler: input.options.flightSearchHandler,
+        onFailure: createFlightSearchFailureLogger(input.request, input.message),
+      })
+    );
   }
 
   return nextMissingField ? promptForMissingTripField(nextMissingField) : undefined;
+}
+
+async function withSearchTypingRefresh<T>(
+  showTypingIndicator: (() => Promise<void>) | undefined,
+  operation: () => Promise<T>
+): Promise<T> {
+  if (!showTypingIndicator) return operation();
+
+  await showTypingIndicator();
+  const refresh = setInterval(() => {
+    void showTypingIndicator();
+  }, searchTypingRefreshMs);
+
+  try {
+    return await operation();
+  } finally {
+    clearInterval(refresh);
+  }
 }
 
 function createFlightSearchFailureLogger(
@@ -650,6 +775,12 @@ function chatTextFromMessage(message: WhatsAppInboundMessage): string | undefine
   if (replyId.startsWith("origin:")) {
     return selectedReplyText("Origin selected", replyId.slice("origin:".length), title);
   }
+  if (replyId.startsWith("destination:")) {
+    return selectedReplyText("Destination selected", replyId.slice("destination:".length), title);
+  }
+  if (replyId.startsWith("date:")) {
+    return selectedReplyText("Date selected", replyId.slice("date:".length), title);
+  }
   if (replyId.startsWith("trip_type:")) {
     return selectedReplyText("Trip type selected", replyId.slice("trip_type:".length), title);
   }
@@ -658,6 +789,9 @@ function chatTextFromMessage(message: WhatsAppInboundMessage): string | undefine
   }
   if (replyId.startsWith("passengers:")) {
     return selectedReplyText("Passengers selected", replyId.slice("passengers:".length), title);
+  }
+  if (replyId.startsWith("new_trip:")) {
+    return selectedReplyText("New trip selected", replyId.slice("new_trip:".length), title);
   }
 
   return selectedReplyText("Selected", replyId, title);
@@ -679,8 +813,10 @@ async function sendIntentReply(
   intent: UiIntent,
   conversationId: string,
   message: WhatsAppInboundMessage,
-  options: WhatsAppToolRoutesOptions
+  options: WhatsAppToolRoutesOptions,
+  typing?: TypingIndicatorState
 ): Promise<void> {
+  await waitForMinimumTypingWindow(typing);
   const outboundMessage = mapUiIntentToWhatsAppMessage(intent);
   await options.whatsappClient.sendMessage({
     to: message.from,
@@ -692,6 +828,13 @@ async function sendIntentReply(
     message: outboundMessage,
     options,
   });
+}
+
+async function waitForMinimumTypingWindow(typing: TypingIndicatorState | undefined): Promise<void> {
+  if (!typing || typing.minimumMs <= 0) return;
+  const remainingMs = typing.minimumMs - (Date.now() - typing.shownAtMs);
+  if (remainingMs <= 0) return;
+  await new Promise((resolve) => setTimeout(resolve, remainingMs));
 }
 
 async function recordOutboundMessage(input: {

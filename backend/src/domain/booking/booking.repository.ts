@@ -83,8 +83,8 @@ export function createDrizzleBookingRepository(db: DbClient): DrizzleBookingRepo
           'booking.created',
           'system',
           jsonb_build_object(
-            'selectedFlightOptionId', ${input.selectedFlightOptionId},
-            'bookingEmailAlias', ${input.bookingEmailAlias},
+            'selectedFlightOptionId', ${input.selectedFlightOptionId}::text,
+            'bookingEmailAlias', ${input.bookingEmailAlias}::text,
             'supplierOptionId', selected_option.supplier_option_id,
             'searchKey', selected_option.supplier_payload->>'searchKey',
             'deeplink', selected_option.supplier_payload->>'deeplink'

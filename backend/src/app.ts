@@ -24,6 +24,7 @@ export type BuildServerOptions = {
   conversationRepository?: ConversationRepository;
   messageRepository?: WhatsAppMessageRepository;
   whatsappClient?: WhatsAppClient;
+  typingIndicatorMinimumMs?: number;
   intentExtractor?: IntentExtractor;
   chatModel?: ChatModel;
   flightSearchHandler?: FlightSearchHandler;
@@ -53,6 +54,7 @@ export function buildServer(options: BuildServerOptions = {}) {
           conversationRepository,
           messageRepository: options.messageRepository ?? messageRepositoryFromConversationRepository(conversationRepository),
           whatsappClient,
+          typingIndicatorMinimumMs: options.typingIndicatorMinimumMs,
           appSecret: options.whatsappAppSecret ?? env.WHATSAPP_APP_SECRET,
           chatModel: options.chatModel ?? createOpenAIChatModel({
             apiKey: requireOpenAIApiKey(),

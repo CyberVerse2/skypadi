@@ -1,0 +1,2 @@
+ALTER TABLE "skypadi_whatsapp"."bookings" ADD COLUMN "supplier_booking_state" jsonb DEFAULT '{}'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "skypadi_whatsapp"."bookings" ADD COLUMN "supplier_payment_instructions" jsonb DEFAULT '[]'::jsonb NOT NULL;

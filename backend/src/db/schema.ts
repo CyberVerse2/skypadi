@@ -257,6 +257,8 @@ export const bookings = skypadi.table(
     supplier: text("supplier"),
     supplierBookingReference: text("supplier_booking_reference"),
     supplierHoldExpiresAt: timestamp("supplier_hold_expires_at", { withTimezone: true }),
+    supplierBookingState: jsonb("supplier_booking_state").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    supplierPaymentInstructions: jsonb("supplier_payment_instructions").$type<Record<string, unknown>[]>().notNull().default(sql`'[]'::jsonb`),
     amount: numeric("amount", { precision: 12, scale: 2 }),
     currency: text("currency").notNull().default("NGN"),
     customerEmail: text("customer_email"),
@@ -289,6 +291,25 @@ export const supplierBookingJobs = skypadi.table(
     bookingIdIdx: uniqueIndex("supplier_booking_jobs_booking_id_idx").on(table.bookingId),
     graphileJobKeyIdx: uniqueIndex("supplier_booking_jobs_graphile_job_key_idx").on(table.graphileJobKey),
     statusIdx: index("supplier_booking_jobs_status_idx").on(table.status),
+  }),
+);
+
+export const supplierAccountAssignments = skypadi.table(
+  "supplier_account_assignments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bookingId: uuid("booking_id").notNull().references(() => bookings.id, { onDelete: "cascade" }),
+    supplier: text("supplier").notNull(),
+    accountEmail: text("account_email").notNull(),
+    poolIndex: integer("pool_index").notNull(),
+    assignedAt: timestamp("assigned_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    ...timestamps,
+  },
+  (table) => ({
+    bookingSupplierIdx: uniqueIndex("supplier_account_assignments_booking_supplier_idx").on(table.bookingId, table.supplier),
+    supplierAssignedAtIdx: index("supplier_account_assignments_supplier_assigned_at_idx").on(table.supplier, table.assignedAt),
+    accountEmailIdx: index("supplier_account_assignments_account_email_idx").on(table.accountEmail),
   }),
 );
 

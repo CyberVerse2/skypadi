@@ -23,6 +23,8 @@ test("no legacy surfaces", async () => {
     ["tele", "gram"].join(""),
     ["gr", "ammy"].join(""),
     ["agent", "mail"].join(""),
+    "patchright",
+    "stealth",
   ];
 
   for (const term of banned) {

@@ -28,7 +28,10 @@ export function supplierDecisionMessage(decision: SupplierHoldDecision): string 
           hour12: true,
         }).toUpperCase()}.`
       : " Please pay before the hold expires.";
-    return `Hold created.${ref}${expiry}`;
+    const bankDetails = bankTransferText(decision);
+    return bankDetails
+      ? `Booking saved.${ref}\n\nPay ${formatMoney(decision.amountDue, decision.currency)} to:\n${bankDetails}\n${expiry.trim()}`
+      : `Hold created.${ref}${expiry}`;
   }
 
   if (decision.status === "payment_pending") {
@@ -36,6 +39,24 @@ export function supplierDecisionMessage(decision: SupplierHoldDecision): string 
   }
 
   return "I could not finish this automatically. I moved it to manual review.";
+}
+
+function bankTransferText(decision: SupplierHoldDecision): string | undefined {
+  const bankTransfer = decision.bankTransfers?.[0];
+  if (!bankTransfer) return undefined;
+  return [
+    bankTransfer.bank,
+    bankTransfer.accountNumber,
+    bankTransfer.beneficiary,
+  ].filter(Boolean).join("\n");
+}
+
+function formatMoney(amount: number | undefined, currency: string | undefined): string {
+  if (!amount) return currency ?? "the fare";
+  if (currency === "NGN" || !currency) {
+    return `NGN ${amount.toLocaleString("en-NG")}`;
+  }
+  return `${currency} ${amount.toLocaleString("en-NG")}`;
 }
 
 export async function findSupplierBookingRecipient(input: {

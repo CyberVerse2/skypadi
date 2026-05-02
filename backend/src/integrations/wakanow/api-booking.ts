@@ -1,0 +1,567 @@
+import { createHash } from "node:crypto";
+
+import { ProxyAgent, fetch as undiciFetch } from "undici";
+
+import { env } from "../../config";
+import type { BankTransferDetails, BookingContactContext, BookingFlightSummary } from "../../schemas/booking-contract";
+import type { Passenger } from "../../schemas/flight-booking";
+import { createWakanowAccountFetch, type WakanowAccountCredentials } from "./account-auth";
+
+const FLIGHTS_API_BASE = "https://flights.wakanow.com/api/flights";
+const BOOKING_API_BASE = "https://booking.wakanow.com/api/booking";
+const FETCH_TIMEOUT_MS = 30_000;
+
+const proxyAgent = env.PROXY_URL ? new ProxyAgent(env.PROXY_URL) : undefined;
+
+const COMMON_HEADERS = {
+  "Content-Type": "application/json",
+  "Accept": "application/json, text/plain, */*",
+  "Accept-Language": "en-NG",
+  "Origin": "https://www.wakanow.com",
+  "Referer": "https://www.wakanow.com/",
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+  "x-currency": env.WAKANOW_CURRENCY,
+};
+
+export type WakanowDirectBookingFetch = (url: string, init?: RequestInit) => Promise<Response>;
+
+export class WakanowDirectBookingError extends Error {
+  stage: WakanowDirectBookingStage;
+  details?: Record<string, unknown>;
+  safeToFallback: boolean;
+
+  constructor(message: string, input: {
+    stage: WakanowDirectBookingStage;
+    details?: Record<string, unknown>;
+    safeToFallback?: boolean;
+  }) {
+    super(message);
+    this.name = "WakanowDirectBookingError";
+    this.stage = input.stage;
+    this.details = input.details;
+    this.safeToFallback = input.safeToFallback ?? false;
+  }
+}
+
+export type WakanowDirectBookingStage =
+  | "select"
+  | "validate"
+  | "submit_booking"
+  | "payment_options"
+  | "generate_pnr"
+  | "make_payment";
+
+export type WakanowDirectBookingRequest = {
+  bookingId?: string;
+  searchKey: string;
+  flightId: string;
+  passenger: Passenger;
+  contactEmail: string;
+  supplierState?: WakanowSupplierBookingState;
+  resolveOtp?: (input: {
+    bookingId?: string;
+    customerEmail: string;
+    contactEmail: string;
+  }) => Promise<{ code: string; consume: () => Promise<void> } | undefined>;
+};
+
+export type WakanowSupplierBookingState = {
+  supplierBookingId?: string;
+  selectData?: unknown;
+  bankTransfers?: BankTransferDetails[];
+  stage?: "selected" | "validated" | "submitted" | "payment_pending";
+};
+
+export type WakanowDirectBookingResponse = {
+  provider: "wakanow";
+  bookedAt: string;
+  bookingId: string;
+  status: "pending_payment";
+  paymentUrl: string;
+  bankTransfers?: BankTransferDetails[];
+  contactContext: BookingContactContext;
+  flightSummary: BookingFlightSummary;
+  rawStatus: string;
+};
+
+type WakanowDirectBookingOptions = {
+  fetchImpl?: WakanowDirectBookingFetch;
+  accountCredentials?: WakanowAccountCredentials;
+  now?: () => Date;
+  onStateChange?: (state: WakanowSupplierBookingState) => Promise<void>;
+};
+
+type SelectFlightResponse = {
+  SearchKey?: string;
+  BookingId?: string;
+  SelectData?: unknown;
+  IsPassportRequired?: boolean | string;
+  SelectFlightResult?: {
+    BookingId?: string;
+    SelectData?: unknown;
+    IsPassportRequired?: boolean | string;
+  };
+};
+
+type PaymentResponse = {
+  PaymentResponseModel?: {
+    BookingId?: string;
+    TotalPrice?: { Amount?: number; CurrencyCode?: string };
+    BillingAddress?: unknown;
+    PaymentOptions?: PaymentOption[];
+  };
+};
+
+type PaymentOption = {
+  Id?: number | string;
+  Name?: string;
+  IsCorporateCheckout?: boolean;
+  PaymentMethods?: PaymentMethod[];
+};
+
+type PaymentMethod = {
+  Id?: number | string;
+  Name?: string;
+  PaymentDescription?: string;
+};
+
+export async function bookFlightWithWakanowApi(
+  request: WakanowDirectBookingRequest,
+  options: WakanowDirectBookingOptions = {},
+): Promise<WakanowDirectBookingResponse> {
+  const fetchImpl = options.fetchImpl ?? createWakanowAccountFetch(proxyFetch, {
+    credentials: options.accountCredentials,
+  });
+  const now = options.now ?? (() => new Date());
+  const currency = env.WAKANOW_CURRENCY;
+
+  const existingSupplierBookingId = request.supplierState?.supplierBookingId;
+  const existingSelectData = request.supplierState?.selectData;
+  const selectedFlightResult = existingSupplierBookingId && existingSelectData
+    ? { BookingId: existingSupplierBookingId, SelectData: existingSelectData }
+    : await selectFlight({ fetchImpl, request, currency });
+
+  const supplierBookingId = selectedFlightResult.BookingId;
+  const selectData = selectedFlightResult.SelectData;
+  if (!supplierBookingId || !selectData) {
+    throw new WakanowDirectBookingError("Wakanow select response was missing booking data", {
+      stage: "select",
+      details: { response: selectedFlightResult },
+      safeToFallback: true,
+    });
+  }
+  if (!existingSupplierBookingId || !existingSelectData) {
+    await options.onStateChange?.({
+      supplierBookingId,
+      selectData,
+      stage: "selected",
+    });
+  }
+
+  const validationRequest = buildValidationRequest({
+    request,
+    supplierBookingId,
+    selectData,
+    currency,
+  });
+
+  const validation = await validatePassengerDetails(fetchImpl, validationRequest, request);
+  if (validation.verificationCode) {
+    validationRequest.VerificationCode = validation.verificationCode;
+    await validatePassengerDetails(fetchImpl, validationRequest, request, true);
+    await validation.consume?.();
+  }
+  await options.onStateChange?.({
+    supplierBookingId,
+    selectData,
+    stage: "validated",
+  });
+
+  await getJson({
+    fetchImpl,
+    stage: "submit_booking",
+    url: `${BOOKING_API_BASE}/Booking/Booking/${supplierBookingId}`,
+    headers: bookingAuthHeaders(supplierBookingId, now()),
+  });
+  await options.onStateChange?.({
+    supplierBookingId,
+    selectData,
+    stage: "submitted",
+  });
+
+  const paymentMethods = await getJson<PaymentResponse>({
+    fetchImpl,
+    stage: "payment_options",
+    url: `${BOOKING_API_BASE}/Payment/Get/${supplierBookingId}/Flight`,
+  });
+  const paymentSelection = selectBankTransferPayment(paymentMethods);
+
+  await getJson({
+    fetchImpl,
+    stage: "generate_pnr",
+    url: `${BOOKING_API_BASE}/Booking/GeneratePNR/${supplierBookingId}`,
+  });
+
+  const callbackUrl = `https://www.wakanow.com/en-ng/booking/${supplierBookingId}/confirmation?products=Flight`;
+  const payment = await postJson<PaymentResponse>({
+    fetchImpl,
+    stage: "make_payment",
+    url: `${BOOKING_API_BASE}/Payment/MakePayment`,
+    body: {
+      BookingId: supplierBookingId,
+      CallbackUrl: callbackUrl,
+      PaymentOptionId: paymentSelection.option.Id,
+      PaymentMethodId: paymentSelection.method.Id,
+      BillingAddress: paymentSelection.billingAddress ?? defaultBillingAddress(request.passenger),
+      IsCorporateCheckout: paymentSelection.option.IsCorporateCheckout ?? false,
+    },
+  });
+
+  const paymentModel = payment.PaymentResponseModel ?? paymentMethods.PaymentResponseModel;
+  const amountDue = paymentModel?.TotalPrice?.Amount ?? 0;
+  const bankTransfers = parseBankTransfers(paymentModel);
+  if (!amountDue || bankTransfers.length === 0) {
+    throw new WakanowDirectBookingError("Wakanow payment response was missing bank transfer details", {
+      stage: "make_payment",
+      details: { payment },
+    });
+  }
+  await options.onStateChange?.({
+    supplierBookingId,
+    selectData,
+    bankTransfers,
+    stage: "payment_pending",
+  });
+
+  return {
+    provider: "wakanow",
+    bookedAt: now().toISOString(),
+    bookingId: supplierBookingId,
+    status: "pending_payment",
+    paymentUrl: `https://www.wakanow.com/en-ng/booking/${supplierBookingId}/payment?products=Flight&reqKey=${request.searchKey}`,
+    bankTransfers,
+    contactContext: {
+      customerEmail: request.passenger.email,
+      bookingContactEmail: request.contactEmail,
+      verificationMode: "internal_contact",
+      verificationStatus: validation.verificationCode ? "automated" : "not_needed",
+    },
+    flightSummary: {
+      airline: "",
+      departure: "",
+      arrival: "",
+      departureTime: "",
+      arrivalTime: "",
+      price: amountDue,
+      currency,
+    },
+    rawStatus: "pending_payment",
+  };
+}
+
+async function selectFlight(input: {
+  fetchImpl: WakanowDirectBookingFetch;
+  request: WakanowDirectBookingRequest;
+  currency: string;
+}): Promise<{ BookingId?: string; SelectData?: unknown }> {
+  const selectedFlight = await postJson<SelectFlightResponse>({
+    fetchImpl: input.fetchImpl,
+    stage: "select",
+    url: `${FLIGHTS_API_BASE}/Select/`,
+    body: {
+      SearchKey: input.request.searchKey,
+      FlightId: input.request.flightId,
+      TargetCurrency: input.currency,
+    },
+    safeToFallback: true,
+  });
+
+  return selectedFlight.SelectFlightResult ?? selectedFlight;
+}
+
+async function validatePassengerDetails(
+  fetchImpl: WakanowDirectBookingFetch,
+  validationRequest: Record<string, unknown>,
+  request: WakanowDirectBookingRequest,
+  isRetry = false,
+): Promise<{ verificationCode?: string; consume?: () => Promise<void> }> {
+  try {
+    await postJson({
+      fetchImpl,
+      stage: "validate",
+      url: `${BOOKING_API_BASE}/Booking/Validate`,
+      body: validationRequest,
+    });
+    return {};
+  } catch (error) {
+    if (!(error instanceof WakanowDirectBookingError) || isRetry || !isVerificationRequired(error)) {
+      throw error;
+    }
+
+    const otp = await request.resolveOtp?.({
+      bookingId: request.bookingId,
+      customerEmail: request.passenger.email,
+      contactEmail: request.contactEmail,
+    });
+    if (!otp) {
+      throw new WakanowDirectBookingError("Wakanow requires email verification but no OTP was available", {
+        stage: "validate",
+        details: error.details,
+      });
+    }
+
+    return { verificationCode: otp.code, consume: otp.consume };
+  }
+}
+
+function buildValidationRequest(input: {
+  request: WakanowDirectBookingRequest;
+  supplierBookingId: string;
+  selectData: unknown;
+  currency: string;
+}): Record<string, unknown> {
+  return {
+    PassengerDetails: [passengerToWakanowPassenger(input.request.passenger, input.request.contactEmail)],
+    BookingItemModels: [
+      {
+        ProductType: "Flight",
+        BookingData: input.selectData,
+        TargetCurrency: input.currency,
+      },
+    ],
+    GeographyId: "ng",
+    Url: `https://www.wakanow.com/en-ng/booking/${input.supplierBookingId}/customer-info?products=Flight`,
+    LoginUrl: "https://www.wakanow.com/en-ng/account/login",
+    PromoCode: undefined,
+    CorporateCode: undefined,
+    ReferralAgentId: undefined,
+    BookingId: input.supplierBookingId,
+    BookingChannel: "web",
+  };
+}
+
+function passengerToWakanowPassenger(passenger: Passenger, contactEmail: string): Record<string, unknown> {
+  const birthDate = parseDateParts(passenger.dateOfBirth);
+  const phone = normalizePhone(passenger.phone);
+  return {
+    PassengerType: "Adult",
+    Email: contactEmail,
+    PhoneNumber: phone,
+    Title: passenger.title,
+    FirstName: passenger.firstName,
+    LastName: passenger.lastName,
+    MiddleName: passenger.middleName,
+    Gender: normalizeGender(passenger.gender),
+    DateOfBirth: `${birthDate.day} ${birthDate.monthName}, ${birthDate.year}`,
+    Age: Math.max(0, new Date().getFullYear() - Number(birthDate.year)),
+    CountryCode: "NG",
+    Country: passenger.nationality || "Nigeria",
+    Address: "",
+    City: "",
+    PostalCode: "",
+    SelectedBaggages: [],
+    SelectedSeats: [],
+  };
+}
+
+function parseDateParts(isoDate: string): { year: string; monthName: string; day: string } {
+  const [year, month, day] = isoDate.split("-");
+  const date = new Date(`${year}-${month}-${day}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) {
+    throw new WakanowDirectBookingError("Passenger date of birth is invalid", {
+      stage: "validate",
+      details: { dateOfBirth: isoDate },
+    });
+  }
+  return {
+    year,
+    monthName: date.toLocaleString("en-US", { month: "long", timeZone: "UTC" }),
+    day: String(Number(day)),
+  };
+}
+
+function normalizeGender(gender: Passenger["gender"]): string {
+  const value = gender.trim().toLowerCase();
+  return value === "male" ? "Male" : "Female";
+}
+
+function normalizePhone(phone: string): string {
+  const trimmed = phone.trim();
+  if (trimmed.startsWith("+")) return trimmed;
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.startsWith("234")) return `+${digits}`;
+  if (digits.startsWith("0")) return `+234${digits.slice(1)}`;
+  return `+234${digits}`;
+}
+
+function selectBankTransferPayment(response: PaymentResponse): {
+  option: PaymentOption;
+  method: PaymentMethod;
+  billingAddress: unknown;
+} {
+  const paymentModel = response.PaymentResponseModel;
+  const option = paymentModel?.PaymentOptions?.find((candidate) => /bank|transfer/i.test(candidate.Name ?? ""));
+  const method = option?.PaymentMethods?.find((candidate) => /bank|transfer/i.test(candidate.Name ?? "")) ?? option?.PaymentMethods?.[0];
+  if (!option?.Id || !method?.Id) {
+    throw new WakanowDirectBookingError("Wakanow did not return a bank transfer payment method", {
+      stage: "payment_options",
+      details: { response },
+    });
+  }
+
+  return { option, method, billingAddress: paymentModel?.BillingAddress };
+}
+
+function defaultBillingAddress(passenger: Passenger): Record<string, string> {
+  return {
+    CardHolderName: `${passenger.firstName} ${passenger.lastName}`.trim(),
+    Address: "Lagos",
+    ZipCode: "100001",
+    City: "Lagos",
+    State: "Lagos",
+    Country: "NG",
+  };
+}
+
+function parseBankTransfers(paymentModel: PaymentResponse["PaymentResponseModel"]): BankTransferDetails[] {
+  const desc = paymentModel?.PaymentOptions
+    ?.flatMap((option) => option.PaymentMethods ?? [])
+    .map((method) => method.PaymentDescription ?? "")
+    .find((description) => /account number/i.test(description));
+
+  if (!desc) return [];
+
+  const bankMatch = desc.match(/<p[^>]*class="font-weight-medium[^"]*"[^>]*>([^<]+)<\/p>/i) ?? desc.match(/<p[^>]*>([^<]*Bank[^<]*)<\/p>/i);
+  const acctMatch = desc.match(/Account Number<\/p>\s*<p[^>]*>(\d+)<\/p>/i);
+  const beneficiaryMatch = desc.match(/Beneficiary<\/p>\s*<p[^>]*>([^<]+)<\/p>/i);
+  if (!acctMatch) return [];
+
+  return [
+    {
+      bank: cleanHtmlText(bankMatch?.[1]) ?? "Unknown Bank",
+      accountNumber: acctMatch[1],
+      beneficiary: cleanHtmlText(beneficiaryMatch?.[1]) ?? "Wakanow.com Collections",
+      expiresIn: "9 hours",
+      note: "Account details are unique to this transaction. Do not use for other transactions.",
+    },
+  ];
+}
+
+function cleanHtmlText(value: string | undefined): string | undefined {
+  const cleaned = value?.replace(/<[^>]+>/g, "").trim();
+  return cleaned || undefined;
+}
+
+function bookingAuthHeaders(bookingId: string, timestamp: Date): Record<string, string> {
+  const bookingAuthSalt = env.WAKANOW_BOOKING_AUTH_SALT;
+  if (!bookingAuthSalt) {
+    throw new WakanowDirectBookingError("Wakanow booking auth salt is not configured", {
+      stage: "submit_booking",
+    });
+  }
+
+  const timeStamp = timestamp.toISOString();
+  const hash = createHash("sha512")
+    .update(`${bookingId}${timeStamp}${bookingAuthSalt}`)
+    .digest("hex");
+  return {
+    "X-Auth-Hash": hash,
+    "TimeStamp": timeStamp,
+  };
+}
+
+async function getJson<T = unknown>(input: {
+  fetchImpl: WakanowDirectBookingFetch;
+  stage: WakanowDirectBookingStage;
+  url: string;
+  headers?: Record<string, string>;
+  safeToFallback?: boolean;
+}): Promise<T> {
+  return requestJson<T>({
+    fetchImpl: input.fetchImpl,
+    stage: input.stage,
+    url: input.url,
+    method: "GET",
+    headers: input.headers,
+    safeToFallback: input.safeToFallback,
+  });
+}
+
+async function postJson<T = unknown>(input: {
+  fetchImpl: WakanowDirectBookingFetch;
+  stage: WakanowDirectBookingStage;
+  url: string;
+  body: unknown;
+  safeToFallback?: boolean;
+}): Promise<T> {
+  return requestJson<T>({
+    fetchImpl: input.fetchImpl,
+    stage: input.stage,
+    url: input.url,
+    method: "POST",
+    body: input.body,
+    safeToFallback: input.safeToFallback,
+  });
+}
+
+async function requestJson<T>(input: {
+  fetchImpl: WakanowDirectBookingFetch;
+  stage: WakanowDirectBookingStage;
+  url: string;
+  method: "GET" | "POST";
+  body?: unknown;
+  headers?: Record<string, string>;
+  safeToFallback?: boolean;
+}): Promise<T> {
+  const response = await input.fetchImpl(input.url, {
+    method: input.method,
+    headers: { ...COMMON_HEADERS, ...input.headers },
+    body: input.body === undefined ? undefined : JSON.stringify(input.body),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  const text = await response.text();
+  const contentType = response.headers.get("content-type") ?? "";
+
+  const trimmed = text.trim();
+  const looksJson = /^[{["0-9tfn-]/.test(trimmed);
+  if (!contentType.includes("json") && !looksJson) {
+    throw new WakanowDirectBookingError("Wakanow API returned non-JSON response", {
+      stage: input.stage,
+      details: { status: response.status, preview: text.slice(0, 300) },
+      safeToFallback: input.safeToFallback,
+    });
+  }
+
+  let data: T & { Message?: string };
+  try {
+    data = JSON.parse(text) as T & { Message?: string };
+  } catch {
+    throw new WakanowDirectBookingError("Wakanow API returned invalid JSON response", {
+      stage: input.stage,
+      details: { status: response.status, preview: text.slice(0, 300) },
+      safeToFallback: input.safeToFallback,
+    });
+  }
+  if (!response.ok) {
+    throw new WakanowDirectBookingError(data.Message ?? `Wakanow API request failed with ${response.status}`, {
+      stage: input.stage,
+      details: { status: response.status, response: data },
+      safeToFallback: input.safeToFallback,
+    });
+  }
+
+  return data;
+}
+
+function isVerificationRequired(error: WakanowDirectBookingError): boolean {
+  const message = `${error.message} ${JSON.stringify(error.details ?? {})}`;
+  return /verification|validate your email|code sent to your email/i.test(message);
+}
+
+function proxyFetch(url: string, opts: RequestInit = {}): Promise<Response> {
+  if (proxyAgent) {
+    return undiciFetch(url, { ...(opts as Record<string, unknown>), dispatcher: proxyAgent }) as unknown as Promise<Response>;
+  }
+  return fetch(url, opts);
+}

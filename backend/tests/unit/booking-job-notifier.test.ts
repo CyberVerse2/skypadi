@@ -28,6 +28,37 @@ test("booking job notifier", async () => {
   assert.equal(
     supplierDecisionMessage({
       bookingId: "booking-1",
+      status: "awaiting_payment_for_hold",
+      policy: "hold_first",
+      supplier: "wakanow",
+      supplierBookingRef: "WK123",
+      holdExpiresAt: new Date("2026-05-01T16:00:00.000Z"),
+      amountDue: 120000,
+      currency: "NGN",
+      bankTransfers: [{
+        bank: "Providus Bank",
+        accountNumber: "1234567890",
+        beneficiary: "Wakanow.com Collections",
+        expiresIn: "9 hours",
+        note: "Booking payment",
+      }],
+      holdMode: "hold_created",
+      rawStatus: "hold_created",
+    }),
+    [
+      "Booking saved. Ref: WK123.",
+      "",
+      "Pay NGN 120,000 to:",
+      "Providus Bank",
+      "1234567890",
+      "Wakanow.com Collections",
+      "Please pay before 5:00 PM.",
+    ].join("\n")
+  );
+
+  assert.equal(
+    supplierDecisionMessage({
+      bookingId: "booking-1",
       status: "payment_pending",
       policy: "payment_first",
       supplier: "wakanow",

@@ -1,6 +1,7 @@
 import type { BookingStatus } from "../domain/booking/booking.types";
 import type { DbClient } from "../db/client";
 import type { SupplierBookingPolicy, SupplierHoldResult } from "../integrations/wakanow/wakanow.types";
+import type { BankTransferDetails } from "../schemas/booking-contract";
 import { sql, type SQL } from "drizzle-orm";
 
 export type SupplierHoldWorkflowInput = {
@@ -18,6 +19,7 @@ export type SupplierHoldDecision = {
   amountDue?: number;
   currency?: "NGN";
   paymentUrl?: string;
+  bankTransfers?: BankTransferDetails[];
   holdMode: SupplierHoldResult["kind"];
   reason?: string;
   rawStatus: string;
@@ -32,6 +34,7 @@ export type SupplierBookingRepository = {
     holdExpiresAt?: Date;
     amountDue?: number;
     currency?: "NGN";
+    supplierPaymentInstructions?: BankTransferDetails[];
     failureReason?: string;
     eventType: string;
     eventPayload: Record<string, unknown>;
@@ -62,6 +65,7 @@ export function createDrizzleSupplierBookingRepository(db: DbClient): SupplierBo
             supplier_hold_expires_at = ${input.holdExpiresAt ?? null},
             amount = ${input.amountDue ?? null},
             currency = coalesce(${input.currency ?? null}, currency),
+            supplier_payment_instructions = coalesce(${input.supplierPaymentInstructions ? jsonb(input.supplierPaymentInstructions) : null}, supplier_payment_instructions),
             failure_reason = ${input.failureReason ?? null},
             updated_at = ${input.observedAt}
           where id = ${input.bookingId}
@@ -112,6 +116,7 @@ export function handleSupplierHoldResult(input: SupplierHoldWorkflowInput): Supp
         amountDue: input.result.amountDue,
         currency: input.result.currency,
         paymentUrl: input.result.paymentUrl,
+        bankTransfers: input.result.bankTransfers,
       };
     case "instant_purchase_required":
     case "hold_unavailable":
@@ -147,6 +152,7 @@ export async function recordSupplierHoldDecision(input: {
     holdExpiresAt: input.decision.holdExpiresAt,
     amountDue: input.decision.amountDue,
     currency: input.decision.currency,
+    supplierPaymentInstructions: input.decision.bankTransfers,
     failureReason: input.decision.reason,
     eventType,
     eventPayload: sanitizeSupplierDecision(input.decision),
@@ -182,11 +188,12 @@ function sanitizeSupplierDecision(decision: SupplierHoldDecision): Record<string
     amountDue: decision.amountDue,
     currency: decision.currency,
     paymentUrl: decision.paymentUrl,
+    bankTransfers: decision.bankTransfers,
     reason: decision.reason,
     rawStatus: decision.rawStatus,
   };
 }
 
-function jsonb(value: Record<string, unknown>): SQL {
+function jsonb(value: unknown): SQL {
   return sql`${JSON.stringify(value)}::jsonb`;
 }

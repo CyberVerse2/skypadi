@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   configuredWhatsAppClientFromEnv,
   createSupplierBookingTask,
+  isRetryableSupplierBookingError,
 } from "../../src/jobs/tasks/supplier-booking.task";
 import { shouldSkipSupplierBookingForStatus } from "../../src/jobs/tasks/supplier-booking-status";
 import { test } from "vitest";
@@ -16,6 +17,9 @@ test("supplier booking task workflow", async () => {
   assert.equal(shouldSkipSupplierBookingForStatus("issued"), true);
   assert.equal(shouldSkipSupplierBookingForStatus(undefined), false);
   assert.equal(configuredWhatsAppClientFromEnv({}), undefined);
+  assert.equal(isRetryableSupplierBookingError("Wakanow API request failed with 502"), true);
+  assert.equal(isRetryableSupplierBookingError("fetch failed"), true);
+  assert.equal(isRetryableSupplierBookingError("Wakanow payment response was missing bank transfer details"), false);
 
   const markedSucceeded: string[] = [];
   const markedFailed: string[] = [];
