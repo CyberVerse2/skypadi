@@ -205,7 +205,21 @@ async function processMessages(
     const userText = chatTextFromMessage(message);
     if (!userText) continue;
 
-    const context = await chatContextFromConversation({ conversation: activeConversation, message, options });
+    const isFreshTripRequest = isFreshFlightBookingRequest(userText);
+    if (isFreshTripRequest) {
+      activeConversation = await options.conversationRepository.save({
+        ...conversation,
+        draft: {},
+        updatedAt: now,
+      });
+    }
+
+    const context = await chatContextFromConversation({
+      conversation: activeConversation,
+      message,
+      options,
+      includeRecentMessages: !isFreshTripRequest,
+    });
     if (isFirstTimeGreetingOnly(userText, context)) {
       await showTypingIndicator(message, options, request);
       await sendIntentReply({ type: "text", body: SKYPADI_ONBOARDING_MESSAGE }, activeConversation.id, message, options);
@@ -231,7 +245,8 @@ async function processMessages(
     });
     if (!action) continue;
 
-    const intent = addFirstTimeOnboarding(await uiIntentFromChatAction(action, {
+    const effectiveAction = isFreshTripRequest ? removeUngroundedFreshSearchFields(action, userText) : action;
+    const intent = addFirstTimeOnboarding(await uiIntentFromChatAction(effectiveAction, {
       conversation: activeConversation,
       message,
       options,
@@ -243,11 +258,11 @@ async function processMessages(
     if (!intent) continue;
 
     await sendIntentReply(intent, activeConversation.id, message, options);
-    const resumeIntent = promptToResumeAfterSideAnswer(action, activeConversation.draft);
+    const resumeIntent = promptToResumeAfterSideAnswer(effectiveAction, activeConversation.draft);
     if (resumeIntent) {
       await sendIntentReply(resumeIntent, activeConversation.id, message, options);
     }
-    request.log.info({ providerMessageId: message.id, resultKind: action.type }, "Processed WhatsApp tool message");
+    request.log.info({ providerMessageId: message.id, resultKind: effectiveAction.type }, "Processed WhatsApp tool message");
   }
 }
 
@@ -310,6 +325,89 @@ function chatDecisionFailureIntent(context: ChatContext): UiIntent {
 function isFirstTimeGreetingOnly(userText: string, context: ChatContext): boolean {
   if (!isFirstUserReply(context)) return false;
   return /^(hi|hello|hey|heyy|heyyy|good morning|good afternoon|good evening)[!. ]*$/i.test(userText.trim());
+}
+
+function isFreshFlightBookingRequest(userText: string): boolean {
+  const normalized = userText.trim().toLowerCase();
+  if (!normalized) return false;
+  if (/\b(this|that|selected|option\s*\d+|continue|go ahead|yes)\b/.test(normalized)) return false;
+
+  return /\b(book|find|search|get|need|want)\b[\s\S]{0,80}\b(?:a|another|new)?\s*flights?\b/.test(normalized);
+}
+
+function removeUngroundedFreshSearchFields(action: ChatAction, userText: string): ChatAction {
+  if (action.type !== "tool" || action.tool !== "searchFlights") return action;
+  if (
+    messageMentionsAirport(userText, action.input.origin) &&
+    messageMentionsAirport(userText, action.input.destination) &&
+    messageMentionsPassengerCount(userText, action.input.adults)
+  ) {
+    return action;
+  }
+
+  return {
+    type: "tool",
+    tool: "startNewTrip",
+    input: {
+      ...(messageMentionsAirport(userText, action.input.origin) ? { origin: action.input.origin } : {}),
+      ...(messageMentionsAirport(userText, action.input.destination) ? { destination: action.input.destination } : {}),
+      departureDate: action.input.departureDate,
+      ...(action.input.departureWindow ? { departureWindow: action.input.departureWindow } : {}),
+      ...(action.input.returnDate ? { returnDate: action.input.returnDate } : {}),
+      ...(messageMentionsPassengerCount(userText, action.input.adults) ? { adults: action.input.adults } : {}),
+    },
+  };
+}
+
+function messageMentionsAirport(userText: string, airportCode: string): boolean {
+  const airport = airportByCode(airportCode);
+  if (!airport) return false;
+
+  const normalizedText = normalizeForMention(userText);
+  return [
+    airport.code,
+    airport.city,
+    airport.airportName,
+    airport.description ?? "",
+  ].some((value) => containsMention(normalizedText, value));
+}
+
+function messageMentionsPassengerCount(userText: string, adults: number): boolean {
+  const normalized = normalizeForMention(userText);
+  if (adults === 1 && /\b(just me|only me|me alone|solo|one adult|1 adult|one passenger|1 passenger)\b/.test(normalized)) {
+    return true;
+  }
+
+  return new RegExp(`\\b(${adults}|${numberWord(adults)})\\s+(adult|adults|passenger|passengers|person|people|traveller|travellers|traveler|travelers)\\b`).test(normalized);
+}
+
+function numberWord(value: number): string {
+  const words: Record<number, string> = {
+    1: "one",
+    2: "two",
+    3: "three",
+    4: "four",
+    5: "five",
+    6: "six",
+    7: "seven",
+    8: "eight",
+    9: "nine",
+  };
+  return words[value] ?? String(value);
+}
+
+function containsMention(normalizedText: string, value: string): boolean {
+  const normalizedValue = normalizeForMention(value);
+  if (!normalizedValue) return false;
+  return new RegExp(`\\b${escapeRegExp(normalizedValue)}\\b`).test(normalizedText);
+}
+
+function normalizeForMention(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function promptToResumeAfterSideAnswer(
@@ -643,8 +741,11 @@ async function chatContextFromConversation(input: {
   conversation: PersistedInboundMessage["conversation"];
   message: WhatsAppInboundMessage;
   options: WhatsAppToolRoutesOptions;
+  includeRecentMessages?: boolean;
 }): Promise<ChatContext> {
-  const recentMessages = await loadRecentMessages(input.options.messageRepository, input.conversation.id);
+  const recentMessages = input.includeRecentMessages === false
+    ? undefined
+    : await loadRecentMessages(input.options.messageRepository, input.conversation.id);
   return {
     conversationId: input.conversation.id,
     userId: requiredUserId(input.conversation),
