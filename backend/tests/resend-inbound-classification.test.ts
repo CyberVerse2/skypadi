@@ -1,44 +1,38 @@
-import assert from "node:assert/strict";
 
 import { classifyInboundEmail } from "../src/workflows/inbound-email.workflow";
-import { test } from "vitest";
+import { describe, expect, test } from "vitest";
 
-test("resend inbound classification", async () => {
-  function email(overrides: { from?: string; subject?: string; text?: string }) {
-    return {
-      from: "Wakanow <noreply@wakanow.com>",
-      subject: "Special travel offers this week",
-      text: "Save on your next trip. This email only contains promotional fares.",
-      ...overrides,
-    };
-  }
 
-  assert.equal(
-    classifyInboundEmail(email({})).classification,
-    "other",
-    "generic Wakanow emails should not be treated as booking confirmations"
-  );
+describe("resend inbound classification", () => {
+  test("resend inbound classification", async () => {
+    function email(overrides: { from?: string; subject?: string; text?: string }) {
+      return {
+        from: "Wakanow <noreply@wakanow.com>",
+        subject: "Special travel offers this week",
+        text: "Save on your next trip. This email only contains promotional fares.",
+        ...overrides,
+      };
+    }
 
-  const verification = classifyInboundEmail(
-    email({
-      subject: "Your Wakanow verification code",
-      text: "Your verification code is 482913.",
-    })
-  );
-  assert.equal(verification.classification, "verification_code");
-  assert.equal(verification.hasCode, true);
-  assert.equal("otp" in verification, false);
+    expect(classifyInboundEmail(email({})).classification).toBe("other");
 
-  assert.equal(
-    classifyInboundEmail(
+    const verification = classifyInboundEmail(
       email({
-        subject: "Booking confirmation: LOS to ABV",
-        text: "Your itinerary is attached.",
+        subject: "Your Wakanow verification code",
+        text: "Your verification code is 482913.",
       })
-    ).classification,
-    "booking_confirmation",
-    "booking-related subjects should be treated as confirmations"
-  );
+    );
+    expect(verification.classification).toBe("verification_code");
+    expect(verification.hasCode).toBe(true);
+    expect("otp" in verification).toBe(false);
 
-  console.log("Resend inbound classification tests passed.");
+    expect(classifyInboundEmail(
+        email({
+          subject: "Booking confirmation: LOS to ABV",
+          text: "Your itinerary is attached.",
+        })
+      ).classification).toBe("booking_confirmation");
+
+    console.log("Resend inbound classification tests passed.");
+  });
 });
