@@ -145,6 +145,7 @@ async function processMessages(
 ): Promise<void> {
   for (const { message, now, conversation } of persistedMessages) {
     await markMessageRead(message, options, request);
+    let activeConversation = conversation;
 
     const passengerAction = passengerActionFromMessage(message);
     if (passengerAction === "use_default") {
@@ -214,10 +215,18 @@ async function processMessages(
     const userText = chatTextFromMessage(message);
     if (!userText) continue;
 
-    const context = await chatContextFromConversation({ conversation, message, options });
+    if (isFreshFlightBookingRequest(userText)) {
+      activeConversation = await options.conversationRepository.save({
+        ...conversation,
+        draft: {},
+        updatedAt: now,
+      });
+    }
+
+    const context = await chatContextFromConversation({ conversation: activeConversation, message, options });
     if (isFirstTimeGreetingOnly(userText, context)) {
       const onboardingTyping = await showTypingIndicator(message, options, request);
-      await sendIntentReply({ type: "text", body: SKYPADI_ONBOARDING_MESSAGE }, conversation.id, message, options, onboardingTyping);
+      await sendIntentReply({ type: "text", body: SKYPADI_ONBOARDING_MESSAGE }, activeConversation.id, message, options, onboardingTyping);
       request.log.info({ providerMessageId: message.id, resultKind: "controlled_onboarding" }, "Processed WhatsApp tool message");
       continue;
     }
@@ -235,13 +244,13 @@ async function processMessages(
         },
         "WhatsApp chat model decision failed; sending fallback reply"
       );
-      await sendIntentReply(chatDecisionFailureIntent(context), conversation.id, message, options, typing);
+      await sendIntentReply(chatDecisionFailureIntent(context), activeConversation.id, message, options, typing);
       return undefined;
     });
     if (!action) continue;
 
     const intent = addFirstTimeOnboarding(await uiIntentFromChatAction(action, {
-      conversation,
+      conversation: activeConversation,
       message,
       options,
       request,
@@ -251,10 +260,10 @@ async function processMessages(
     }), context);
     if (!intent) continue;
 
-    await sendIntentReply(intent, conversation.id, message, options, typing);
-    const resumeIntent = promptToResumeAfterSideAnswer(action, conversation.draft);
+    await sendIntentReply(intent, activeConversation.id, message, options, typing);
+    const resumeIntent = promptToResumeAfterSideAnswer(action, activeConversation.draft);
     if (resumeIntent) {
-      await sendIntentReply(resumeIntent, conversation.id, message, options);
+      await sendIntentReply(resumeIntent, activeConversation.id, message, options);
     }
     request.log.info({ providerMessageId: message.id, resultKind: action.type }, "Processed WhatsApp tool message");
   }
@@ -324,6 +333,14 @@ function chatDecisionFailureIntent(context: ChatContext): UiIntent {
 function isFirstTimeGreetingOnly(userText: string, context: ChatContext): boolean {
   if (!isFirstUserReply(context)) return false;
   return /^(hi|hello|hey|heyy|heyyy|good morning|good afternoon|good evening)[!. ]*$/i.test(userText.trim());
+}
+
+function isFreshFlightBookingRequest(userText: string): boolean {
+  const normalized = userText.trim().toLowerCase();
+  if (!normalized) return false;
+  if (/\b(this|that|selected|option\s*\d+|continue|go ahead|yes)\b/.test(normalized)) return false;
+
+  return /\b(book|find|search|get|need|want)\b[\s\S]{0,80}\b(?:a|another|new)?\s*flights?\b/.test(normalized);
 }
 
 function promptToResumeAfterSideAnswer(

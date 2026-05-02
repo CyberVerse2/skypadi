@@ -54,6 +54,7 @@ test("whatsapp tool routes", async () => {
   await asksControlledNextQuestionAfterTripDetailExtraction();
   await searchesWhenExtractedTripDetailsCompleteTheDraft();
   await executesSearchTool();
+  await resetsStaleTripDraftForFreshFlightRequest();
   await startsBookingFromFlightSelection();
   await continuesBookingWithSavedPassenger();
   await opensPassengerFlowForDifferentPassenger();
@@ -748,6 +749,56 @@ test("whatsapp tool routes", async () => {
     await app.close();
   }
 
+  async function resetsStaleTripDraftForFreshFlightRequest(): Promise<void> {
+    const sentMessages: SentMessage[] = [];
+    let chatInput: DecideChatActionInput | undefined;
+    const app = buildToolRouteServer({
+      sentMessages,
+      messageRepository: createMemoryMessageRepository([
+        {
+          direction: "outbound",
+          textBody: "Hi, I’m Skypadi — your AI travel agent.",
+          sentAt: new Date("2026-05-01T10:00:00.000Z"),
+        },
+      ]),
+      initialConversation: {
+        draft: {
+          origin: "ENU",
+          destination: "ABV",
+          departureDate: "2026-05-06",
+          departureWindow: "morning",
+          adults: 2,
+          expectedField: "origin",
+        },
+      },
+      chatModel: async (input) => {
+        chatInput = input;
+        return {
+          type: "tool",
+          tool: "collectTripDetails",
+          input: {
+            destination: "LOS",
+            departureDate: "2026-05-05",
+          },
+        };
+      },
+    });
+
+    const response = await signedPost(app, webhookBody({
+      id: "wamid.new-flight",
+      text: "I want to book a flight to Lagos next Tuesday",
+    }));
+    assert.equal(response.statusCode, 200);
+    await waitFor(() => sentMessages.length === 1);
+
+    assert.deepEqual(chatInput?.context.currentDraft, {});
+    assert.equal(chatInput?.context.expectedField, undefined);
+    const body = ((sentMessages[0]?.message as { interactive?: { body?: { text?: string } } }).interactive?.body?.text ?? "");
+    assert.equal(body, "Where are you flying from?");
+
+    await app.close();
+  }
+
   async function startsBookingFromFlightSelection(): Promise<void> {
     const sentMessages: SentMessage[] = [];
     const messageRepository = createMemoryMessageRepository();
@@ -1084,11 +1135,12 @@ test("whatsapp tool routes", async () => {
         return conversations.get(phoneNumber);
       },
       async save(conversation) {
+        const existing = conversations.has(conversation.phoneNumber);
         const saved = {
           ...conversation,
           id: savedConversationId,
           userId: savedUserId,
-          draft: { ...input.draft, ...conversation.draft },
+          draft: existing ? { ...conversation.draft } : { ...input.draft, ...conversation.draft },
         };
         conversations.set(conversation.phoneNumber, saved);
         return saved;
