@@ -8,7 +8,8 @@ export type ConversationExpectedField =
   | "trip_type"
   | "passengers"
   | "return_date"
-  | "passenger_count";
+  | "passenger_count"
+  | "passenger_details";
 
 export type ConversationDraft = {
   origin?: string;
@@ -18,6 +19,7 @@ export type ConversationDraft = {
   departureWindow?: string;
   tripType?: TripType;
   adults?: number;
+  pendingSelectedFlightOptionId?: string;
   expectedField?: ConversationExpectedField;
 };
 

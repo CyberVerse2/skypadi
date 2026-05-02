@@ -3,6 +3,7 @@ import type {
   ConversationExpectedField,
   ConversationState,
 } from "../domain/conversation/conversation.types";
+import type { Passenger } from "../schemas/flight-booking";
 
 export type ChatContextMessage = {
   direction: "inbound" | "outbound" | "system";
@@ -61,6 +62,8 @@ export type SendCustomClarificationToolInput = {
   };
 };
 
+export type CollectPassengerDetailsToolInput = Passenger;
+
 export type ChatToolRequest =
   | {
       type: "tool";
@@ -91,6 +94,11 @@ export type ChatToolRequest =
       type: "tool";
       tool: "startBookingJob";
       input: StartBookingJobToolInput;
+    }
+  | {
+      type: "tool";
+      tool: "collectPassengerDetails";
+      input: CollectPassengerDetailsToolInput;
     };
 
 export type ChatReply = {

@@ -12,7 +12,7 @@ import {
 import { bookingSummaryPassengerFlowBody, type BookingSummaryDetails } from "../../workflows/booking-summary";
 import type { UiIntent } from "./whatsapp.types";
 import type { BookingSelectionHandler } from "./whatsapp.handlers";
-import { passengerReplyIds } from "./whatsapp.reply-ids";
+import { bookingConfirmReplyId, bookingReplyIds, passengerReplyIds } from "./whatsapp.reply-ids";
 
 export type LiveBookingHandlerConfig = {
   db: DbClient;
@@ -26,6 +26,27 @@ export function createLiveBookingHandler(config: LiveBookingHandlerConfig): Book
   const jobRepository = createDrizzleSupplierBookingJobRepository(config.db);
 
   return {
+    async previewFlightSelection(input) {
+      const summary = await findBookingSummaryForSelectedFlight({
+        db: config.db,
+        selectedFlightOptionId: input.selectedFlightOptionId,
+        displayTimeZone: config.displayTimeZone,
+      }).catch(() => undefined);
+
+      return {
+        type: "reply_buttons",
+        body: summary
+          ? bookingSummaryPassengerFlowBody({
+              summary,
+              passengerPrompt: "Continue booking this flight?",
+            })
+          : "Continue booking this flight?",
+        buttons: [
+          { id: bookingConfirmReplyId(input.selectedFlightOptionId), title: "Continue booking" },
+          { id: bookingReplyIds.pickAnotherFlight, title: "Pick another" },
+        ],
+      };
+    },
     async createFromFlightSelection(input) {
       const result = await createBookingFromSelectedOption({
         userId: input.userId,

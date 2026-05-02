@@ -20,7 +20,13 @@ import type {
 import { executeSearchFlightsTool } from "../../tools/search-flights.tool";
 import type { BookingSelectionHandler, FlightSearchHandler } from "./whatsapp.handlers";
 import { addFirstTimeOnboarding, isFirstUserReply, SKYPADI_ONBOARDING_MESSAGE } from "./whatsapp.onboarding";
-import { passengerActionFromReplyId, selectedFlightOptionIdFromReplyId } from "./whatsapp.reply-ids";
+import {
+  bookingConfirmReplyId,
+  bookingReplyIds,
+  passengerActionFromReplyId,
+  selectedFlightOptionIdFromBookingConfirmReplyId,
+  selectedFlightOptionIdFromReplyId,
+} from "./whatsapp.reply-ids";
 
 export type WhatsAppToolRoutesOptions = {
   verifyToken: string;
@@ -141,6 +147,47 @@ async function processMessages(
     await markMessageRead(message, options, request);
     let activeConversation = conversation;
 
+    const confirmedFlightOptionId = selectedFlightOptionIdFromBookingConfirmationMessage(message);
+    if (confirmedFlightOptionId) {
+      await showTypingIndicator(message, options, request);
+      const savedConversation = await options.conversationRepository.save({
+        ...conversation,
+        draft: {
+          ...conversation.draft,
+          pendingSelectedFlightOptionId: undefined,
+        },
+        updatedAt: new Date(),
+      });
+      await sendIntentReply(
+        await options.bookingHandler.createFromFlightSelection({
+          userId: requiredUserId(savedConversation),
+          conversationId: savedConversation.id,
+          phoneNumber: message.from,
+          selectedFlightOptionId: confirmedFlightOptionId,
+        }),
+        savedConversation.id,
+        message,
+        options
+      );
+      request.log.info({ providerMessageId: message.id, resultKind: "booking_confirmation" }, "Processed WhatsApp booking message");
+      continue;
+    }
+
+    if (isPickAnotherFlightMessage(message)) {
+      await showTypingIndicator(message, options, request);
+      await options.conversationRepository.save({
+        ...conversation,
+        draft: {
+          ...conversation.draft,
+          pendingSelectedFlightOptionId: undefined,
+        },
+        updatedAt: new Date(),
+      });
+      await sendIntentReply({ type: "text", body: "No problem. Pick another flight from the options above." }, conversation.id, message, options);
+      request.log.info({ providerMessageId: message.id, resultKind: "booking_change_flight" }, "Processed WhatsApp booking message");
+      continue;
+    }
+
     const passengerAction = passengerActionFromMessage(message);
     if (passengerAction === "use_default") {
       await showTypingIndicator(message, options, request);
@@ -177,14 +224,29 @@ async function processMessages(
     const selectedFlightOptionId = selectedFlightOptionIdFromMessage(message);
     if (selectedFlightOptionId) {
       await showTypingIndicator(message, options, request);
+      const savedConversation = await options.conversationRepository.save({
+        ...conversation,
+        draft: {
+          ...conversation.draft,
+          pendingSelectedFlightOptionId: selectedFlightOptionId,
+        },
+        updatedAt: new Date(),
+      });
       await sendIntentReply(
-        await options.bookingHandler.createFromFlightSelection({
+        await (options.bookingHandler.previewFlightSelection?.({
           userId: requiredUserId(conversation),
           conversationId: conversation.id,
           phoneNumber: message.from,
           selectedFlightOptionId,
+        }) ?? {
+          type: "reply_buttons",
+          body: "Continue booking this flight?",
+          buttons: [
+            { id: bookingConfirmReplyId(selectedFlightOptionId), title: "Continue booking" },
+            { id: bookingReplyIds.pickAnotherFlight, title: "Pick another" },
+          ],
         }),
-        conversation.id,
+        savedConversation.id,
         message,
         options
       );
@@ -465,6 +527,27 @@ export async function uiIntentFromChatAction(
     return handleCollectedTripDetails(action.input, input);
   }
 
+  if (action.tool === "collectPassengerDetails") {
+    const intent = (await input.options.bookingHandler.collectPassengerDetails({
+      userId,
+      conversationId: input.conversation.id,
+      phoneNumber: input.message.from,
+      text: input.message.type === "text" ? input.message.text?.body ?? "" : "",
+      passenger: action.input,
+    })) ?? supplierBookingStartFailureIntent();
+
+    await input.options.conversationRepository.save({
+      ...input.conversation,
+      draft: {
+        ...input.conversation.draft,
+        expectedField: undefined,
+      },
+      updatedAt: new Date(),
+    });
+
+    return intent;
+  }
+
   if (action.tool === "startNewTrip") {
     return handleCollectedTripDetails(action.input, { ...input, resetDraft: true });
   }
@@ -723,6 +806,10 @@ function promptForMissingTripField(
     };
   }
 
+  if (field === "passenger_details") {
+    return passengerDetailsTextFallbackIntent();
+  }
+
   return {
     type: "reply_buttons",
     body: "How many adults are travelling?",
@@ -860,6 +947,16 @@ function selectedFlightOptionIdFromMessage(message: WhatsAppInboundMessage): str
   return selectedFlightOptionIdFromReplyId(replyId);
 }
 
+function selectedFlightOptionIdFromBookingConfirmationMessage(message: WhatsAppInboundMessage): string | undefined {
+  const replyId = message.interactive?.button_reply?.id ?? message.interactive?.list_reply?.id;
+  return selectedFlightOptionIdFromBookingConfirmReplyId(replyId);
+}
+
+function isPickAnotherFlightMessage(message: WhatsAppInboundMessage): boolean {
+  const replyId = message.interactive?.button_reply?.id ?? message.interactive?.list_reply?.id;
+  return replyId === bookingReplyIds.pickAnotherFlight;
+}
+
 function passengerActionFromMessage(message: WhatsAppInboundMessage): "use_default" | "different" | undefined {
   const replyId = message.interactive?.button_reply?.id ?? message.interactive?.list_reply?.id;
   return passengerActionFromReplyId(replyId);
@@ -952,16 +1049,58 @@ async function sendIntentReply(
   options: WhatsAppToolRoutesOptions
 ): Promise<void> {
   const outboundMessage = mapUiIntentToWhatsAppMessage(intent);
-  await options.whatsappClient.sendMessage({
-    to: message.from,
-    message: outboundMessage,
-  });
+  try {
+    await options.whatsappClient.sendMessage({
+      to: message.from,
+      message: outboundMessage,
+    });
+  } catch (error) {
+    if (intent.type !== "passenger_details_flow") throw error;
+
+    await markPassengerDetailsFallbackExpected(message, options);
+    const fallbackIntent = passengerDetailsTextFallbackIntent();
+    const fallbackMessage = mapUiIntentToWhatsAppMessage(fallbackIntent);
+    await options.whatsappClient.sendMessage({
+      to: message.from,
+      message: fallbackMessage,
+    });
+    await recordOutboundMessage({
+      conversationId,
+      intent: fallbackIntent,
+      message: fallbackMessage,
+      options,
+    });
+    return;
+  }
   await recordOutboundMessage({
     conversationId,
     intent,
     message: outboundMessage,
     options,
   });
+}
+
+async function markPassengerDetailsFallbackExpected(
+  message: WhatsAppInboundMessage,
+  options: WhatsAppToolRoutesOptions
+): Promise<void> {
+  const conversation = await options.conversationRepository.findByPhoneNumber(message.from);
+  if (!conversation) return;
+  await options.conversationRepository.save({
+    ...conversation,
+    draft: {
+      ...conversation.draft,
+      expectedField: "passenger_details",
+    },
+    updatedAt: new Date(),
+  });
+}
+
+function passengerDetailsTextFallbackIntent(): UiIntent {
+  return {
+    type: "text",
+    body: "I couldn’t open the passenger details form. Please send the passenger’s full name, title, gender, date of birth, phone number, and email in one message.",
+  };
 }
 
 async function recordOutboundMessage(input: {

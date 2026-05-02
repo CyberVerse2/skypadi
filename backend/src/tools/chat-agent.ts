@@ -3,6 +3,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 
 import { normalizeAirportCode } from "../domain/flight/airport-catalog";
+import { passengerSchema } from "../schemas/flight-booking";
 import type { ChatAction, DecideChatActionInput } from "./chat-tool.types";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -52,6 +53,8 @@ const customClarificationInputSchema = z.object({
   }),
 });
 
+const collectPassengerDetailsInputSchema = passengerSchema;
+
 const legacyChatActionSchema = z.union([
   z.object({
     type: z.literal("reply"),
@@ -89,6 +92,11 @@ const legacyChatActionSchema = z.union([
       input: z.object({
         selectedFlightOptionId: z.string().uuid(),
       }),
+    }),
+    z.object({
+      type: z.literal("tool"),
+      tool: z.literal("collectPassengerDetails"),
+      input: collectPassengerDetailsInputSchema,
     }),
   ]),
 ]);
@@ -128,6 +136,8 @@ const modelCustomClarificationInputSchema = z.object({
   }),
 });
 
+const modelCollectPassengerDetailsInputSchema = passengerSchema;
+
 export const chatActionResponseSchema = z.object({
   action: z.enum([
     "answerSideQuestion",
@@ -137,6 +147,7 @@ export const chatActionResponseSchema = z.object({
     "sendControlledReply",
     "sendCustomClarification",
     "startBookingJob",
+    "collectPassengerDetails",
   ]),
   message: z.string().trim().nullable(),
   searchFlightsInput: modelSearchFlightsInputSchema.nullable(),
@@ -148,6 +159,7 @@ export const chatActionResponseSchema = z.object({
       selectedFlightOptionId: z.string().uuid(),
     })
     .nullable(),
+  passengerDetailsInput: modelCollectPassengerDetailsInputSchema.nullable(),
 });
 
 export type ChatModel = (input: DecideChatActionInput) => Promise<unknown>;
@@ -255,6 +267,13 @@ function parseChatAction(value: unknown): ChatAction {
     };
   }
 
+  if (parsed.action === "collectPassengerDetails") {
+    if (!parsed.passengerDetailsInput) {
+      throw new Error("collectPassengerDetails action requires passengerDetailsInput");
+    }
+    return { type: "tool", tool: "collectPassengerDetails", input: parsed.passengerDetailsInput };
+  }
+
   if (!parsed.startBookingJobInput) {
     throw new Error("startBookingJob action requires startBookingJobInput");
   }
@@ -278,6 +297,7 @@ export function buildPrompt(input: DecideChatActionInput): string {
     "Return action=collectTripDetails with collectTripDetailsInput when the user provides, confirms, corrects, or needs the next trip-detail prompt; use null fields when no new trip detail was provided.",
     "Return action=searchFlights with searchFlightsInput only when origin, destination, departure date, and adult count are known and no trip details need to be merged first.",
     "Return action=startBookingJob with startBookingJobInput only when the user clearly selected a flight option by ID already shown by the app.",
+    "Return action=collectPassengerDetails with passengerDetailsInput only when currentDraft.expectedField is passenger_details and the user sends passenger details as text.",
     "Do not call booking tools for side questions.",
     `Current date: ${input.now.toISOString().slice(0, 10)}`,
     `Context: ${JSON.stringify(input.context)}`,

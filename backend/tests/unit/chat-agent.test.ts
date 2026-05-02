@@ -68,6 +68,7 @@ test("chat agent", async () => {
       sendControlledReplyInput: null,
       customClarificationInput: null,
       startBookingJobInput: null,
+      passengerDetailsInput: null,
     }),
     baseDecisionInput
   );
@@ -100,6 +101,7 @@ test("chat agent", async () => {
       sendControlledReplyInput: null,
       customClarificationInput: null,
       startBookingJobInput: null,
+      passengerDetailsInput: null,
     }),
     baseDecisionInput
   );
@@ -132,6 +134,7 @@ test("chat agent", async () => {
       sendControlledReplyInput: null,
       customClarificationInput: null,
       startBookingJobInput: null,
+      passengerDetailsInput: null,
     }),
     baseDecisionInput
   );
@@ -164,6 +167,7 @@ test("chat agent", async () => {
       sendControlledReplyInput: null,
       customClarificationInput: null,
       startBookingJobInput: null,
+      passengerDetailsInput: null,
     }),
     baseDecisionInput
   );
@@ -195,6 +199,7 @@ test("chat agent", async () => {
       sendControlledReplyInput: null,
       customClarificationInput: null,
       startBookingJobInput: null,
+      passengerDetailsInput: null,
     }),
     {
       ...baseDecisionInput,
@@ -228,6 +233,7 @@ test("chat agent", async () => {
       sendControlledReplyInput: { key: "skypadi_intro" },
       customClarificationInput: null,
       startBookingJobInput: null,
+      passengerDetailsInput: null,
     }),
     baseDecisionInput
   );
@@ -257,6 +263,7 @@ test("chat agent", async () => {
         },
       },
       startBookingJobInput: null,
+      passengerDetailsInput: null,
     }),
     baseDecisionInput
   );
@@ -285,6 +292,7 @@ test("chat agent", async () => {
       sendControlledReplyInput: null,
       customClarificationInput: null,
       startBookingJobInput: null,
+      passengerDetailsInput: null,
     }),
     baseDecisionInput
   );
@@ -317,6 +325,7 @@ test("chat agent", async () => {
         sendControlledReplyInput: null,
         customClarificationInput: null,
         startBookingJobInput: null,
+      passengerDetailsInput: null,
       }),
       baseDecisionInput
     ),
