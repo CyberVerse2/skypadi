@@ -237,6 +237,8 @@ test("whatsapp tool routes", async () => {
 
     const body = ((sentMessages[0]?.message as { text?: { body?: string } }).text?.body ?? "");
     assert.match(body, /^Hi, I’m Skypadi/);
+    assert.match(body, /best-value flight/i);
+    assert.doesNotMatch(body, /cheapest/i);
     assert.doesNotMatch(body, /Where are you flying from, where to/);
     assert.equal(chatModelCalls, 0);
     assert.deepEqual(typingEvents, [{ messageId: "wamid.first-time-hi" }]);
@@ -268,6 +270,8 @@ test("whatsapp tool routes", async () => {
 
     const body = ((sentMessages[0]?.message as { text?: { body?: string } }).text?.body ?? "");
     assert.match(body, /^Hi, I’m Skypadi/);
+    assert.match(body, /best-value flight/i);
+    assert.doesNotMatch(body, /cheapest/i);
     assert.doesNotMatch(body, /WhatsApp flight booking assistant/);
 
     await app.close();

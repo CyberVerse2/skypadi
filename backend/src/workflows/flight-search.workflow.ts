@@ -149,7 +149,7 @@ function focusedWindowOptionsToButtonIntent(
 
   buttons.push({
     id: flightOptionReplyId(cheapest.id),
-    title: "Cheapest overall",
+    title: "Best value overall",
   });
 
   return {
@@ -300,7 +300,7 @@ function focusedWindowBody(
   const lines = [
     `${selected.bodyLabel} — ${selected.flight.airline}`,
     `${selected.flight.departureTime} → ${selected.flight.arrivalTime} — ₦${selected.flight.price.toLocaleString("en-NG")}`,
-    `${directnessSummary(selected.flight)}. This is the cheapest ${requestedWindow} option I found.`,
+    `${directnessSummary(selected.flight)}. This is the best-value ${requestedWindow} option I found.`,
   ];
 
   if (savings > 0 && cheapest.id !== selected.flight.id) {
@@ -308,7 +308,7 @@ function focusedWindowBody(
       `You could save ₦${savings.toLocaleString("en-NG")} if you travel at ${timeWindowName(cheapest)} instead: ${cheapest.airline}, ${cheapest.departureTime} → ${cheapest.arrivalTime}.`
     );
   } else {
-    lines.push("This is also the cheapest option I found.");
+    lines.push("This is also the best value overall.");
   }
 
   return lines.join("\n\n");
@@ -316,23 +316,23 @@ function focusedWindowBody(
 
 function detailLine(option: RecommendedFlightOption, cheapest: DisplayFlightOption): string {
   const premium = option.flight.price - cheapest.price;
-  const priceBand = premium > 0 ? `₦${premium.toLocaleString("en-NG")} more than cheapest.` : "Lowest fare.";
-  if (option.label === "Morning") return `${directnessSummary(option.flight)}. Cheapest morning flight. ${priceBand}`;
-  if (option.label === "Afternoon") return `${directnessSummary(option.flight)}. Cheapest afternoon flight. ${priceBand}`;
+  const priceBand = premium > 0 ? `₦${premium.toLocaleString("en-NG")} above the lowest fare.` : "Best fare I found.";
+  if (option.label === "Morning") return `${directnessSummary(option.flight)}. Best-value morning flight. ${priceBand}`;
+  if (option.label === "Afternoon") return `${directnessSummary(option.flight)}. Best-value afternoon flight. ${priceBand}`;
   if (option.label === "Fastest") return `${directnessSummary(option.flight)}. ${option.flight.durationMinutes} min flight time. ${priceBand}`;
-  if (option.label === "Evening") return `${directnessSummary(option.flight)}. Cheapest evening flight. ${priceBand}`;
+  if (option.label === "Evening") return `${directnessSummary(option.flight)}. Best-value evening flight. ${priceBand}`;
   return `${directnessSummary(option.flight)}. ${priceBand}`;
 }
 
 function recommendationReason(recommendation: RecommendedFlightOption, premium: number): string {
   if (recommendation.label === "Afternoon") {
     if (premium > 0) {
-      return `It is only ₦${premium.toLocaleString("en-NG")} more than the cheapest, and it avoids the early morning start.`;
+      return `It is only ₦${premium.toLocaleString("en-NG")} above the lowest fare, and it avoids the early morning start.`;
     }
-    return "It has the best timing tradeoff and is also the lowest fare I found.";
+    return "It has the best timing tradeoff and is also the best fare I found.";
   }
   if (recommendation.label === "Morning" && isSensibleMorning(recommendation.flight)) {
-    return "It is the cheapest option and already a good morning time, so I would not pay extra for a later flight.";
+    return "It is the best value overall and already a good morning time, so I would not pay extra for a later flight.";
   }
   if (recommendation.label === "Fastest") {
     return "It is worth considering because it saves meaningful flight time without a big fare jump.";

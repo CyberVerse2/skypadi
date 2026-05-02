@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { zodSchema } from "ai";
 import { test } from "vitest";
 
-import { chatActionResponseSchema, decideChatActionWithModel } from "../../src/tools/chat-agent";
+import { buildPrompt, chatActionResponseSchema, decideChatActionWithModel } from "../../src/tools/chat-agent";
 
 test("chat agent", async () => {
   const baseDecisionInput = {
@@ -15,6 +15,9 @@ test("chat agent", async () => {
       phoneNumber: "2348012345678",
     },
   };
+
+  const prompt = buildPrompt(baseDecisionInput);
+  assert.match(prompt, /Use “best value” instead of “cheapest” in user-facing messages/);
 
   const searchDecision = await decideChatActionWithModel(
     async () => ({
