@@ -19,6 +19,12 @@ export type FlightSearchHandler = {
 };
 
 export type BookingSelectionHandler = {
+  previewFlightSelection?(input: {
+    userId: string;
+    conversationId: string;
+    phoneNumber: string;
+    selectedFlightOptionId: string;
+  }): Promise<UiIntent>;
   createFromFlightSelection(input: {
     userId: string;
     conversationId: string;

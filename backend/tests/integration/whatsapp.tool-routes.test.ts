@@ -10,7 +10,7 @@ import type {
 } from "../../src/domain/conversation/conversation.types";
 import type { ChatModel } from "../../src/tools/chat-agent";
 import type { DecideChatActionInput } from "../../src/tools/chat-tool.types";
-import { flightOptionReplyId, passengerReplyIds } from "../../src/channels/whatsapp/whatsapp.reply-ids";
+import { bookingConfirmReplyId, flightOptionReplyId, passengerReplyIds } from "../../src/channels/whatsapp/whatsapp.reply-ids";
 import { whatsappOriginRows } from "../../src/domain/flight/airport-catalog";
 import { test } from "vitest";
 
@@ -58,9 +58,12 @@ test("whatsapp tool routes", async () => {
   await executesSearchTool();
   await resetsStaleTripDraftForFreshFlightRequest();
   await rejectsStaleSearchFieldsForFreshFlightRequest();
-  await startsBookingFromFlightSelection();
+  await asksForFlightConfirmationBeforeBooking();
+  await startsBookingAfterFlightConfirmation();
   await continuesBookingWithSavedPassenger();
   await opensPassengerFlowForDifferentPassenger();
+  await fallsBackToTextWhenPassengerFlowSendFails();
+  await collectsPassengerDetailsFromFallbackText();
   await repliesWhenPassengerDetailsQueueFails();
   await sendsLegacyInteractiveRepliesThroughTripCollectionTool();
   await appliesOriginReplyWithoutLosingCollectedDate();
@@ -110,6 +113,7 @@ test("whatsapp tool routes", async () => {
         sendControlledReplyInput: null,
         customClarificationInput: null,
         startBookingJobInput: null,
+      passengerDetailsInput: null,
       }),
     });
 
@@ -143,6 +147,7 @@ test("whatsapp tool routes", async () => {
         sendControlledReplyInput: null,
         customClarificationInput: null,
         startBookingJobInput: null,
+      passengerDetailsInput: null,
       }),
     });
 
@@ -171,6 +176,7 @@ test("whatsapp tool routes", async () => {
           sendControlledReplyInput: null,
           customClarificationInput: null,
           startBookingJobInput: null,
+      passengerDetailsInput: null,
         };
       },
     });
@@ -306,6 +312,7 @@ test("whatsapp tool routes", async () => {
           },
         },
         startBookingJobInput: null,
+      passengerDetailsInput: null,
       }),
     });
 
@@ -358,6 +365,7 @@ test("whatsapp tool routes", async () => {
           },
         },
         startBookingJobInput: null,
+      passengerDetailsInput: null,
       }),
     });
 
@@ -390,6 +398,7 @@ test("whatsapp tool routes", async () => {
         sendControlledReplyInput: null,
         customClarificationInput: null,
         startBookingJobInput: null,
+      passengerDetailsInput: null,
       }),
     });
 
@@ -423,6 +432,7 @@ test("whatsapp tool routes", async () => {
         sendControlledReplyInput: null,
         customClarificationInput: null,
         startBookingJobInput: null,
+      passengerDetailsInput: null,
       }),
     });
 
@@ -559,6 +569,7 @@ test("whatsapp tool routes", async () => {
           sendControlledReplyInput: null,
           customClarificationInput: null,
           startBookingJobInput: null,
+      passengerDetailsInput: null,
         };
       },
     });
@@ -968,7 +979,61 @@ test("whatsapp tool routes", async () => {
     await app.close();
   }
 
-  async function startsBookingFromFlightSelection(): Promise<void> {
+  async function asksForFlightConfirmationBeforeBooking(): Promise<void> {
+    const sentMessages: SentMessage[] = [];
+    let bookingCalls = 0;
+    const app = buildToolRouteServer({
+      sentMessages,
+      bookingHandler: {
+        async previewFlightSelection(input: BookingSelectionInput) {
+          assert.equal(input.userId, savedUserId);
+          assert.equal(input.conversationId, savedConversationId);
+          assert.equal(input.phoneNumber, "2348012345678");
+          assert.equal(input.selectedFlightOptionId, selectedFlightOptionId);
+          return {
+            type: "reply_buttons",
+            body: "Great. Here’s your booking summary:\nRoute: Enugu → Lagos\nFlight: United Nigeria, 8:40 AM\nFare: ₦103,765\nContinue booking this flight?",
+            buttons: [
+              { id: bookingConfirmReplyId(selectedFlightOptionId), title: "Continue booking" },
+              { id: "booking_change:flight", title: "Pick another" },
+            ],
+          };
+        },
+        async createFromFlightSelection(input: BookingSelectionInput) {
+          bookingCalls += 1;
+          return { type: "text", body: `unexpected ${input.selectedFlightOptionId}` };
+        },
+        async collectPassengerDetails() {
+          return undefined;
+        },
+      },
+    });
+
+    const response = await signedPost(
+      app,
+      interactiveWebhookBody({
+        id: "wamid.flight-selection",
+        interactive: {
+          type: "list_reply",
+          list_reply: { id: flightOptionReplyId(selectedFlightOptionId), title: "SkyPadi Air" },
+        },
+      })
+    );
+    assert.equal(response.statusCode, 200);
+    await waitFor(() => sentMessages.length === 1);
+
+    assert.equal(bookingCalls, 0);
+    assert.equal(sentMessages[0]?.message.type, "interactive");
+    assert.equal((sentMessages[0]?.message.interactive as { type?: string } | undefined)?.type, "button");
+    assert.match(
+      ((sentMessages[0]?.message.interactive as { body?: { text?: string } } | undefined)?.body?.text ?? ""),
+      /Continue booking this flight\?/
+    );
+
+    await app.close();
+  }
+
+  async function startsBookingAfterFlightConfirmation(): Promise<void> {
     const sentMessages: SentMessage[] = [];
     const messageRepository = createMemoryMessageRepository();
     let bookingCalls = 0;
@@ -1000,10 +1065,10 @@ test("whatsapp tool routes", async () => {
     const response = await signedPost(
       app,
       interactiveWebhookBody({
-        id: "wamid.flight-selection",
+        id: "wamid.booking-confirmation",
         interactive: {
-          type: "list_reply",
-          list_reply: { id: flightOptionReplyId(selectedFlightOptionId), title: "SkyPadi Air" },
+          type: "button_reply",
+          button_reply: { id: bookingConfirmReplyId(selectedFlightOptionId), title: "Continue booking" },
         },
       })
     );
@@ -1116,6 +1181,112 @@ test("whatsapp tool routes", async () => {
     assert.equal(passengerDetailRequests, 1);
     assert.equal(sentMessages[0]?.message.type, "interactive");
     assert.equal((sentMessages[0]?.message.interactive as { type?: string } | undefined)?.type, "flow");
+
+    await app.close();
+  }
+
+  async function fallsBackToTextWhenPassengerFlowSendFails(): Promise<void> {
+    const sentMessages: SentMessage[] = [];
+    let flowSendAttempts = 0;
+    const app = buildToolRouteServer({
+      sentMessages,
+      whatsappClientOverrides: {
+        async sendMessage(input) {
+          if ((input.message.interactive as { type?: string } | undefined)?.type === "flow") {
+            flowSendAttempts += 1;
+            throw new Error("flow rejected");
+          }
+          sentMessages.push(input as SentMessage);
+        },
+      },
+      bookingHandler: {
+        async createFromFlightSelection() {
+          return { type: "text", body: "unused" };
+        },
+        async requestPassengerDetails() {
+          return {
+            type: "passenger_details_flow",
+            body: "Enter passenger details.",
+            buttonText: "Enter details",
+            flowId: "flow-1",
+            flowToken: "booking-1",
+            data: { bookingId: "booking-1" },
+          };
+        },
+        async collectPassengerDetails() {
+          return undefined;
+        },
+      },
+    });
+
+    const response = await signedPost(
+      app,
+      interactiveWebhookBody({
+        id: "wamid.flow-fallback",
+        interactive: {
+          type: "button_reply",
+          button_reply: { id: passengerReplyIds.different, title: "Different passenger" },
+        },
+      })
+    );
+    assert.equal(response.statusCode, 200);
+    await waitFor(() => sentMessages.length === 1);
+
+    assert.equal(flowSendAttempts, 1);
+    assert.equal(sentMessages[0]?.message.type, "text");
+    assert.match(((sentMessages[0]?.message as { text?: { body?: string } }).text?.body ?? ""), /full name/i);
+    assert.match(((sentMessages[0]?.message as { text?: { body?: string } }).text?.body ?? ""), /date of birth/i);
+
+    await app.close();
+  }
+
+  async function collectsPassengerDetailsFromFallbackText(): Promise<void> {
+    const sentMessages: SentMessage[] = [];
+    let collectedPassengerEmail: string | undefined;
+    const app = buildToolRouteServer({
+      sentMessages,
+      initialConversation: {
+        draft: { expectedField: "passenger_details" },
+      },
+      chatModel: async () => ({
+        type: "tool",
+        tool: "collectPassengerDetails",
+        input: {
+          title: "Mr",
+          firstName: "Celestine",
+          lastName: "Ejiofor",
+          dateOfBirth: "1990-04-12",
+          gender: "Male",
+          phone: "08012345678",
+          email: "celestine@example.com",
+        },
+      }),
+      bookingHandler: {
+        async createFromFlightSelection() {
+          return { type: "text", body: "unused" };
+        },
+        async collectPassengerDetails(input: PassengerDetailsInput) {
+          collectedPassengerEmail = input.passenger?.email;
+          return { type: "text", body: "Booking started. I’ll update you shortly." };
+        },
+      },
+    });
+
+    const response = await signedPost(app, webhookBody({
+      id: "wamid.passenger-text",
+      text: "Celestine Ejiofor, male, 12 April 1990, 08012345678, celestine@example.com",
+    }));
+    assert.equal(response.statusCode, 200);
+    await waitFor(() => sentMessages.length === 1);
+
+    assert.equal(collectedPassengerEmail, "celestine@example.com");
+    assert.deepEqual(sentMessages[0], {
+      to: "2348012345678",
+      message: {
+        type: "text",
+        text: { body: "Booking started. I’ll update you shortly." },
+      },
+    });
 
     await app.close();
   }
@@ -1295,6 +1466,7 @@ test("whatsapp tool routes", async () => {
     readEvents?: ReadEvent[];
     typingEvents?: TypingEvent[];
     whatsappClientOverrides?: {
+      sendMessage?: (input: { to: string; message: Record<string, unknown> }) => Promise<void>;
       markMessageRead?: (input: { messageId: string }) => Promise<void>;
       showTypingIndicator?: (input: { messageId: string }) => Promise<void>;
     };
@@ -1319,6 +1491,9 @@ test("whatsapp tool routes", async () => {
       messageRepository: input.messageRepository ?? createMemoryMessageRepository(),
       whatsappClient: {
         async sendMessage(message) {
+          if (input.whatsappClientOverrides?.sendMessage) {
+            return input.whatsappClientOverrides.sendMessage(message as SentMessage);
+          }
           input.sentMessages.push(message as SentMessage);
         },
         async markMessageRead(message) {
@@ -1344,6 +1519,7 @@ test("whatsapp tool routes", async () => {
           sendControlledReplyInput: null,
           customClarificationInput: null,
           startBookingJobInput: null,
+      passengerDetailsInput: null,
         })),
       intentExtractor: {
         async extractTripIntent() {
