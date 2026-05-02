@@ -20,6 +20,8 @@ const envSchema = z.object({
   WAKANOW_CURRENCY: z.string().default("NGN"),
   WAKANOW_TIMEZONE: z.string().default("Africa/Lagos"),
   WAKANOW_MAX_RESULTS: z.coerce.number().int().positive().default(50),
+  WAKANOW_PASSWORD_GRANT_AUTH: z.string().min(1).optional(),
+  WAKANOW_BOOKING_AUTH_SALT: z.string().min(1).optional(),
   WAKANOW_ACCOUNT_EMAIL: z.string().email().optional(),
   WAKANOW_ACCOUNT_PASSWORD: z.string().min(1).optional(),
   WAKANOW_ACCOUNT_1_EMAIL: z.string().email().optional(),

@@ -9,7 +9,6 @@ import { createWakanowAccountFetch, type WakanowAccountCredentials } from "./acc
 
 const FLIGHTS_API_BASE = "https://flights.wakanow.com/api/flights";
 const BOOKING_API_BASE = "https://booking.wakanow.com/api/booking";
-const BOOKING_AUTH_SALT = "4kZka2IaaLM2TLp/5xdIEKDcXWX9WvSzjdXwAWDUMfg=";
 const FETCH_TIMEOUT_MS = 30_000;
 
 const proxyAgent = env.PROXY_URL ? new ProxyAgent(env.PROXY_URL) : undefined;
@@ -455,9 +454,16 @@ function cleanHtmlText(value: string | undefined): string | undefined {
 }
 
 function bookingAuthHeaders(bookingId: string, timestamp: Date): Record<string, string> {
+  const bookingAuthSalt = env.WAKANOW_BOOKING_AUTH_SALT;
+  if (!bookingAuthSalt) {
+    throw new WakanowDirectBookingError("Wakanow booking auth salt is not configured", {
+      stage: "submit_booking",
+    });
+  }
+
   const timeStamp = timestamp.toISOString();
   const hash = createHash("sha512")
-    .update(`${bookingId}${timeStamp}${BOOKING_AUTH_SALT}`)
+    .update(`${bookingId}${timeStamp}${bookingAuthSalt}`)
     .digest("hex");
   return {
     "X-Auth-Hash": hash,

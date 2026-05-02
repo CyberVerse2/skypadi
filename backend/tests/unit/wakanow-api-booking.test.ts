@@ -1,13 +1,18 @@
 import assert from "node:assert/strict";
 
-import { test } from "vitest";
+import { beforeEach, test } from "vitest";
 
 import {
   bookFlightWithWakanowApi,
   WakanowDirectBookingError,
   type WakanowDirectBookingFetch,
 } from "../../src/integrations/wakanow/api-booking";
+import { env } from "../../src/config";
 import type { Passenger } from "../../src/schemas/flight-booking";
+
+beforeEach(() => {
+  env.WAKANOW_BOOKING_AUTH_SALT = "test-booking-auth-salt";
+});
 
 test("Wakanow direct API booking creates a pending-payment booking without browser automation", async () => {
   const requests: Array<{ url: string; method: string; body?: unknown; headers: Record<string, string> }> = [];
@@ -129,7 +134,10 @@ test("Wakanow direct API booking creates a pending-payment booking without brows
   assert.equal(validateBody?.PassengerDetails?.[0]?.Email, "book_abc@bookings.wakanow.com");
 
   const submitRequest = requests.find((request) => request.url.endsWith("/api/booking/Booking/Booking/987654"));
-  assert.equal(submitRequest?.headers["x-auth-hash"]?.length, 128);
+  assert.equal(
+    submitRequest?.headers["x-auth-hash"],
+    "a7f16b10eb44461406b6467d2292543a833202e6e6dd4342ec217620a03a01d7f0c0c8587984c093b72f898fdf180f61c610af30cd571e66415b0456994bf730",
+  );
   assert.equal(submitRequest?.headers["timestamp"], "2026-05-01T12:00:00.000Z");
 
   const paymentRequest = requests.find((request) => request.url.endsWith("/api/booking/Payment/MakePayment"));
@@ -141,6 +149,36 @@ test("Wakanow direct API booking creates a pending-payment booking without brows
     BillingAddress: { AddressLine1: "Lagos", City: "Lagos" },
     IsCorporateCheckout: false,
   });
+});
+
+test("Wakanow direct API booking fails closed when booking auth salt is absent", async () => {
+  env.WAKANOW_BOOKING_AUTH_SALT = undefined;
+  const fetchImpl: WakanowDirectBookingFetch = async (url) => {
+    if (String(url).endsWith("/api/flights/Select/")) {
+      return jsonResponse({
+        BookingId: "2605010405376",
+        SelectData: { selected: true },
+      });
+    }
+    if (String(url).endsWith("/api/booking/Booking/Validate")) return jsonResponse({});
+    throw new Error(`unexpected request ${String(url)}`);
+  };
+
+  await assert.rejects(
+    () => bookFlightWithWakanowApi(
+      {
+        searchKey: "search_123",
+        flightId: "flight_abc",
+        passenger: samplePassenger(),
+        contactEmail: "book_abc@bookings.wakanow.com",
+      },
+      { fetchImpl },
+    ),
+    (error) =>
+      error instanceof WakanowDirectBookingError
+      && error.stage === "submit_booking"
+      && error.message === "Wakanow booking auth salt is not configured",
+  );
 });
 
 test("Wakanow direct API booking persists supplier state and can resume after select", async () => {

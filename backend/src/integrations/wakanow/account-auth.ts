@@ -1,7 +1,6 @@
 import { env } from "../../config";
 
 const TOKEN_ENDPOINT = "https://wakanow-api-users-production-prod.azurewebsites.net/token";
-const PASSWORD_GRANT_AUTH = "Basic ZGI1NmVmYjQ4ZTMwNGYxZGI0N2ZkMDY5ZmFhMmMzZjI6IVdha0NsaVNlY0VuVA==";
 const TOKEN_REFRESH_SKEW_MS = 5 * 60_000;
 
 export type WakanowAccountCredentials = {
@@ -84,10 +83,15 @@ export async function getWakanowAccountToken(options: AuthOptions = {}): Promise
   }
 
   const fetchImpl = options.fetchImpl ?? fetch;
+  const passwordGrantAuth = env.WAKANOW_PASSWORD_GRANT_AUTH;
+  if (!passwordGrantAuth) {
+    throw new WakanowAccountAuthError("Wakanow password grant auth is not configured");
+  }
+
   const response = await fetchImpl(TOKEN_ENDPOINT, {
     method: "POST",
     headers: {
-      "Authorization": PASSWORD_GRANT_AUTH,
+      "Authorization": passwordGrantAuth,
       "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
       "Accept": "application/json, text/plain, */*",
       "Origin": "https://www.wakanow.com",

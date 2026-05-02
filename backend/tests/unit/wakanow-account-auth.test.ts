@@ -9,9 +9,11 @@ import {
   WakanowAccountAuthError,
   type WakanowAccountAuthFetch,
 } from "../../src/integrations/wakanow/account-auth";
+import { env } from "../../src/config";
 
 beforeEach(() => {
   clearWakanowAccountTokenCacheForTest();
+  env.WAKANOW_PASSWORD_GRANT_AUTH = "Basic test-password-grant-auth";
 });
 
 test("Wakanow account auth posts password grant credentials and returns token", async () => {
@@ -42,10 +44,27 @@ test("Wakanow account auth posts password grant credentials and returns token", 
   assert.equal(token, "supplier-token");
   assert.equal(calls.length, 1);
   assert.equal(calls[0]?.method, "POST");
-  assert.equal(calls[0]?.authorization?.startsWith("Basic "), true);
+  assert.equal(calls[0]?.authorization, "Basic test-password-grant-auth");
   assert.match(calls[0]?.body ?? "", /grant_type=password/);
   assert.match(calls[0]?.body ?? "", /username=bookings%40bookings\.skypadi\.com/);
   assert.match(calls[0]?.body ?? "", /password=secret-password/);
+});
+
+test("Wakanow account auth fails closed when password grant auth is absent", async () => {
+  env.WAKANOW_PASSWORD_GRANT_AUTH = undefined;
+
+  await assert.rejects(
+    () => getWakanowAccountToken({
+      credentials: {
+        email: "bookings@bookings.skypadi.com",
+        password: "secret-password",
+      },
+      fetchImpl: async () => jsonResponse({ access_token: "supplier-token" }),
+    }),
+    (error) =>
+      error instanceof WakanowAccountAuthError
+      && error.message === "Wakanow password grant auth is not configured",
+  );
 });
 
 test("Wakanow account auth fails closed when credentials are absent", async () => {
