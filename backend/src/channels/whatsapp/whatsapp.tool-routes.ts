@@ -202,6 +202,25 @@ async function processMessages(
       continue;
     }
 
+    const tripDetailsFromReply = tripDetailsFromInteractiveReply(message);
+    if (tripDetailsFromReply) {
+      await showTypingIndicator(message, options, request);
+      const intent = await handleCollectedTripDetails(tripDetailsFromReply, {
+        conversation,
+        message,
+        options,
+        request,
+        showTypingIndicator: async () => {
+          await showTypingIndicator(message, options, request);
+        },
+      });
+      if (intent) {
+        await sendIntentReply(intent, conversation.id, message, options);
+      }
+      request.log.info({ providerMessageId: message.id, resultKind: "controlled_trip_reply" }, "Processed WhatsApp tool message");
+      continue;
+    }
+
     const userText = chatTextFromMessage(message);
     if (!userText) continue;
 
@@ -844,6 +863,38 @@ function selectedFlightOptionIdFromMessage(message: WhatsAppInboundMessage): str
 function passengerActionFromMessage(message: WhatsAppInboundMessage): "use_default" | "different" | undefined {
   const replyId = message.interactive?.button_reply?.id ?? message.interactive?.list_reply?.id;
   return passengerActionFromReplyId(replyId);
+}
+
+function tripDetailsFromInteractiveReply(message: WhatsAppInboundMessage): CollectTripDetailsToolInput | undefined {
+  if (message.type !== "interactive") return undefined;
+
+  const replyId = message.interactive?.button_reply?.id ?? message.interactive?.list_reply?.id;
+  if (!replyId) return undefined;
+
+  if (replyId.startsWith("origin:")) {
+    return { origin: replyId.slice("origin:".length) };
+  }
+
+  if (replyId.startsWith("destination:")) {
+    return { destination: replyId.slice("destination:".length) };
+  }
+
+  if (replyId.startsWith("date:")) {
+    return { departureDate: replyId.slice("date:".length) };
+  }
+
+  if (replyId.startsWith("departure_window:")) {
+    return { departureWindow: replyId.slice("departure_window:".length) };
+  }
+
+  if (replyId.startsWith("passengers:")) {
+    const value = replyId.slice("passengers:".length);
+    if (value === "more") return undefined;
+    const adults = Number(value);
+    return Number.isInteger(adults) && adults > 0 ? { adults } : undefined;
+  }
+
+  return undefined;
 }
 
 function chatTextFromMessage(message: WhatsAppInboundMessage): string | undefined {

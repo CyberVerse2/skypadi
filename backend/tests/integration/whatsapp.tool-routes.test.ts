@@ -63,6 +63,7 @@ test("whatsapp tool routes", async () => {
   await opensPassengerFlowForDifferentPassenger();
   await repliesWhenPassengerDetailsQueueFails();
   await sendsLegacyInteractiveRepliesThroughTripCollectionTool();
+  await appliesOriginReplyWithoutLosingCollectedDate();
 
   console.log("whatsapp tool route tests passed");
 
@@ -1167,14 +1168,14 @@ test("whatsapp tool routes", async () => {
 
   async function sendsLegacyInteractiveRepliesThroughTripCollectionTool(): Promise<void> {
     const sentMessages: SentMessage[] = [];
-    let chatInput: DecideChatActionInput | undefined;
+    let chatModelCalls = 0;
     const app = buildToolRouteServer({
       sentMessages,
       initialConversation: {
         draft: { expectedField: "origin" },
       },
-      chatModel: async (input) => {
-        chatInput = input;
+      chatModel: async () => {
+        chatModelCalls += 1;
         return {
           type: "tool",
           tool: "collectTripDetails",
@@ -1196,8 +1197,7 @@ test("whatsapp tool routes", async () => {
     assert.equal(response.statusCode, 200);
     await waitFor(() => sentMessages.length === 1);
 
-    assert.equal(chatInput?.userText, "Origin selected: LOS (Lagos)");
-    assert.equal(chatInput?.context.currentDraft?.expectedField, "origin");
+    assert.equal(chatModelCalls, 0);
     assert.deepEqual(sentMessages[0], {
       to: "2348012345678",
       message: {
@@ -1205,6 +1205,83 @@ test("whatsapp tool routes", async () => {
         text: { body: "Where are you flying to?" },
       },
     });
+
+    await app.close();
+  }
+
+  async function appliesOriginReplyWithoutLosingCollectedDate(): Promise<void> {
+    const sentMessages: SentMessage[] = [];
+    const typingEvents: TypingEvent[] = [];
+    let chatModelCalls = 0;
+    let searchCalls = 0;
+    const app = buildToolRouteServer({
+      sentMessages,
+      typingEvents,
+      initialConversation: {
+        draft: {
+          destination: "LOS",
+          departureDate: "2026-05-07",
+          departureWindow: "morning",
+          adults: 1,
+          expectedField: "origin",
+        },
+      },
+      chatModel: async () => {
+        chatModelCalls += 1;
+        return {
+          type: "tool",
+          tool: "collectTripDetails",
+          input: { origin: "ENU" },
+        };
+      },
+      flightSearchHandler: {
+        async searchAndPresent(input: FlightSearchHandlerInput) {
+          searchCalls += 1;
+          assert.deepEqual(input.search, {
+            origin: "ENU",
+            destination: "LOS",
+            departureDate: "2026-05-07",
+            departureWindow: "morning",
+            tripType: "one_way",
+            returnDate: undefined,
+            adults: 1,
+          });
+          return {
+            type: "flight_list",
+            body: "I found the best morning option.",
+            buttonText: "Book this",
+            rows: [
+              {
+                id: flightOptionReplyId(selectedFlightOptionId),
+                title: "United Nigeria",
+                description: "08:40 - NGN 103,765",
+              },
+            ],
+          };
+        },
+      },
+    });
+
+    const response = await signedPost(
+      app,
+      interactiveWebhookBody({
+        id: "wamid.origin-reply-preserves-date",
+        interactive: {
+          type: "button_reply",
+          button_reply: { id: "origin:ENU", title: "Enugu" },
+        },
+      })
+    );
+    assert.equal(response.statusCode, 200);
+    await waitFor(() => sentMessages.length === 1);
+
+    assert.equal(chatModelCalls, 0);
+    assert.equal(searchCalls, 1);
+    assert.deepEqual(typingEvents, [
+      { messageId: "wamid.origin-reply-preserves-date" },
+      { messageId: "wamid.origin-reply-preserves-date" },
+    ]);
+    assert.equal(sentMessages[0]?.message.type, "interactive");
 
     await app.close();
   }
