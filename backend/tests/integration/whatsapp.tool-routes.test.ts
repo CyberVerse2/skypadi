@@ -57,6 +57,7 @@ test("whatsapp tool routes", async () => {
   await searchesWhenExtractedTripDetailsCompleteTheDraft();
   await executesSearchTool();
   await resetsStaleTripDraftForFreshFlightRequest();
+  await rejectsStaleSearchFieldsForFreshFlightRequest();
   await startsBookingFromFlightSelection();
   await continuesBookingWithSavedPassenger();
   await opensPassengerFlowForDifferentPassenger();
@@ -893,17 +894,72 @@ test("whatsapp tool routes", async () => {
     assert.equal(response.statusCode, 200);
     await waitFor(() => sentMessages.length === 1);
 
-    assert.deepEqual(chatInput?.context.currentDraft, {
-      origin: "ENU",
-      destination: "ABV",
-      departureDate: "2026-05-06",
-      departureWindow: "morning",
-      adults: 2,
-      expectedField: "origin",
-    });
-    assert.equal(chatInput?.context.expectedField, "origin");
+    assert.deepEqual(chatInput?.context.currentDraft, {});
+    assert.equal(chatInput?.context.expectedField, undefined);
+    assert.equal(chatInput?.context.recentMessages, undefined);
     const body = ((sentMessages[0]?.message as { interactive?: { body?: { text?: string } } }).interactive?.body?.text ?? "");
-    assert.equal(body, "Where are you flying from?");
+    assert.equal(body.endsWith("Where are you flying from?"), true);
+
+    await app.close();
+  }
+
+  async function rejectsStaleSearchFieldsForFreshFlightRequest(): Promise<void> {
+    const sentMessages: SentMessage[] = [];
+    let searchCalls = 0;
+    let chatInput: DecideChatActionInput | undefined;
+    const app = buildToolRouteServer({
+      sentMessages,
+      messageRepository: createMemoryMessageRepository([
+        {
+          direction: "outbound",
+          textBody: "I’m having trouble responding right now. I still have your ENU to LOS morning trip for 2026-05-07.",
+          sentAt: new Date("2026-05-02T01:53:00.000Z"),
+        },
+      ]),
+      initialConversation: {
+        draft: {
+          origin: "ENU",
+          destination: "LOS",
+          departureDate: "2026-05-07",
+          departureWindow: "morning",
+          adults: 1,
+        },
+      },
+      chatModel: async (input) => {
+        chatInput = input;
+        return {
+          type: "tool",
+          tool: "searchFlights",
+          input: {
+            origin: "ENU",
+            destination: "LOS",
+            departureDate: "2026-05-07",
+            departureWindow: "morning",
+            adults: 1,
+          },
+        };
+      },
+      flightSearchHandler: {
+        async searchAndPresent() {
+          searchCalls += 1;
+          return { type: "text", body: "This should not search." };
+        },
+      },
+    });
+
+    const response = await signedPost(app, webhookBody({
+      id: "wamid.new-flight-stale-search",
+      text: "I want to book a flight to Lagos next week Thursday early morning",
+    }));
+    assert.equal(response.statusCode, 200);
+    await waitFor(() => sentMessages.length === 1);
+
+    assert.deepEqual(chatInput?.context.currentDraft, {});
+    assert.equal(chatInput?.context.expectedField, undefined);
+    assert.equal(chatInput?.context.recentMessages, undefined);
+    assert.equal(searchCalls, 0);
+    const body = ((sentMessages[0]?.message as { interactive?: { body?: { text?: string } } }).interactive?.body?.text ?? "");
+    assert.equal(body.endsWith("Where are you flying from?"), true);
 
     await app.close();
   }
