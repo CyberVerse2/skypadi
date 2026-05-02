@@ -102,11 +102,12 @@ test("flight ranking", async () => {
     },
     {
       id: flightOptionReplyId("cheap-evening"),
-      title: "Cheapest overall",
+      title: "Best value overall",
     },
   ]);
   assert.match(morningButtons.body, /Best Morning — Aero/);
-  assert.match(morningButtons.body, /cheapest morning option/i);
+  assert.match(morningButtons.body, /best-value morning option/i);
+  assert.doesNotMatch(morningButtons.body, /cheapest/i);
   assert.match(morningButtons.body, /save ₦1,881/i);
   assert.match(morningButtons.body, /travel at evening/i);
 
@@ -122,8 +123,9 @@ test("flight ranking", async () => {
   assert.equal(eveningButtons.buttons[0]?.id, flightOptionReplyId("best-evening"));
   assert.equal(eveningButtons.buttons[0]?.title, "Book this");
   assert.equal(eveningButtons.buttons[1]?.id, flightOptionReplyId("cheap-morning"));
-  assert.equal(eveningButtons.buttons[1]?.title, "Cheapest overall");
+  assert.equal(eveningButtons.buttons[1]?.title, "Best value overall");
   assert.match(eveningButtons.body, /Best Evening — United Nigeria/);
+  assert.doesNotMatch(eveningButtons.body, /cheapest/i);
   assert.match(eveningButtons.body, /save ₦23,764/i);
 
   const cheapestMorningCta = rankedFlightOptionsToIntent(
@@ -138,6 +140,8 @@ test("flight ranking", async () => {
   assert.equal(cheapestMorningCta.button.id, flightOptionReplyId("best-morning"));
   assert.equal(cheapestMorningCta.button.title, "Book this");
   assert.match(cheapestMorningCta.body, /Best Morning — Aero/);
+  assert.match(cheapestMorningCta.body, /best value overall/i);
+  assert.doesNotMatch(cheapestMorningCta.body, /cheapest/i);
 
   const directPreferred = rankFlightOptionsForDisplay([
     option({ id: "cheap-stop", airline: "Air Peace", departureTime: "14:25", arrivalTime: "09:50", price: 100000, stops: 1 }),

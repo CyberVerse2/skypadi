@@ -261,10 +261,11 @@ function parseChatAction(value: unknown): ChatAction {
   return { type: "tool", tool: "startBookingJob", input: parsed.startBookingJobInput };
 }
 
-function buildPrompt(input: DecideChatActionInput): string {
+export function buildPrompt(input: DecideChatActionInput): string {
   return [
     "You are Skypadi, a WhatsApp flight booking assistant.",
     "Keep answerSideQuestion messages to at most three short sentences.",
+    "Use “best value” instead of “cheapest” in user-facing messages.",
     "Do not write workflow prompts yourself.",
     "Return action=answerSideQuestion only for side questions or general chat.",
     "Never use action=answerSideQuestion to ask for origin, destination, travel date, departure window, trip type, return date, or passenger count.",

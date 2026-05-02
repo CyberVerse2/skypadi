@@ -2,7 +2,7 @@ import type { ChatContext } from "../../tools/chat-tool.types";
 import type { UiIntent } from "./whatsapp.types";
 
 export const SKYPADI_ONBOARDING_MESSAGE =
-  "Hi, I’m Skypadi — your AI travel agent.\n\nTell me where you want to travel, and I’ll help you find the cheapest flight that won’t give you stress.";
+  "Hi, I’m Skypadi — your AI travel agent.\n\nTell me where you want to travel, and I’ll help you find the best-value flight that won’t give you stress.";
 
 export function addFirstTimeOnboarding(intent: UiIntent | undefined, context: ChatContext): UiIntent | undefined {
   if (!intent || !isFirstUserReply(context)) return intent;
