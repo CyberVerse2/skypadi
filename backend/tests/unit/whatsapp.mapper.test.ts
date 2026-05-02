@@ -1,202 +1,174 @@
-import assert from "node:assert/strict";
 
 import { mapUiIntentToWhatsAppMessage } from "../../src/channels/whatsapp/whatsapp.mapper";
-import { test } from "vitest";
+import { describe, expect, test } from "vitest";
 
-test("whatsapp mapper", async () => {
-  const originList = mapUiIntentToWhatsAppMessage({
-    type: "origin_list",
-    body: "Sure. Where are you flying from?",
-    rows: [
-      { id: "origin:LOS", title: "Lagos", description: "Murtala Muhammed Airport" },
-      { id: "origin:ABV", title: "Abuja", description: "Nnamdi Azikiwe Airport" },
-    ],
-  });
 
-  assert.equal(originList.type, "interactive");
-  assert.equal(originList.interactive.type, "list");
-  assert.equal(originList.interactive.action.sections[0].rows[0].id, "origin:LOS");
+describe("unit whatsapp mapper", () => {
+  test("whatsapp mapper", async () => {
+    const originList = mapUiIntentToWhatsAppMessage({
+      type: "origin_list",
+      body: "Sure. Where are you flying from?",
+      rows: [
+        { id: "origin:LOS", title: "Lagos", description: "Murtala Muhammed Airport" },
+        { id: "origin:ABV", title: "Abuja", description: "Nnamdi Azikiwe Airport" },
+      ],
+    });
 
-  const tripButtons = mapUiIntentToWhatsAppMessage({
-    type: "reply_buttons",
-    body: "Is this one-way or return?",
-    buttons: [
-      { id: "trip_type:one_way", title: "One-way" },
-      { id: "trip_type:return", title: "Return" },
-    ],
-  });
+    expect(originList.type).toBe("interactive");
+    expect(originList.interactive.type).toBe("list");
+    expect(originList.interactive.action.sections[0].rows[0].id).toBe("origin:LOS");
 
-  assert.equal(tripButtons.interactive.type, "button");
-  assert.equal(tripButtons.interactive.action.buttons[1].reply.id, "trip_type:return");
+    const tripButtons = mapUiIntentToWhatsAppMessage({
+      type: "reply_buttons",
+      body: "Is this one-way or return?",
+      buttons: [
+        { id: "trip_type:one_way", title: "One-way" },
+        { id: "trip_type:return", title: "Return" },
+      ],
+    });
 
-  const ctaButton = mapUiIntentToWhatsAppMessage({
-    type: "cta_button",
-    body: "I found the best morning option.",
-    button: { id: "flight:123", title: "Book this" },
-  });
+    expect(tripButtons.interactive.type).toBe("button");
+    expect(tripButtons.interactive.action.buttons[1].reply.id).toBe("trip_type:return");
 
-  assert.deepEqual(ctaButton, {
-    type: "interactive",
-    interactive: {
-      type: "button",
-      body: { text: "I found the best morning option." },
-      action: {
-        buttons: [
-          {
-            type: "reply",
-            reply: { id: "flight:123", title: "Book this" },
-          },
-        ],
+    const ctaButton = mapUiIntentToWhatsAppMessage({
+      type: "cta_button",
+      body: "I found the best morning option.",
+      button: { id: "flight:123", title: "Book this" },
+    });
+
+    expect(ctaButton).toEqual({
+      type: "interactive",
+      interactive: {
+        type: "button",
+        body: { text: "I found the best morning option." },
+        action: {
+          buttons: [
+            {
+              type: "reply",
+              reply: { id: "flight:123", title: "Book this" },
+            },
+          ],
+        },
       },
-    },
-  });
+    });
 
-  const textMessage = mapUiIntentToWhatsAppMessage({
-    type: "text",
-    body: "I found a few flights for you.",
-  });
+    const textMessage = mapUiIntentToWhatsAppMessage({
+      type: "text",
+      body: "I found a few flights for you.",
+    });
 
-  assert.deepEqual(textMessage, {
-    type: "text",
-    text: { body: "I found a few flights for you." },
-  });
+    expect(textMessage).toEqual({
+      type: "text",
+      text: { body: "I found a few flights for you." },
+    });
 
-  const documentMessage = mapUiIntentToWhatsAppMessage({
-    type: "document",
-    body: "Here is your itinerary.",
-    documentUrl: "https://example.com/itinerary.pdf",
-    filename: "itinerary.pdf",
-  });
-
-  assert.deepEqual(documentMessage, {
-    type: "document",
-    document: {
-      link: "https://example.com/itinerary.pdf",
+    const documentMessage = mapUiIntentToWhatsAppMessage({
+      type: "document",
+      body: "Here is your itinerary.",
+      documentUrl: "https://example.com/itinerary.pdf",
       filename: "itinerary.pdf",
-      caption: "Here is your itinerary.",
-    },
-  });
+    });
 
-  const passengerFlow = mapUiIntentToWhatsAppMessage({
-    type: "passenger_details_flow",
-    body: "Great choice. I need the passenger details to continue.",
-    buttonText: "Enter details",
-    flowId: "flow_123",
-    flowToken: "booking_123",
-    data: { bookingId: "booking_123" },
-  });
-
-  assert.equal(passengerFlow.type, "interactive");
-  assert.equal(passengerFlow.interactive.type, "flow");
-  assert.equal(passengerFlow.interactive.action.parameters.flow_id, "flow_123");
-  assert.equal(passengerFlow.interactive.action.parameters.flow_token, "booking_123");
-
-  assert.throws(
-    () =>
-      mapUiIntentToWhatsAppMessage({
-        type: "origin_list",
-        body: "Sure. Where are you flying from?",
-        rows: [],
-      }),
-    /at least 1 row/
-  );
-
-  assert.throws(
-    () =>
-      mapUiIntentToWhatsAppMessage({
-        type: "reply_buttons",
-        body: "Is this one-way or return?",
-        buttons: [],
-      }),
-    /at least 1 button/
-  );
-
-  assert.throws(
-    () =>
-      mapUiIntentToWhatsAppMessage({
-        type: "reply_buttons",
-        body: "Choose an option.",
-        buttons: [
-          { id: "trip_type:one_way", title: "One-way" },
-          { id: "trip_type:return", title: "Return" },
-          { id: "trip_type:multi_city", title: "Multi-city" },
-          { id: "trip_type:flexible", title: "Flexible" },
-        ],
-      }),
-    /at most 3 buttons/
-  );
-
-  assert.throws(
-    () =>
-      mapUiIntentToWhatsAppMessage({
-        type: "cta_button",
-        body: "Choose an option.",
-        button: { id: "book", title: "x".repeat(21) },
-      }),
-    /CTA button title.*20 characters/
-  );
-
-  assert.throws(
-    () =>
-      mapUiIntentToWhatsAppMessage({
-        type: "origin_list",
-        body: "Sure. Where are you flying from?",
-        rows: Array.from({ length: 11 }, (_, index) => ({
-          id: `origin:${index}`,
-          title: `City ${index}`,
-        })),
-      }),
-    /at most 10 rows/
-  );
-
-  assert.throws(
-    () =>
-      mapUiIntentToWhatsAppMessage({
-        type: "origin_list",
-        body: "Sure. Where are you flying from?",
-        rows: [{ id: "origin:LOS", title: "Lagos".repeat(5) }],
-      }),
-    /row .*title.*24 characters/
-  );
-
-  assert.throws(
-    () =>
-      mapUiIntentToWhatsAppMessage({
-        type: "reply_buttons",
-        body: "Is this one-way or return?",
-        buttons: [{ id: "   ", title: "One-way" }],
-      }),
-    /button .*id.*blank/
-  );
-
-  assert.throws(
-    () =>
-      mapUiIntentToWhatsAppMessage({
-        type: "text",
-        body: "   ",
-      }),
-    /body.*blank/
-  );
-
-  assert.throws(
-    () =>
-      mapUiIntentToWhatsAppMessage({
-        type: "text",
-        body: "x".repeat(4097),
-      }),
-    /text body.*4096 characters/
-  );
-
-  assert.throws(
-    () =>
-      mapUiIntentToWhatsAppMessage({
-        type: "document",
-        body: "x".repeat(1025),
-        documentUrl: "https://example.com/itinerary.pdf",
+    expect(documentMessage).toEqual({
+      type: "document",
+      document: {
+        link: "https://example.com/itinerary.pdf",
         filename: "itinerary.pdf",
-      }),
-    /document body.*1024 characters/
-  );
+        caption: "Here is your itinerary.",
+      },
+    });
 
-  console.log("whatsapp mapper tests passed");
+    const passengerFlow = mapUiIntentToWhatsAppMessage({
+      type: "passenger_details_flow",
+      body: "Great choice. I need the passenger details to continue.",
+      buttonText: "Enter details",
+      flowId: "flow_123",
+      flowToken: "booking_123",
+      data: { bookingId: "booking_123" },
+    });
+
+    expect(passengerFlow.type).toBe("interactive");
+    expect(passengerFlow.interactive.type).toBe("flow");
+    expect(passengerFlow.interactive.action.parameters.flow_id).toBe("flow_123");
+    expect(passengerFlow.interactive.action.parameters.flow_token).toBe("booking_123");
+
+    expect(() =>
+        mapUiIntentToWhatsAppMessage({
+          type: "origin_list",
+          body: "Sure. Where are you flying from?",
+          rows: [],
+        })).toThrow(/at least 1 row/);
+
+    expect(() =>
+        mapUiIntentToWhatsAppMessage({
+          type: "reply_buttons",
+          body: "Is this one-way or return?",
+          buttons: [],
+        })).toThrow(/at least 1 button/);
+
+    expect(() =>
+        mapUiIntentToWhatsAppMessage({
+          type: "reply_buttons",
+          body: "Choose an option.",
+          buttons: [
+            { id: "trip_type:one_way", title: "One-way" },
+            { id: "trip_type:return", title: "Return" },
+            { id: "trip_type:multi_city", title: "Multi-city" },
+            { id: "trip_type:flexible", title: "Flexible" },
+          ],
+        })).toThrow(/at most 3 buttons/);
+
+    expect(() =>
+        mapUiIntentToWhatsAppMessage({
+          type: "cta_button",
+          body: "Choose an option.",
+          button: { id: "book", title: "x".repeat(21) },
+        })).toThrow(/CTA button title.*20 characters/);
+
+    expect(() =>
+        mapUiIntentToWhatsAppMessage({
+          type: "origin_list",
+          body: "Sure. Where are you flying from?",
+          rows: Array.from({ length: 11 }, (_, index) => ({
+            id: `origin:${index}`,
+            title: `City ${index}`,
+          })),
+        })).toThrow(/at most 10 rows/);
+
+    expect(() =>
+        mapUiIntentToWhatsAppMessage({
+          type: "origin_list",
+          body: "Sure. Where are you flying from?",
+          rows: [{ id: "origin:LOS", title: "Lagos".repeat(5) }],
+        })).toThrow(/row .*title.*24 characters/);
+
+    expect(() =>
+        mapUiIntentToWhatsAppMessage({
+          type: "reply_buttons",
+          body: "Is this one-way or return?",
+          buttons: [{ id: "   ", title: "One-way" }],
+        })).toThrow(/button .*id.*blank/);
+
+    expect(() =>
+        mapUiIntentToWhatsAppMessage({
+          type: "text",
+          body: "   ",
+        })).toThrow(/body.*blank/);
+
+    expect(() =>
+        mapUiIntentToWhatsAppMessage({
+          type: "text",
+          body: "x".repeat(4097),
+        })).toThrow(/text body.*4096 characters/);
+
+    expect(() =>
+        mapUiIntentToWhatsAppMessage({
+          type: "document",
+          body: "x".repeat(1025),
+          documentUrl: "https://example.com/itinerary.pdf",
+          filename: "itinerary.pdf",
+        })).toThrow(/document body.*1024 characters/);
+
+    console.log("whatsapp mapper tests passed");
+  });
 });

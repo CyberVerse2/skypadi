@@ -1,4 +1,3 @@
-import assert from "node:assert/strict";
 
 import {
   auditEvents,
@@ -16,31 +15,34 @@ import {
   users,
   whatsappContacts,
 } from "../../src/db/schema";
-import { test } from "vitest";
+import { describe, expect, test } from "vitest";
 
-test("schema", async () => {
-  const tables = [
-    users,
-    whatsappContacts,
-    conversations,
-    conversationMessages,
-    passengers,
-    flightSearches,
-    flightOptions,
-    bookings,
-    paymentAttempts,
-    supplierAccountAssignments,
-    bookingEmailAliases,
-    inboundEmails,
-    supplierEvents,
-    auditEvents,
-  ];
 
-  assert.equal(tables.length, 14);
-  assert.equal(bookings.status.enumValues.includes("awaiting_payment_for_hold"), true);
-  assert.equal(bookings.supplierBookingState.name, "supplier_booking_state");
-  assert.equal(bookings.supplierPaymentInstructions.name, "supplier_payment_instructions");
-  assert.equal(paymentAttempts.status.enumValues.includes("proof_uploaded"), true);
-  assert.equal(inboundEmails.classification.enumValues.includes("verification_code"), true);
-  console.log("schema tests passed");
+describe("unit schema", () => {
+  test("schema", async () => {
+    const tables = [
+      users,
+      whatsappContacts,
+      conversations,
+      conversationMessages,
+      passengers,
+      flightSearches,
+      flightOptions,
+      bookings,
+      paymentAttempts,
+      supplierAccountAssignments,
+      bookingEmailAliases,
+      inboundEmails,
+      supplierEvents,
+      auditEvents,
+    ];
+
+    expect(tables.length).toBe(14);
+    expect(bookings.status.enumValues.includes("awaiting_payment_for_hold")).toBe(true);
+    expect(bookings.supplierBookingState.name).toBe("supplier_booking_state");
+    expect(bookings.supplierPaymentInstructions.name).toBe("supplier_payment_instructions");
+    expect(paymentAttempts.status.enumValues.includes("proof_uploaded")).toBe(true);
+    expect(inboundEmails.classification.enumValues.includes("verification_code")).toBe(true);
+    console.log("schema tests passed");
+  });
 });

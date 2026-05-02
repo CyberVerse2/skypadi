@@ -1,4 +1,3 @@
-import assert from "node:assert/strict";
 
 import {
   airportByCode,
@@ -8,27 +7,30 @@ import {
   wakanowAirports,
   whatsappOriginRows,
 } from "../../src/domain/flight/airport-catalog";
-import { test } from "vitest";
+import { describe, expect, test } from "vitest";
 
-test("airport catalog", async () => {
-  assert.ok(wakanowAirports.length > 10);
-  assert.equal(whatsappOriginRows.length, 10);
-  for (const id of ["origin:LOS", "origin:ABV", "origin:PHC", "origin:KAN", "origin:ENU"]) {
-    assert.ok(whatsappOriginRows.some((row) => row.id === id), `${id} should be in origin rows`);
-  }
-  assert.ok(nigerianOriginAirports.length >= 10);
-  assert.equal(airportByCode("ENU")?.city, "Enugu");
-  assert.equal(airportByCode("PHC")?.city, "Port Harcourt");
-  assert.equal(airportByCode("LAG")?.code, "LOS");
-  assert.equal(airportByCode("ABU")?.code, "ABV");
-  assert.equal(normalizeAirportCode("lag"), "LOS");
-  assert.equal(normalizeAirportCode("abu"), "ABV");
-  assert.equal(resolveAirport("lagos")?.code, "LOS");
-  assert.equal(resolveAirport("abuja")?.code, "ABV");
-  assert.equal(resolveAirport("Accra")?.code, "ACC");
-  assert.equal(resolveAirport("Heathrow Airport")?.code, "LHR");
-  assert.equal(airportByCode("xxx"), undefined);
-  assert.equal(resolveAirport("xxx"), undefined);
 
-  console.log("airport catalog tests passed");
+describe("unit airport catalog", () => {
+  test("airport catalog", async () => {
+    expect(wakanowAirports.length > 10).toBeTruthy();
+    expect(whatsappOriginRows.length).toBe(10);
+    for (const id of ["origin:LOS", "origin:ABV", "origin:PHC", "origin:KAN", "origin:ENU"]) {
+      expect(whatsappOriginRows.some((row) => row.id === id)).toBeTruthy();
+    }
+    expect(nigerianOriginAirports.length >= 10).toBeTruthy();
+    expect(airportByCode("ENU")?.city).toBe("Enugu");
+    expect(airportByCode("PHC")?.city).toBe("Port Harcourt");
+    expect(airportByCode("LAG")?.code).toBe("LOS");
+    expect(airportByCode("ABU")?.code).toBe("ABV");
+    expect(normalizeAirportCode("lag")).toBe("LOS");
+    expect(normalizeAirportCode("abu")).toBe("ABV");
+    expect(resolveAirport("lagos")?.code).toBe("LOS");
+    expect(resolveAirport("abuja")?.code).toBe("ABV");
+    expect(resolveAirport("Accra")?.code).toBe("ACC");
+    expect(resolveAirport("Heathrow Airport")?.code).toBe("LHR");
+    expect(airportByCode("xxx")).toBe(undefined);
+    expect(resolveAirport("xxx")).toBe(undefined);
+
+    console.log("airport catalog tests passed");
+  });
 });
