@@ -11,6 +11,7 @@ import { describe, expect, test } from "vitest";
 
 describe("workflow inbound email workflow", () => {
   test("inbound email workflow", async () => {
+    expect.hasAssertions();
     const classified = classifyInboundEmail({
       subject: "Your Wakanow verification code",
       text: "Use 493821 to complete your booking.",
@@ -162,6 +163,5 @@ describe("workflow inbound email workflow", () => {
     });
 
     expect(timedOutOtp).toBe(undefined);
-    console.log("inbound email workflow tests passed");
   });
 });

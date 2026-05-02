@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 
 
 describe("unit no legacy surfaces", () => {
-  test("no legacy surfaces", async () => {
+  const source = () => {
     const root = new URL("../../src", import.meta.url).pathname;
 
     function files(dir: string): string[] {
@@ -14,23 +14,22 @@ describe("unit no legacy surfaces", () => {
       });
     }
 
-    const source = files(root)
+    return files(root)
       .filter((file) => file.endsWith(".ts"))
       .map((file) => readFileSync(file, "utf8"))
       .join("\n")
       .toLowerCase();
+  };
 
-    const banned = [
-      ["tele", "gram"].join(""),
-      ["gr", "ammy"].join(""),
-      ["agent", "mail"].join(""),
-      "patchright",
-      "stealth",
-    ];
+  test.each([
+    ["tele", "gram"].join(""),
+    ["gr", "ammy"].join(""),
+    ["agent", "mail"].join(""),
+    "patchright",
+    "stealth",
+  ])("does not reference legacy surface %s", (term) => {
+    expect.hasAssertions();
 
-    for (const term of banned) {
-      expect(source.includes(term)).toBe(false);
-    }
-    console.log("legacy surface tests passed");
+    expect(source()).not.toContain(term);
   });
 });

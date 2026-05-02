@@ -16,6 +16,7 @@ describe("Wakanow account auth", () => {
   });
 
   test("posts password grant credentials and returns token", async () => {
+    expect.hasAssertions();
     const calls: Array<{ url: string; method?: string; body?: string; authorization?: string }> = [];
     const fetchImpl: WakanowAccountAuthFetch = async (url, init = {}) => {
       calls.push({
@@ -79,6 +80,7 @@ describe("Wakanow account auth", () => {
   });
 
   test("attaches bearer token and preserves existing cookies", async () => {
+    expect.hasAssertions();
     const bookingCalls: Array<{ url: string; authorization?: string | null; cookie?: string | null }> = [];
     const fetchImpl: WakanowAccountAuthFetch = async (url, init = {}) => {
       if (url.includes("/token")) {
@@ -119,7 +121,37 @@ describe("Wakanow account auth", () => {
     ]);
   });
 
+  test("reuses cached account token before expiry", async () => {
+    expect.hasAssertions();
+    const fetchImpl = vi.fn<WakanowAccountAuthFetch>(async () =>
+      jsonResponse({
+        access_token: "cached-token",
+        expires_in: 3600,
+      }),
+    );
+    const credentials = {
+      email: "bookings@bookings.skypadi.com",
+      password: "secret-password",
+    };
+
+    const first = await getWakanowAccountToken({
+      credentials,
+      fetchImpl,
+      now: () => 1_000,
+    });
+    const second = await getWakanowAccountToken({
+      credentials,
+      fetchImpl,
+      now: () => 2_000,
+    });
+
+    expect(first).toBe("cached-token");
+    expect(second).toBe("cached-token");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   test("does not choose accounts from an in-memory pool", async () => {
+    expect.hasAssertions();
     const fetchImpl = vi.fn<WakanowAccountAuthFetch>(async (url) => {
       if (url.includes("/token")) {
         return jsonResponse({

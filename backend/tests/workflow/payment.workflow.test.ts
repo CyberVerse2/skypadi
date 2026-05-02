@@ -12,6 +12,7 @@ import { describe, expect, test } from "vitest";
 
 describe("workflow payment workflow", () => {
   test("payment workflow", async () => {
+    expect.hasAssertions();
     const createdAttempts: unknown[] = [];
     const paidClaims: unknown[] = [];
     const confirmations: PaymentConfirmationRecord[] = [];
@@ -122,6 +123,5 @@ describe("workflow payment workflow", () => {
           paidAmount: 161000,
           currency: "NGN",
         })).toThrow(/trusted source/);
-    console.log("payment workflow tests passed");
   });
 });

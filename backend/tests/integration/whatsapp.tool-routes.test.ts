@@ -16,6 +16,7 @@ import { describe, expect, test } from "vitest";
 
 describe("integration whatsapp tool routes", () => {
   test("whatsapp tool routes", async () => {
+    expect.hasAssertions();
     type FlightSearchHandlerInput = Parameters<FlightSearchHandler["searchAndPresent"]>[0];
     type BookingSelectionInput = Parameters<BookingSelectionHandler["createFromFlightSelection"]>[0];
     type PassengerDetailsInput = Parameters<BookingSelectionHandler["collectPassengerDetails"]>[0];
@@ -68,8 +69,6 @@ describe("integration whatsapp tool routes", () => {
     await repliesWhenPassengerDetailsQueueFails();
     await sendsLegacyInteractiveRepliesThroughTripCollectionTool();
     await appliesOriginReplyWithoutLosingCollectedDate();
-
-    console.log("whatsapp tool route tests passed");
 
     async function rejectsInvalidMetaSignature(): Promise<void> {
       const sentMessages: SentMessage[] = [];

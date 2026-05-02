@@ -4,7 +4,8 @@ import { describe, expect, test } from "vitest";
 
 
 describe("unit resend client", () => {
-  test("resend client", async () => {
+  test("maps received email payloads into internal shape", async () => {
+    expect.hasAssertions();
     const email = await getReceivedEmail(
       {
         emails: {
@@ -38,7 +39,10 @@ describe("unit resend client", () => {
       createdAt: "2026-04-29T10:04:00.000Z",
       messageId: "msg_123",
     });
+  });
 
+  test("throws when Resend cannot fetch a received email", async () => {
+    expect.hasAssertions();
     await expect(
       getReceivedEmail(
         {
@@ -51,7 +55,5 @@ describe("unit resend client", () => {
         "email_missing",
       ),
     ).rejects.toThrow(/Resend received email fetch failed/);
-
-    console.log("resend client tests passed");
   });
 });

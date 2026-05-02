@@ -6,6 +6,7 @@ import { describe, expect, test } from "vitest";
 
 describe("unit booking job repository", () => {
   test("booking job repository", async () => {
+    expect.hasAssertions();
     const executedQueries: unknown[] = [];
     const existingQueuedAt = new Date("2026-05-01T09:59:00.000Z");
     const existingUpdatedAt = new Date("2026-05-01T10:00:00.000Z");
@@ -60,8 +61,6 @@ describe("unit booking job repository", () => {
     const markRunningSqlText = sqlString(executedQueries[1]);
     expect(markRunningSqlText).toMatch(/last_error = null/);
     expect(markRunningSqlText).toMatch(/finished_at = null/);
-
-    console.log("booking job repository tests passed");
 
     function sqlString(value: unknown): string {
       const chunks = (value as { queryChunks?: unknown[] } | undefined)?.queryChunks ?? [];

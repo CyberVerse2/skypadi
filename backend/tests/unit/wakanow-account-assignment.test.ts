@@ -6,6 +6,7 @@ import { describe, expect, test } from "vitest";
 
 describe("unit wakanow account assignment", () => {
   test("Wakanow account assignment persists one account per booking", async () => {
+    expect.hasAssertions();
     const executedQueries: unknown[] = [];
     const db = {
       async execute(query: unknown) {
@@ -43,6 +44,7 @@ describe("unit wakanow account assignment", () => {
   });
 
   test("Wakanow account assignment fails when persisted account is no longer configured", async () => {
+    expect.hasAssertions();
     const db = {
       async execute() {
         return {

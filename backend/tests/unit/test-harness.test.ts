@@ -4,9 +4,15 @@ import { describe, expect, test } from "vitest";
 
 
 describe("unit test harness", () => {
-  test("test harness", async () => {
-    assertOk({ ok: true, value: "ready" });
+  test("assertOk returns the value from ok results", () => {
+    expect.hasAssertions();
+
+    expect(assertOk({ ok: true, value: "ready" })).toBe("ready");
+  });
+
+  test("assertOk throws the error from failed results", () => {
+    expect.hasAssertions();
+
     expect(() => assertOk({ ok: false, error: "nope" })).toThrow(/Expected ok result/);
-    console.log("test harness tests passed");
   });
 });

@@ -18,6 +18,7 @@ import { describe, expect, test } from "vitest";
 
 describe("workflow booking workflow", () => {
   test("booking workflow", async () => {
+    expect.hasAssertions();
     const writes: CreateBookingDraftRecord[] = [];
     const repository: BookingRepository = {
       async createDraft(input) {
@@ -419,6 +420,5 @@ describe("workflow booking workflow", () => {
 
     expect(supplierFailure.kind).toBe("needs_manual_review");
     expect(manualReviewRecorded).toBe(true);
-    console.log("booking workflow tests passed");
   });
 });

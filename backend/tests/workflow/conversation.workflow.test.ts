@@ -8,6 +8,7 @@ import { describe, expect, test } from "vitest";
 
 describe("workflow conversation workflow", () => {
   test("conversation workflow", async () => {
+    expect.hasAssertions();
     const repository = createInMemoryConversationRepository();
     const defaultIntentExtractor: IntentExtractor = {
       async extractTripIntent(input) {
@@ -999,8 +1000,6 @@ describe("workflow conversation workflow", () => {
         adults: 3,
       },
     });
-
-    console.log("conversation workflow tests passed");
   });
 
   function assertResultKind<T extends { kind: string }, K extends T["kind"]>(

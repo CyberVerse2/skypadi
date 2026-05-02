@@ -7,6 +7,7 @@ import { buildPrompt, chatActionResponseSchema, decideChatActionWithModel } from
 
 describe("unit chat agent", () => {
   test("chat agent", async () => {
+    expect.hasAssertions();
     const baseDecisionInput = {
       userText: "Find Lagos to Enugu next Saturday",
       now: new Date("2026-05-01T09:00:00.000Z"),
@@ -373,11 +374,10 @@ describe("unit chat agent", () => {
         }),
         baseDecisionInput
       )).rejects.toThrow();
-
-    console.log("chat agent tests passed");
   });
 
   test("chat model response schema is valid for strict OpenAI structured outputs", async () => {
+    expect.hasAssertions();
     const schema = await zodSchema(chatActionResponseSchema).jsonSchema;
     const optionSchema = findObjectSchemaWithProperties(schema, ["id", "title", "description"]);
 

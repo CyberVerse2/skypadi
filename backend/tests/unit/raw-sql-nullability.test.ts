@@ -12,6 +12,7 @@ import { describe, expect, test } from "vitest";
 
 describe("unit raw sql nullability", () => {
   test("raw sql nullability", async () => {
+    expect.hasAssertions();
     const executedQueries: unknown[] = [];
     const db = {
       async execute(query: unknown) {
@@ -101,8 +102,6 @@ describe("unit raw sql nullability", () => {
     for (const query of executedQueries) {
       expect(hasUndefinedSqlChunk(query)).toBe(false);
     }
-
-    console.log("raw SQL nullability tests passed");
 
     function hasUndefinedSqlChunk(value: unknown): boolean {
       if (value === undefined) return true;

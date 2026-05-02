@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 
 describe("unit whatsapp mapper", () => {
   test("whatsapp mapper", async () => {
+    expect.hasAssertions();
     const originList = mapUiIntentToWhatsAppMessage({
       type: "origin_list",
       body: "Sure. Where are you flying from?",
@@ -168,7 +169,5 @@ describe("unit whatsapp mapper", () => {
           documentUrl: "https://example.com/itinerary.pdf",
           filename: "itinerary.pdf",
         })).toThrow(/document body.*1024 characters/);
-
-    console.log("whatsapp mapper tests passed");
   });
 });

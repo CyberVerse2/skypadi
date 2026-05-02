@@ -4,18 +4,35 @@ import { describe, expect, test } from "vitest";
 
 
 describe("resend inbound classification", () => {
-  test("resend inbound classification", async () => {
-    function email(overrides: { from?: string; subject?: string; text?: string }) {
-      return {
-        from: "Wakanow <noreply@wakanow.com>",
-        subject: "Special travel offers this week",
-        text: "Save on your next trip. This email only contains promotional fares.",
-        ...overrides,
-      };
-    }
+  const email = (overrides: { from?: string; subject?: string; text?: string }) => ({
+    from: "Wakanow <noreply@wakanow.com>",
+    subject: "Special travel offers this week",
+    text: "Save on your next trip. This email only contains promotional fares.",
+    ...overrides,
+  });
 
-    expect(classifyInboundEmail(email({})).classification).toBe("other");
+  test.each([
+    {
+      name: "promotional email",
+      input: email({}),
+      expected: "other",
+    },
+    {
+      name: "booking confirmation",
+      input: email({
+        subject: "Booking confirmation: LOS to ABV",
+        text: "Your itinerary is attached.",
+      }),
+      expected: "booking_confirmation",
+    },
+  ])("classifies $name", ({ input, expected }) => {
+    expect.hasAssertions();
 
+    expect(classifyInboundEmail(input).classification).toBe(expected);
+  });
+
+  test("marks verification emails without leaking the OTP into logs or state", () => {
+    expect.hasAssertions();
     const verification = classifyInboundEmail(
       email({
         subject: "Your Wakanow verification code",
@@ -25,14 +42,5 @@ describe("resend inbound classification", () => {
     expect(verification.classification).toBe("verification_code");
     expect(verification.hasCode).toBe(true);
     expect("otp" in verification).toBe(false);
-
-    expect(classifyInboundEmail(
-        email({
-          subject: "Booking confirmation: LOS to ABV",
-          text: "Your itinerary is attached.",
-        })
-      ).classification).toBe("booking_confirmation");
-
-    console.log("Resend inbound classification tests passed.");
   });
 });

@@ -6,6 +6,7 @@ import { describe, expect, test } from "vitest";
 
 describe("workflow supplier booking workflow", () => {
   test("supplier booking workflow", async () => {
+    expect.hasAssertions();
     const hold = handleSupplierHoldResult({
       bookingId: "book_123",
       result: {
@@ -141,6 +142,5 @@ describe("workflow supplier booking workflow", () => {
       },
       observedAt: new Date("2026-04-29T09:05:00.000Z"),
     });
-    console.log("supplier booking workflow tests passed");
   });
 });

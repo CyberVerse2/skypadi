@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 
 describe("unit ai intent extractor", () => {
   test("ai intent extractor", async () => {
+    expect.hasAssertions();
     let capturedPrompt = "";
     const extractor = createOpenAIIntentExtractor({
       apiKey: "test-key",
@@ -71,7 +72,5 @@ describe("unit ai intent extractor", () => {
       kind: "general_chat",
       reply: "Hi, I’m Skypadi. Tell me where you want to travel when you’re ready.",
     });
-
-    console.log("AI intent extractor tests passed");
   });
 });
