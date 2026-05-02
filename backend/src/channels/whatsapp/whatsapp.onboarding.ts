@@ -20,12 +20,5 @@ export function isFirstUserReply(context: ChatContext): boolean {
 }
 
 function supportsOnboardingPrefix(intent: UiIntent): boolean {
-  return (
-    intent.type === "text" ||
-    intent.type === "origin_list" ||
-    intent.type === "flight_list" ||
-    intent.type === "reply_buttons" ||
-    intent.type === "cta_button" ||
-    intent.type === "passenger_details_flow"
-  );
+  return intent.type === "text";
 }
