@@ -614,9 +614,11 @@ test("whatsapp tool routes", async () => {
 
   async function searchesWhenExtractedTripDetailsCompleteTheDraft(): Promise<void> {
     const sentMessages: SentMessage[] = [];
+    const typingEvents: TypingEvent[] = [];
     let searchCalls = 0;
     const app = buildToolRouteServer({
       sentMessages,
+      typingEvents,
       initialConversation: {
         draft: {
           destination: "LOS",
@@ -666,16 +668,22 @@ test("whatsapp tool routes", async () => {
 
     assert.equal(searchCalls, 1);
     assert.equal(sentMessages[0]?.message.type, "interactive");
+    assert.deepEqual(typingEvents, [
+      { messageId: "wamid.complete-trip" },
+      { messageId: "wamid.complete-trip" },
+    ]);
 
     await app.close();
   }
 
   async function executesSearchTool(): Promise<void> {
     const sentMessages: SentMessage[] = [];
+    const typingEvents: TypingEvent[] = [];
     const messageRepository = createMemoryMessageRepository();
     let searchCalls = 0;
     const app = buildToolRouteServer({
       sentMessages,
+      typingEvents,
       messageRepository,
       chatModel: async () => ({
         type: "tool",
@@ -725,6 +733,10 @@ test("whatsapp tool routes", async () => {
 
     assert.equal(searchCalls, 1);
     assert.equal(sentMessages[0]?.message.type, "interactive");
+    assert.deepEqual(typingEvents, [
+      { messageId: "wamid.search" },
+      { messageId: "wamid.search" },
+    ]);
     const recentMessages = await messageRepository.listRecentMessages({
       conversationId: savedConversationId,
       limit: 8,

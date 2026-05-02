@@ -39,6 +39,7 @@ type TypingIndicatorState = {
 };
 
 const defaultTypingIndicatorMinimumMs = 900;
+const searchTypingRefreshMs = 8_000;
 
 type RawBodyRequest = FastifyRequest & { rawBody?: string | Buffer };
 
@@ -244,6 +245,9 @@ async function processMessages(
       message,
       options,
       request,
+      showTypingIndicator: async () => {
+        typing = await showTypingIndicator(message, options, request);
+      },
     }), context);
     if (!intent) continue;
 
@@ -337,6 +341,7 @@ export async function uiIntentFromChatAction(
     message: WhatsAppInboundMessage;
     options: WhatsAppToolRoutesOptions;
     request?: FastifyRequest;
+    showTypingIndicator?: () => Promise<void>;
   }
 ): Promise<UiIntent | undefined> {
   const userId = requiredUserId(input.conversation);
@@ -354,14 +359,16 @@ export async function uiIntentFromChatAction(
   }
 
   if (action.tool === "searchFlights") {
-    return executeSearchFlightsTool({
-      userId,
-      conversationId: input.conversation.id,
-      phoneNumber: input.message.from,
-      input: action.input,
-      flightSearchHandler: input.options.flightSearchHandler,
-      onFailure: createFlightSearchFailureLogger(input.request, input.message),
-    });
+    return withSearchTypingRefresh(input.showTypingIndicator, () =>
+      executeSearchFlightsTool({
+        userId,
+        conversationId: input.conversation.id,
+        phoneNumber: input.message.from,
+        input: action.input,
+        flightSearchHandler: input.options.flightSearchHandler,
+        onFailure: createFlightSearchFailureLogger(input.request, input.message),
+      })
+    );
   }
 
   return input.options.bookingHandler.createFromFlightSelection({
@@ -387,6 +394,7 @@ async function handleCollectedTripDetails(
     message: WhatsAppInboundMessage;
     options: WhatsAppToolRoutesOptions;
     request?: FastifyRequest;
+    showTypingIndicator?: () => Promise<void>;
   }
 ): Promise<UiIntent | undefined> {
   const draft = mergeCollectedTripDetails(input.conversation.draft, details);
@@ -402,17 +410,37 @@ async function handleCollectedTripDetails(
 
   const searchInput = searchInputFromDraft(savedConversation.draft);
   if (searchInput) {
-    return executeSearchFlightsTool({
-      userId: requiredUserId(savedConversation),
-      conversationId: savedConversation.id,
-      phoneNumber: input.message.from,
-      input: searchInput,
-      flightSearchHandler: input.options.flightSearchHandler,
-      onFailure: createFlightSearchFailureLogger(input.request, input.message),
-    });
+    return withSearchTypingRefresh(input.showTypingIndicator, () =>
+      executeSearchFlightsTool({
+        userId: requiredUserId(savedConversation),
+        conversationId: savedConversation.id,
+        phoneNumber: input.message.from,
+        input: searchInput,
+        flightSearchHandler: input.options.flightSearchHandler,
+        onFailure: createFlightSearchFailureLogger(input.request, input.message),
+      })
+    );
   }
 
   return nextMissingField ? promptForMissingTripField(nextMissingField) : undefined;
+}
+
+async function withSearchTypingRefresh<T>(
+  showTypingIndicator: (() => Promise<void>) | undefined,
+  operation: () => Promise<T>
+): Promise<T> {
+  if (!showTypingIndicator) return operation();
+
+  await showTypingIndicator();
+  const refresh = setInterval(() => {
+    void showTypingIndicator();
+  }, searchTypingRefreshMs);
+
+  try {
+    return await operation();
+  } finally {
+    clearInterval(refresh);
+  }
 }
 
 function createFlightSearchFailureLogger(
