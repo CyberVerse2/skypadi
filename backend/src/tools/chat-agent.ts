@@ -57,6 +57,11 @@ const legacyChatActionSchema = z.union([
     }),
     z.object({
       type: z.literal("tool"),
+      tool: z.literal("startNewTrip"),
+      input: collectTripDetailsInputSchema,
+    }),
+    z.object({
+      type: z.literal("tool"),
       tool: z.literal("sendControlledReply"),
       input: sendControlledReplyInputSchema,
     }),
@@ -93,7 +98,7 @@ const modelSendControlledReplyInputSchema = z.object({
 });
 
 const chatActionResponseSchema = z.object({
-  action: z.enum(["answerSideQuestion", "searchFlights", "collectTripDetails", "sendControlledReply", "startBookingJob"]),
+  action: z.enum(["answerSideQuestion", "searchFlights", "collectTripDetails", "startNewTrip", "sendControlledReply", "startBookingJob"]),
   message: z.string().trim().nullable(),
   searchFlightsInput: modelSearchFlightsInputSchema.nullable(),
   collectTripDetailsInput: modelCollectTripDetailsInputSchema.nullable(),
@@ -161,13 +166,13 @@ function parseChatAction(value: unknown): ChatAction {
     };
   }
 
-  if (parsed.action === "collectTripDetails") {
+  if (parsed.action === "collectTripDetails" || parsed.action === "startNewTrip") {
     if (!parsed.collectTripDetailsInput) {
-      throw new Error("collectTripDetails action requires collectTripDetailsInput");
+      throw new Error(`${parsed.action} action requires collectTripDetailsInput`);
     }
     return {
       type: "tool",
-      tool: "collectTripDetails",
+      tool: parsed.action,
       input: {
         ...(parsed.collectTripDetailsInput.origin ? { origin: normalizeAirportCode(parsed.collectTripDetailsInput.origin) } : {}),
         ...(parsed.collectTripDetailsInput.destination ? { destination: normalizeAirportCode(parsed.collectTripDetailsInput.destination) } : {}),
@@ -200,6 +205,7 @@ function buildPrompt(input: DecideChatActionInput): string {
     "Return action=answerSideQuestion only for side questions or general chat.",
     "Never use action=answerSideQuestion to ask for origin, destination, travel date, departure window, trip type, return date, or passenger count.",
     "Return action=sendControlledReply with key=skypadi_intro for Skypadi capability, product, about, or help questions.",
+    "Return action=startNewTrip with collectTripDetailsInput when the user asks to book, find, search, get, need, or want a new flight; include any trip details provided in the same message and ignore stale currentDraft values.",
     "Return action=collectTripDetails with collectTripDetailsInput when the user provides, confirms, corrects, or needs the next trip-detail prompt; use null fields when no new trip detail was provided.",
     "Return action=searchFlights with searchFlightsInput only when origin, destination, departure date, and adult count are known and no trip details need to be merged first.",
     "Return action=startBookingJob with startBookingJobInput only when the user clearly selected a flight option by ID already shown by the app.",

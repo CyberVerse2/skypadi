@@ -775,7 +775,7 @@ test("whatsapp tool routes", async () => {
         chatInput = input;
         return {
           type: "tool",
-          tool: "collectTripDetails",
+          tool: "startNewTrip",
           input: {
             destination: "LOS",
             departureDate: "2026-05-05",
@@ -791,8 +791,15 @@ test("whatsapp tool routes", async () => {
     assert.equal(response.statusCode, 200);
     await waitFor(() => sentMessages.length === 1);
 
-    assert.deepEqual(chatInput?.context.currentDraft, {});
-    assert.equal(chatInput?.context.expectedField, undefined);
+    assert.deepEqual(chatInput?.context.currentDraft, {
+      origin: "ENU",
+      destination: "ABV",
+      departureDate: "2026-05-06",
+      departureWindow: "morning",
+      adults: 2,
+      expectedField: "origin",
+    });
+    assert.equal(chatInput?.context.expectedField, "origin");
     const body = ((sentMessages[0]?.message as { interactive?: { body?: { text?: string } } }).interactive?.body?.text ?? "");
     assert.equal(body, "Where are you flying from?");
 

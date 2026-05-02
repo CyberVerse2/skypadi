@@ -170,6 +170,45 @@ test("chat agent", async () => {
     },
   });
 
+  const modelShapeStartNewTripDecision = await decideChatActionWithModel(
+    async () => ({
+      action: "startNewTrip",
+      message: null,
+      searchFlightsInput: null,
+      collectTripDetailsInput: {
+        origin: null,
+        destination: "LAG",
+        departureDate: "2026-05-05",
+        departureWindow: null,
+        returnDate: null,
+        adults: null,
+      },
+      sendControlledReplyInput: null,
+      startBookingJobInput: null,
+    }),
+    {
+      ...baseDecisionInput,
+      context: {
+        ...baseDecisionInput.context,
+        currentDraft: {
+          origin: "ENU",
+          destination: "ABU",
+          departureDate: "2026-05-06",
+          adults: 2,
+        },
+      },
+    }
+  );
+
+  assert.deepEqual(modelShapeStartNewTripDecision, {
+    type: "tool",
+    tool: "startNewTrip",
+    input: {
+      destination: "LOS",
+      departureDate: "2026-05-05",
+    },
+  });
+
   const modelShapeControlledReplyDecision = await decideChatActionWithModel(
     async () => ({
       action: "sendControlledReply",

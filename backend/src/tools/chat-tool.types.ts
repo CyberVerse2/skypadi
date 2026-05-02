@@ -61,6 +61,11 @@ export type ChatToolRequest =
     }
   | {
       type: "tool";
+      tool: "startNewTrip";
+      input: CollectTripDetailsToolInput;
+    }
+  | {
+      type: "tool";
       tool: "sendControlledReply";
       input: SendControlledReplyToolInput;
     }

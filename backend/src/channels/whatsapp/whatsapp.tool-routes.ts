@@ -215,14 +215,6 @@ async function processMessages(
     const userText = chatTextFromMessage(message);
     if (!userText) continue;
 
-    if (isFreshFlightBookingRequest(userText)) {
-      activeConversation = await options.conversationRepository.save({
-        ...conversation,
-        draft: {},
-        updatedAt: now,
-      });
-    }
-
     const context = await chatContextFromConversation({ conversation: activeConversation, message, options });
     if (isFirstTimeGreetingOnly(userText, context)) {
       const onboardingTyping = await showTypingIndicator(message, options, request);
@@ -335,14 +327,6 @@ function isFirstTimeGreetingOnly(userText: string, context: ChatContext): boolea
   return /^(hi|hello|hey|heyy|heyyy|good morning|good afternoon|good evening)[!. ]*$/i.test(userText.trim());
 }
 
-function isFreshFlightBookingRequest(userText: string): boolean {
-  const normalized = userText.trim().toLowerCase();
-  if (!normalized) return false;
-  if (/\b(this|that|selected|option\s*\d+|continue|go ahead|yes)\b/.test(normalized)) return false;
-
-  return /\b(book|find|search|get|need|want)\b[\s\S]{0,80}\b(?:a|another|new)?\s*flights?\b/.test(normalized);
-}
-
 function promptToResumeAfterSideAnswer(
   action: ChatAction,
   draft: PersistedInboundMessage["conversation"]["draft"]
@@ -373,6 +357,10 @@ export async function uiIntentFromChatAction(
 
   if (action.tool === "collectTripDetails") {
     return handleCollectedTripDetails(action.input, input);
+  }
+
+  if (action.tool === "startNewTrip") {
+    return handleCollectedTripDetails(action.input, { ...input, resetDraft: true });
   }
 
   if (action.tool === "searchFlights") {
@@ -412,9 +400,10 @@ async function handleCollectedTripDetails(
     options: WhatsAppToolRoutesOptions;
     request?: FastifyRequest;
     showTypingIndicator?: () => Promise<void>;
+    resetDraft?: boolean;
   }
 ): Promise<UiIntent | undefined> {
-  const draft = mergeCollectedTripDetails(input.conversation.draft, details);
+  const draft = mergeCollectedTripDetails(input.resetDraft ? {} : input.conversation.draft, details);
   const nextMissingField = firstMissingSearchField(draft);
   const savedConversation = await input.options.conversationRepository.save({
     ...input.conversation,
