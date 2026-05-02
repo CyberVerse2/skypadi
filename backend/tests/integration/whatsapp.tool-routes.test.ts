@@ -293,9 +293,10 @@ test("whatsapp tool routes", async () => {
           body: "Do you mean this Tuesday or next Tuesday?",
           widget: {
             type: "reply_buttons",
+            buttonText: null,
             options: [
-              { id: "date:2026-05-05", title: "Tue, May 5" },
-              { id: "date:2026-05-12", title: "Tue, May 12" },
+              { id: "date:2026-05-05", title: "Tue, May 5", description: null },
+              { id: "date:2026-05-12", title: "Tue, May 12", description: null },
             ],
           },
         },
@@ -345,8 +346,9 @@ test("whatsapp tool routes", async () => {
           body: "Pay NGN 100,000 to confirm this booking.",
           widget: {
             type: "reply_buttons",
+            buttonText: null,
             options: [
-              { id: flightOptionReplyId(selectedFlightOptionId), title: "Book now" },
+              { id: flightOptionReplyId(selectedFlightOptionId), title: "Book now", description: null },
             ],
           },
         },
@@ -1173,7 +1175,6 @@ test("whatsapp tool routes", async () => {
     return buildServer({
       whatsappVerifyToken: "verify-token",
       whatsappAppSecret: input.whatsappAppSecret ?? "secret",
-      typingIndicatorMinimumMs: 0,
       conversationRepository:
         input.conversationRepository ??
         createMemoryConversationRepository({

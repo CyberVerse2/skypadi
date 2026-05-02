@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 
-import { decideChatActionWithModel } from "../../src/tools/chat-agent";
+import { zodSchema } from "ai";
 import { test } from "vitest";
+
+import { chatActionResponseSchema, decideChatActionWithModel } from "../../src/tools/chat-agent";
 
 test("chat agent", async () => {
   const baseDecisionInput = {
@@ -244,9 +246,10 @@ test("chat agent", async () => {
         body: "Do you mean this Tuesday or next Tuesday?",
         widget: {
           type: "reply_buttons",
+          buttonText: null,
           options: [
-            { id: "date:2026-05-05", title: "Tue, May 5" },
-            { id: "date:2026-05-12", title: "Tue, May 12" },
+            { id: "date:2026-05-05", title: "Tue, May 5", description: null },
+            { id: "date:2026-05-12", title: "Tue, May 12", description: "Next week" },
           ],
         },
       },
@@ -264,7 +267,7 @@ test("chat agent", async () => {
         type: "reply_buttons",
         options: [
           { id: "date:2026-05-05", title: "Tue, May 5" },
-          { id: "date:2026-05-12", title: "Tue, May 12" },
+          { id: "date:2026-05-12", title: "Tue, May 12", description: "Next week" },
         ],
       },
     },
@@ -367,3 +370,36 @@ test("chat agent", async () => {
 
   console.log("chat agent tests passed");
 });
+
+test("chat model response schema is valid for strict OpenAI structured outputs", async () => {
+  const schema = await zodSchema(chatActionResponseSchema).jsonSchema;
+  const optionSchema = findObjectSchemaWithProperties(schema, ["id", "title", "description"]);
+
+  assert.ok(optionSchema, "custom clarification option schema should be present");
+  assert.deepEqual(new Set(optionSchema.required), new Set(["id", "title", "description"]));
+});
+
+function findObjectSchemaWithProperties(value: unknown, properties: string[]): { required?: string[] } | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const schemaProperties = record.properties;
+  if (schemaProperties && typeof schemaProperties === "object") {
+    const propertyKeys = new Set(Object.keys(schemaProperties));
+    if (properties.every((property) => propertyKeys.has(property))) {
+      return record as { required?: string[] };
+    }
+  }
+
+  for (const child of Object.values(record)) {
+    if (Array.isArray(child)) {
+      for (const item of child) {
+        const result = findObjectSchemaWithProperties(item, properties);
+        if (result) return result;
+      }
+      continue;
+    }
+    const result = findObjectSchemaWithProperties(child, properties);
+    if (result) return result;
+  }
+  return undefined;
+}

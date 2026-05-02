@@ -9,13 +9,17 @@ export function rankFlightOptionsForDisplay(options: DisplayFlightOption[]): Dis
   const directOptions = sortedOptions.filter((option) => option.stops === 0);
   const recommendationOptions = directOptions.length > 0 ? directOptions : sortedOptions;
   const cheapest = [...recommendationOptions].sort(compareByPriceThenDeparture)[0]!;
-  const bestValue = cheapestInWindow(recommendationOptions, 12, 17) ?? cheapest;
+  const morning = cheapestInWindow(recommendationOptions, 5, 12) ?? cheapest;
+  const afternoon = cheapestInWindow(recommendationOptions, 12, 17) ?? cheapest;
   const fastest = [...recommendationOptions].sort(compareByDurationThenPrice)[0]!;
   const evening = cheapestInWindow(recommendationOptions, 17, 24) ?? cheapest;
+  const bestValue = bestValueByTradeoff({ cheapest, morning, afternoon, evening, fastest });
 
   return {
     cheapest,
     bestValue,
+    morning,
+    afternoon,
     fastest,
     evening,
     options: recommendationOptions,
@@ -59,6 +63,54 @@ function cheapestInWindow(options: DisplayFlightOption[], startHour: number, end
       return minutes >= startHour * 60 && minutes < endHour * 60;
     })
     .sort(compareByPriceThenDeparture)[0];
+}
+
+function bestValueByTradeoff(input: {
+  cheapest: DisplayFlightOption;
+  morning: DisplayFlightOption;
+  afternoon: DisplayFlightOption;
+  evening: DisplayFlightOption;
+  fastest: DisplayFlightOption;
+}): DisplayFlightOption {
+  if (isSensibleMorning(input.cheapest)) {
+    return input.cheapest;
+  }
+
+  const afternoonPremium = input.afternoon.price - input.cheapest.price;
+  if (
+    input.afternoon.id !== input.cheapest.id
+    && isPrimeAfternoon(input.afternoon)
+    && isEarlyMorning(input.cheapest)
+    && afternoonPremium >= 0
+    && afternoonPremium <= 5_000
+  ) {
+    return input.afternoon;
+  }
+
+  if (input.fastest.id !== input.cheapest.id) {
+    const fastestPremium = input.fastest.price - input.cheapest.price;
+    const durationSaved = input.cheapest.durationMinutes - input.fastest.durationMinutes;
+    if (durationSaved >= 20 && fastestPremium >= 0 && fastestPremium <= 5_000) {
+      return input.fastest;
+    }
+  }
+
+  return input.cheapest;
+}
+
+function isEarlyMorning(option: DisplayFlightOption): boolean {
+  const minutes = parseDepartureMinutes(option.departureTime);
+  return minutes >= 5 * 60 && minutes < 10 * 60;
+}
+
+function isSensibleMorning(option: DisplayFlightOption): boolean {
+  const minutes = parseDepartureMinutes(option.departureTime);
+  return minutes >= 10 * 60 && minutes < 12 * 60;
+}
+
+function isPrimeAfternoon(option: DisplayFlightOption): boolean {
+  const minutes = parseDepartureMinutes(option.departureTime);
+  return minutes >= 12 * 60 && minutes < 15 * 60;
 }
 
 function parseDepartureMinutes(departureTime: string): number {

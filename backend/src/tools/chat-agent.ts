@@ -115,7 +115,20 @@ const modelSendControlledReplyInputSchema = z.object({
   key: z.literal("skypadi_intro"),
 });
 
-const chatActionResponseSchema = z.object({
+const modelCustomClarificationInputSchema = z.object({
+  body: z.string().trim().min(1),
+  widget: z.object({
+    type: z.enum(["reply_buttons", "list"]),
+    buttonText: z.string().trim().min(1).nullable(),
+    options: z.array(z.object({
+      id: z.string().trim().min(1),
+      title: z.string().trim().min(1),
+      description: z.string().trim().min(1).nullable(),
+    })).min(1).max(10),
+  }),
+});
+
+export const chatActionResponseSchema = z.object({
   action: z.enum([
     "answerSideQuestion",
     "searchFlights",
@@ -129,7 +142,7 @@ const chatActionResponseSchema = z.object({
   searchFlightsInput: modelSearchFlightsInputSchema.nullable(),
   collectTripDetailsInput: modelCollectTripDetailsInputSchema.nullable(),
   sendControlledReplyInput: modelSendControlledReplyInputSchema.nullable(),
-  customClarificationInput: customClarificationInputSchema.nullable(),
+  customClarificationInput: modelCustomClarificationInputSchema.nullable(),
   startBookingJobInput: z
     .object({
       selectedFlightOptionId: z.string().uuid(),
@@ -222,7 +235,24 @@ function parseChatAction(value: unknown): ChatAction {
     if (!parsed.customClarificationInput) {
       throw new Error("sendCustomClarification action requires customClarificationInput");
     }
-    return { type: "tool", tool: "sendCustomClarification", input: parsed.customClarificationInput };
+    return {
+      type: "tool",
+      tool: "sendCustomClarification",
+      input: {
+        body: parsed.customClarificationInput.body,
+        widget: {
+          type: parsed.customClarificationInput.widget.type,
+          ...(parsed.customClarificationInput.widget.buttonText
+            ? { buttonText: parsed.customClarificationInput.widget.buttonText }
+            : {}),
+          options: parsed.customClarificationInput.widget.options.map((option) => ({
+            id: option.id,
+            title: option.title,
+            ...(option.description ? { description: option.description } : {}),
+          })),
+        },
+      },
+    };
   }
 
   if (!parsed.startBookingJobInput) {
