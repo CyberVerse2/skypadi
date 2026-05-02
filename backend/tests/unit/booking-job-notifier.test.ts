@@ -10,6 +10,7 @@ import { describe, expect, test } from "vitest";
 
 describe("unit booking job notifier", () => {
   test("booking job notifier", async () => {
+    expect.hasAssertions();
     expect(supplierDecisionMessage({
         bookingId: "booking-1",
         status: "awaiting_payment_for_hold",
@@ -178,7 +179,5 @@ describe("unit booking job notifier", () => {
     if (!failedNotify.ok) {
       expect(failedNotify.errorMessage).toBe("WhatsApp unavailable");
     }
-
-    console.log("booking job notifier tests passed");
   });
 });

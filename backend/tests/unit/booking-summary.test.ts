@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 
 describe("unit booking summary", () => {
   test("booking summary", async () => {
+    expect.hasAssertions();
     const body = bookingSummaryPassengerFlowBody({
       passengerPrompt: "I need the passenger details to continue.",
       summary: {
@@ -24,7 +25,5 @@ describe("unit booking summary", () => {
     expect(body).toMatch(/Skypadi fee: ₦3,000/);
     expect(body).toMatch(/Total: ₦161,000/);
     expect(body).toMatch(/I need the passenger details to continue\.$/);
-
-    console.log("booking summary tests passed");
   });
 });

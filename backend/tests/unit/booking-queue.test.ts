@@ -8,7 +8,18 @@ import { describe, expect, test } from "vitest";
 
 
 describe("unit booking queue", () => {
-  test("booking queue", async () => {
+  test.each([
+    ["abc", "supplier-booking:abc"],
+    ["11111111-1111-4111-8111-111111111111", "supplier-booking:11111111-1111-4111-8111-111111111111"],
+    ["booking:with:colon", "supplier-booking:booking:with:colon"],
+  ])("builds supplier booking job key for %s", (bookingId, expected) => {
+    expect.hasAssertions();
+
+    expect(supplierBookingJobKey(bookingId)).toBe(expected);
+  });
+
+  test("enqueues supplier booking jobs with dedupe metadata", async () => {
+    expect.hasAssertions();
     const calls: unknown[] = [];
 
     await enqueueSupplierBookingJobWithAddJob(
@@ -20,7 +31,6 @@ describe("unit booking queue", () => {
     );
 
     expect(supplierBookingTaskName).toBe("supplier-booking");
-    expect(supplierBookingJobKey("abc")).toBe("supplier-booking:abc");
     expect(calls).toEqual([
       {
         identifier: "supplier-booking",
@@ -33,7 +43,5 @@ describe("unit booking queue", () => {
         },
       },
     ]);
-
-    console.log("booking queue tests passed");
   });
 });

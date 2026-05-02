@@ -16,6 +16,7 @@ describe("unit wakanow api booking", () => {
   });
 
   test("Wakanow direct API booking creates a pending-payment booking without browser automation", async () => {
+    expect.hasAssertions();
     const requests: Array<{ url: string; method: string; body?: unknown; headers: Record<string, string> }> = [];
     const fetchImpl: WakanowDirectBookingFetch = async (url, init = {}) => {
       const headers = Object.fromEntries(new Headers(init.headers).entries());
@@ -150,6 +151,7 @@ describe("unit wakanow api booking", () => {
   });
 
   test("Wakanow direct API booking fails closed when booking auth salt is absent", async () => {
+    expect.hasAssertions();
     env.WAKANOW_BOOKING_AUTH_SALT = undefined;
     const fetchImpl: WakanowDirectBookingFetch = async (url) => {
       if (String(url).endsWith("/api/flights/Select/")) {
@@ -177,6 +179,7 @@ describe("unit wakanow api booking", () => {
   });
 
   test("Wakanow direct API booking persists supplier state and can resume after select", async () => {
+    expect.hasAssertions();
     const states: unknown[] = [];
     const urls: string[] = [];
     const fetchImpl: WakanowDirectBookingFetch = async (url) => {
@@ -261,6 +264,7 @@ describe("unit wakanow api booking", () => {
   });
 
   test("Wakanow direct API booking retries validation with supplier email OTP when required", async () => {
+    expect.hasAssertions();
     const validateBodies: unknown[] = [];
     const consumed: string[] = [];
     let validateAttempts = 0;
@@ -322,6 +326,7 @@ describe("unit wakanow api booking", () => {
   });
 
   test("Wakanow direct API booking accepts top-level select response shape", async () => {
+    expect.hasAssertions();
     const fetchImpl: WakanowDirectBookingFetch = async (url) => {
       if (String(url).endsWith("/api/flights/Select/")) {
         return jsonResponse({
@@ -355,6 +360,7 @@ describe("unit wakanow api booking", () => {
   });
 
   test("Wakanow direct API booking accepts string validate success response", async () => {
+    expect.hasAssertions();
     const fetchImpl: WakanowDirectBookingFetch = async (url) => {
       if (String(url).endsWith("/api/flights/Select/")) {
         return jsonResponse({
@@ -386,6 +392,7 @@ describe("unit wakanow api booking", () => {
   });
 
   test("Wakanow direct API booking sends a default Nigerian billing address when supplier omits one", async () => {
+    expect.hasAssertions();
     let paymentBody: Record<string, unknown> | undefined;
     const fetchImpl: WakanowDirectBookingFetch = async (url, init = {}) => {
       if (String(url).endsWith("/api/flights/Select/")) {
@@ -450,6 +457,7 @@ describe("unit wakanow api booking", () => {
   });
 
   test("Wakanow direct API booking marks non-JSON supplier challenges as safe to fall back", async () => {
+    expect.hasAssertions();
     const fetchImpl: WakanowDirectBookingFetch = async () =>
       new Response("<html>Loading</html>", {
         status: 307,

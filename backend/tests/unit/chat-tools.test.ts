@@ -6,6 +6,7 @@ import { describe, expect, test } from "vitest";
 
 describe("unit chat tools", () => {
   test("chat tools", async () => {
+    expect.hasAssertions();
     const searchIntent = await executeSearchFlightsTool({
       userId: "user-1",
       conversationId: "conversation-1",
@@ -240,7 +241,5 @@ describe("unit chat tools", () => {
       type: "text",
       body: "I could not start that booking. Please choose another flight.",
     });
-
-    console.log("chat tool tests passed");
   });
 });

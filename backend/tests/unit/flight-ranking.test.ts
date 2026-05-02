@@ -8,6 +8,7 @@ import { describe, expect, test } from "vitest";
 
 describe("unit flight ranking", () => {
   test("flight ranking", async () => {
+    expect.hasAssertions();
     const ranked = rankFlightOptionsForDisplay([
       option({ id: "a", airline: "Air Peace", departureTime: "06:45", arrivalTime: "08:05", price: 171000 }),
       option({ id: "b", airline: "ValueJet", departureTime: "07:30", arrivalTime: "08:40", price: 142000 }),
@@ -176,7 +177,6 @@ describe("unit flight ranking", () => {
       expect(presented.value.cheapest.arrivalTime).toBe("09:55");
       expect(presented.value.cheapest.durationMinutes).toBe(65);
     }
-    console.log("flight ranking tests passed");
 
     function option(input: {
       id: string;

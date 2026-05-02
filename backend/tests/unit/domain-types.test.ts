@@ -5,11 +5,18 @@ import { describe, expect, test } from "vitest";
 
 
 describe("unit domain types", () => {
-  test("domain types", async () => {
-    expect(isTerminalBookingStatus("issued")).toBe(true);
-    expect(isTerminalBookingStatus("hold_expired")).toBe(true);
-    expect(isTerminalBookingStatus("payment_pending")).toBe(false);
+  test.each([
+    ["issued", true],
+    ["hold_expired", true],
+    ["payment_pending", false],
+  ] as const)("terminal booking status for %s is %s", (status, expected) => {
+    expect.hasAssertions();
 
+    expect(isTerminalBookingStatus(status)).toBe(expected);
+  });
+
+  test("workflow result helpers preserve their payload shape", () => {
+    expect.hasAssertions();
     expect(makeOk({ message: "ready" })).toEqual({
       kind: "ok",
       value: { message: "ready" },
@@ -20,7 +27,5 @@ describe("unit domain types", () => {
       field: "origin",
       ui: { type: "origin_list" },
     });
-
-    console.log("domain type tests passed");
   });
 });

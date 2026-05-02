@@ -6,6 +6,7 @@ import { describe, expect, test } from "vitest";
 
 describe("unit conversation repository", () => {
   test("conversation repository", async () => {
+    expect.hasAssertions();
     const executedQueries: unknown[] = [];
     const db = {
       async execute(query: unknown) {
@@ -46,8 +47,6 @@ describe("unit conversation repository", () => {
     const outboundQueryChunks = (executedQueries[1] as { queryChunks?: unknown[] }).queryChunks ?? [];
     expect(outboundQueryChunks.includes(undefined)).toBe(false);
     expect(outboundQueryChunks.some((chunk) => sqlChunkText(chunk).includes("'outbound'"))).toBe(true);
-
-    console.log("conversation repository tests passed");
 
     function sqlChunkText(chunk: unknown): string {
       if (typeof chunk === "string") return chunk;
