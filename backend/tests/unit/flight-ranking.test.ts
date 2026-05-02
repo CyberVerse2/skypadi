@@ -15,15 +15,31 @@ test("flight ranking", async () => {
 
   assert.equal(ranked.cheapest.id, "b");
   assert.equal(ranked.fastest.id, "c");
-  assert.equal(ranked.bestValue.id, "c");
+  assert.equal(ranked.morning.id, "b");
+  assert.equal(ranked.afternoon.id, "c");
+  assert.equal(ranked.bestValue.id, "b");
   assert.equal(ranked.evening.id, "b");
 
   const lowStressRanked = rankFlightOptionsForDisplay([
-    option({ id: "morning", airline: "Budget", departureTime: "09:05", arrivalTime: "10:15", price: 150000 }),
+    option({ id: "morning", airline: "Budget", departureTime: "06:05", arrivalTime: "07:15", price: 150000 }),
     option({ id: "afternoon", airline: "Ibom Air", departureTime: "13:15", arrivalTime: "14:30", price: 154000 }),
   ]);
 
   assert.equal(lowStressRanked.bestValue.id, "afternoon");
+
+  const sensibleMorningRanked = rankFlightOptionsForDisplay([
+    option({ id: "ten-am", airline: "Aero", departureTime: "10:00", arrivalTime: "11:10", price: 150000 }),
+    option({ id: "afternoon", airline: "Ibom Air", departureTime: "13:15", arrivalTime: "14:30", price: 154000 }),
+  ]);
+
+  assert.equal(sensibleMorningRanked.bestValue.id, "ten-am");
+
+  const overpricedAfternoonRanked = rankFlightOptionsForDisplay([
+    option({ id: "near-noon", airline: "ValueJet", departureTime: "11:45", arrivalTime: "12:55", price: 142000 }),
+    option({ id: "afternoon", airline: "Ibom Air", departureTime: "13:10", arrivalTime: "14:10", price: 162000 }),
+  ]);
+
+  assert.equal(overpricedAfternoonRanked.bestValue.id, "near-noon");
   assert.throws(() => rankFlightOptionsForDisplay([]), /At least one flight option is required/);
 
   const distinctAirlineList = rankedFlightOptionsToIntent(
@@ -43,31 +59,31 @@ test("flight ranking", async () => {
     [
       flightOptionReplyId("value-late"),
       flightOptionReplyId("ibom-afternoon"),
-      flightOptionReplyId("air-peace-fast"),
       flightOptionReplyId("green-evening"),
+      flightOptionReplyId("air-peace-fast"),
     ]
   );
   assert.equal(distinctAirlineList.rows.length, 4);
   assert.deepEqual(
     distinctAirlineList.rows.map((row) => row.title),
-    ["1 Cheapest: ValueJet", "2 Best: Ibom Air", "3 Fastest: Air Peace", "4 Evening: Green Africa"]
+    ["1 Morning: ValueJet", "2 Afternoon: Ibom Air", "3 Evening: Green Africa", "4 Fastest: Air Peace"]
   );
   assert.deepEqual(
     distinctAirlineList.rows.map((row) => row.description),
     [
       "10:30-11:45 - NGN 139,000 - Direct",
       "13:45-14:55 - NGN 158,000 - Direct",
-      "06:45-07:45 - NGN 171,000 - Direct",
       "19:15-20:25 - NGN 160,000 - Direct",
+      "06:45-07:45 - NGN 171,000 - Direct",
     ]
   );
   assert.match(distinctAirlineList.body, /I found 4 good options/);
-  assert.match(distinctAirlineList.body, /Cheapest — ValueJet/);
-  assert.match(distinctAirlineList.body, /Best Value — Ibom Air/);
+  assert.match(distinctAirlineList.body, /Morning — ValueJet/);
+  assert.match(distinctAirlineList.body, /Afternoon — Ibom Air/);
   assert.match(distinctAirlineList.body, /Fastest — Air Peace/);
   assert.match(distinctAirlineList.body, /Evening — Green Africa/);
-  assert.match(distinctAirlineList.body, /My recommendation: Ibom Air/);
-  assert.match(distinctAirlineList.body, /cheapest afternoon/i);
+  assert.match(distinctAirlineList.body, /My recommendation: ValueJet/);
+  assert.match(distinctAirlineList.body, /already a good morning time/i);
 
   const morningButtons = rankedFlightOptionsToIntent(
     rankFlightOptionsForDisplay([

@@ -52,6 +52,8 @@ export type DisplayFlightOption = {
 export type DisplayRankedFlightOptions = {
   cheapest: DisplayFlightOption;
   bestValue: DisplayFlightOption;
+  morning: DisplayFlightOption;
+  afternoon: DisplayFlightOption;
   fastest: DisplayFlightOption;
   evening: DisplayFlightOption;
   options: DisplayFlightOption[];

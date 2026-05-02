@@ -171,8 +171,8 @@ function flightOptionRow(option: RecommendedFlightOption, index: number): Flight
 }
 
 type RecommendedFlightOption = {
-  label: "Cheapest" | "Best" | "Fastest" | "Evening";
-  bodyLabel: "Cheapest" | "Best Value" | "Best Morning" | "Best Evening" | "Fastest" | "Evening";
+  label: "Morning" | "Afternoon" | "Evening" | "Fastest";
+  bodyLabel: "Morning" | "Afternoon" | "Best Morning" | "Best Evening" | "Fastest" | "Evening";
   flight: DisplayFlightOption;
 };
 
@@ -180,10 +180,10 @@ function recommendedOptions(ranked: DisplayRankedFlightOptions): RecommendedFlig
   const selected: RecommendedFlightOption[] = [];
   const usedFlightIds = new Set<string>();
   const categories: Array<Omit<RecommendedFlightOption, "flight"> & { flight: DisplayFlightOption }> = [
-    { label: "Cheapest", bodyLabel: "Cheapest", flight: ranked.cheapest },
-    { label: "Best", bodyLabel: "Best Value", flight: ranked.bestValue },
-    { label: "Fastest", bodyLabel: "Fastest", flight: ranked.fastest },
+    { label: "Morning", bodyLabel: "Morning", flight: ranked.morning },
+    { label: "Afternoon", bodyLabel: "Afternoon", flight: ranked.afternoon },
     { label: "Evening", bodyLabel: "Evening", flight: ranked.evening },
+    { label: "Fastest", bodyLabel: "Fastest", flight: ranked.fastest },
   ];
 
   for (const category of categories) {
@@ -207,7 +207,7 @@ function focusedWindowOptions(
   const flight = cheapestInDepartureWindow(ranked.options, departureWindow) ?? ranked.cheapest;
   return [
     {
-      label: "Best",
+      label: "Morning",
       bodyLabel: bestWindowLabel(departureWindow),
       flight,
     },
@@ -229,8 +229,11 @@ function findReplacementFlight(input: {
 }
 
 function candidatesForCategory(category: RecommendedFlightOption, options: DisplayFlightOption[]): DisplayFlightOption[] {
-  if (category.label === "Best") {
-    return options.filter((option) => isInDepartureWindow(option, 12, 18)).sort(compareByPriceThenDeparture);
+  if (category.label === "Morning") {
+    return options.filter((option) => isInDepartureWindow(option, 5, 12)).sort(compareByPriceThenDeparture);
+  }
+  if (category.label === "Afternoon") {
+    return options.filter((option) => isInDepartureWindow(option, 12, 17)).sort(compareByPriceThenDeparture);
   }
   if (category.label === "Fastest") {
     return [...options].sort(compareByDurationThenPrice);
@@ -267,13 +270,13 @@ function departureWindowHours(departureWindow: DepartureWindow): [number, number
 
 function bestWindowLabel(departureWindow: DepartureWindow): RecommendedFlightOption["bodyLabel"] {
   if (departureWindow === "morning") return "Best Morning";
-  if (departureWindow === "afternoon") return "Best Value";
+  if (departureWindow === "afternoon") return "Afternoon";
   return "Best Evening";
 }
 
 function comparisonBody(options: RecommendedFlightOption[], bestValue: DisplayFlightOption): string {
   const recommendation = options.find((option) => option.flight.id === bestValue.id) ?? options[0]!;
-  const cheapest = options.find((option) => option.bodyLabel === "Cheapest") ?? options[0]!;
+  const cheapest = [...options].sort((left, right) => compareByPriceThenDeparture(left.flight, right.flight))[0]!;
   const lines = options.map((option, index) => {
     return `${index + 1}. ${option.bodyLabel} — ${option.flight.airline}\n${option.flight.departureTime} → ${option.flight.arrivalTime} — ₦${option.flight.price.toLocaleString("en-NG")}\n${detailLine(option, cheapest.flight)}`;
   });
@@ -314,20 +317,27 @@ function focusedWindowBody(
 function detailLine(option: RecommendedFlightOption, cheapest: DisplayFlightOption): string {
   const premium = option.flight.price - cheapest.price;
   const priceBand = premium > 0 ? `₦${premium.toLocaleString("en-NG")} more than cheapest.` : "Lowest fare.";
-  if (option.label === "Best") return `${directnessSummary(option.flight)}. Cheapest afternoon flight. ${priceBand}`;
+  if (option.label === "Morning") return `${directnessSummary(option.flight)}. Cheapest morning flight. ${priceBand}`;
+  if (option.label === "Afternoon") return `${directnessSummary(option.flight)}. Cheapest afternoon flight. ${priceBand}`;
   if (option.label === "Fastest") return `${directnessSummary(option.flight)}. ${option.flight.durationMinutes} min flight time. ${priceBand}`;
   if (option.label === "Evening") return `${directnessSummary(option.flight)}. Cheapest evening flight. ${priceBand}`;
   return `${directnessSummary(option.flight)}. ${priceBand}`;
 }
 
 function recommendationReason(recommendation: RecommendedFlightOption, premium: number): string {
-  if (recommendation.label !== "Best") {
-    return "It is the strongest available pick from the options I found.";
+  if (recommendation.label === "Afternoon") {
+    if (premium > 0) {
+      return `It is only ₦${premium.toLocaleString("en-NG")} more than the cheapest, and it avoids the early morning start.`;
+    }
+    return "It has the best timing tradeoff and is also the lowest fare I found.";
   }
-  if (premium > 0) {
-    return `It is ₦${premium.toLocaleString("en-NG")} more than the cheapest, but it gives you an afternoon departure.`;
+  if (recommendation.label === "Morning" && isSensibleMorning(recommendation.flight)) {
+    return "It is the cheapest option and already a good morning time, so I would not pay extra for a later flight.";
   }
-  return "It is the cheapest afternoon option, so it keeps the trip calm without adding cost.";
+  if (recommendation.label === "Fastest") {
+    return "It is worth considering because it saves meaningful flight time without a big fare jump.";
+  }
+  return "It is the strongest price and timing tradeoff from the options I found.";
 }
 
 function timeWindowName(option: DisplayFlightOption): string {
@@ -355,6 +365,11 @@ function compareByDurationThenPrice(left: DisplayFlightOption, right: DisplayFli
 function isInDepartureWindow(option: DisplayFlightOption, startHour: number, endHour: number): boolean {
   const minutes = parseDepartureMinutes(option.departureTime);
   return minutes >= startHour * 60 && minutes < endHour * 60;
+}
+
+function isSensibleMorning(option: DisplayFlightOption): boolean {
+  const minutes = parseDepartureMinutes(option.departureTime);
+  return minutes >= 10 * 60 && minutes < 12 * 60;
 }
 
 function truncate(value: string, maxLength: number): string {
