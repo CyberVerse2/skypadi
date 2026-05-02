@@ -5,7 +5,7 @@ import { createWhatsAppCloudClient, type WhatsAppClient } from "../../channels/w
 import { db } from "../../db/client";
 import type { BookingStatus } from "../../domain/booking/booking.types";
 import { createDrizzleConversationRepository } from "../../domain/conversation/conversation.repository";
-import type { WakanowHoldClient } from "../../integrations/wakanow/wakanow.booking";
+import type { WakanowHoldClient } from "../../integrations/wakanow/wakanow.types";
 import {
   createDrizzleSupplierBookingRepository,
   handleSupplierHoldResult,

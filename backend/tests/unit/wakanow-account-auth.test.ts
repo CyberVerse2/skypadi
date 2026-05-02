@@ -5,8 +5,8 @@ import {
   createWakanowAccountFetch,
   getWakanowAccountToken,
   WakanowAccountAuthError,
-  type WakanowAccountAuthFetch,
 } from "../../src/integrations/wakanow/account-auth";
+import type { WakanowAccountAuthFetch } from "../../src/integrations/wakanow/wakanow.types";
 import { env } from "../../src/config";
 
 describe("Wakanow account auth", () => {

@@ -1,4 +1,3 @@
-import { env } from "../../config";
 import type {
   FlightSearchRequest,
   FlightSearchResponse,
@@ -6,13 +5,10 @@ import type {
 } from "../../schemas/flight-search";
 import { ProxyAgent, fetch as undiciFetch } from "undici";
 import { normalizeAirportCode, resolveAirport as resolveCatalogAirport } from "../../domain/flight/airport-catalog";
+import { wakanowCommonHeaders, wakanowConfig } from "./wakanow.config";
+import type { WakanowApiFlightResult, WakanowApiSearchResponse } from "./wakanow.types";
 
-const FLIGHTS_API_BASE = "https://flights.wakanow.com/api/flights";
-const POLL_INTERVAL_MS = 1_500;
-const MAX_POLLS = 6;
-const FETCH_TIMEOUT_MS = 15_000;
-
-const proxyAgent = env.PROXY_URL ? new ProxyAgent(env.PROXY_URL) : undefined;
+const proxyAgent = wakanowConfig.proxyUrl ? new ProxyAgent(wakanowConfig.proxyUrl) : undefined;
 
 function proxyFetch(url: string, opts: any = {}): Promise<Response> {
   if (proxyAgent) {
@@ -21,13 +17,7 @@ function proxyFetch(url: string, opts: any = {}): Promise<Response> {
   return fetch(url, opts);
 }
 
-const COMMON_HEADERS = {
-  "Content-Type": "application/json",
-  "Accept": "application/json, text/plain, */*",
-  "Origin": "https://www.wakanow.com",
-  "Referer": "https://www.wakanow.com/",
-  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-};
+const COMMON_HEADERS = wakanowCommonHeaders({ contentType: "json" });
 
 export class WakanowApiSearchError extends Error {
   details?: Record<string, unknown>;
@@ -79,7 +69,7 @@ export async function searchFlightsApi(
     Children: 0,
     Infants: 0,
     GeographyId: "NG",
-    TargetCurrency: env.WAKANOW_CURRENCY,
+    TargetCurrency: wakanowConfig.currency,
     LanguageCode: "en",
     Itineraries: [itinerary]
   };
@@ -90,11 +80,11 @@ export async function searchFlightsApi(
   };
 
   // Step 1: Create search → get request key
-  const searchRes = await proxyFetch(`${FLIGHTS_API_BASE}/Search`, {
+  const searchRes = await proxyFetch(`${wakanowConfig.search.apiBaseUrl}/Search`, {
     method: "POST",
     headers: COMMON_HEADERS,
     body: JSON.stringify(searchBody),
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+    signal: AbortSignal.timeout(wakanowConfig.search.fetchTimeoutMs)
   });
 
   const keyText = await searchRes.text();
@@ -108,18 +98,18 @@ export async function searchFlightsApi(
   }
 
   // Step 2: Poll for results
-  const currency = env.WAKANOW_CURRENCY;
-  let apiData: WakanowApiResponse | null = null;
+  const currency = wakanowConfig.currency;
+  let apiData: WakanowApiSearchResponse | null = null;
 
-  for (let attempt = 1; attempt <= MAX_POLLS; attempt++) {
+  for (let attempt = 1; attempt <= wakanowConfig.search.maxPolls; attempt++) {
     const res = await proxyFetch(
-      `${FLIGHTS_API_BASE}/SearchV2/${requestKey}/${currency}`,
-      { headers: COMMON_HEADERS, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }
+      `${wakanowConfig.search.apiBaseUrl}/SearchV2/${requestKey}/${currency}`,
+      { headers: COMMON_HEADERS, signal: AbortSignal.timeout(wakanowConfig.search.fetchTimeoutMs) }
     );
 
     if (!res.ok) {
-      if (attempt < MAX_POLLS) {
-        await sleep(POLL_INTERVAL_MS);
+      if (attempt < wakanowConfig.search.maxPolls) {
+        await sleep(wakanowConfig.search.pollIntervalMs);
         continue;
       }
       throw new WakanowApiSearchError("Flight results API returned error.", {
@@ -129,8 +119,8 @@ export async function searchFlightsApi(
 
     const text = await res.text();
     if (!text.startsWith("{")) {
-      if (attempt < MAX_POLLS) {
-        await sleep(POLL_INTERVAL_MS);
+      if (attempt < wakanowConfig.search.maxPolls) {
+        await sleep(wakanowConfig.search.pollIntervalMs);
         continue;
       }
       throw new WakanowApiSearchError("Flight results API returned non-JSON.", {
@@ -138,10 +128,10 @@ export async function searchFlightsApi(
       });
     }
 
-    apiData = JSON.parse(text) as WakanowApiResponse;
+    apiData = JSON.parse(text) as WakanowApiSearchResponse;
     if (apiData.SearchFlightResults && apiData.SearchFlightResults.length > 0) break;
 
-    await sleep(POLL_INTERVAL_MS);
+    await sleep(wakanowConfig.search.pollIntervalMs);
   }
 
   if (!apiData?.SearchFlightResults?.length) {
@@ -150,7 +140,7 @@ export async function searchFlightsApi(
     });
   }
 
-  const deeplink = `https://www.wakanow.com/en-ng/flight/listings/${requestKey}`;
+  const deeplink = `${wakanowConfig.webOrigin}/en-ng/flight/listings/${requestKey}`;
   const results = apiData.SearchFlightResults
     .slice(0, request.maxResults)
     .map((r) => mapFlightResult(r, deeplink, requestKey));
@@ -164,38 +154,9 @@ export async function searchFlightsApi(
   };
 }
 
-// ── API response types ────────────────────────────────────
-type WakanowApiResponse = {
-  HasResult: boolean;
-  SearchFlightResults: WakanowFlightResult[];
-};
-
-type WakanowFlightResult = {
-  FlightCombination: {
-    Flights: Array<{
-      AirlineName: string;
-      Airline: string;
-      DepartureCode: string;
-      DepartureName: string;
-      DepartureTime: string;
-      ArrivalCode: string;
-      ArrivalName: string;
-      ArrivalTime: string;
-      Stops: number;
-      TripDuration: string;
-    }>;
-    Price: {
-      Amount: number;
-      CurrencyCode: string;
-    };
-    Source: string;
-  };
-  FlightId: string;
-};
-
 // ── Helpers ───────────────────────────────────────────────
 
-function mapFlightResult(r: WakanowFlightResult, deeplink: string, searchKey: string): FlightSearchResult {
+function mapFlightResult(r: WakanowApiFlightResult, deeplink: string, searchKey: string): FlightSearchResult {
   const flight = r.FlightCombination.Flights[0];
   const price = r.FlightCombination.Price;
 

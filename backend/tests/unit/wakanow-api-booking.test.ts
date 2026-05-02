@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, test } from "vitest";
 import {
   bookFlightWithWakanowApi,
   WakanowDirectBookingError,
-  type WakanowDirectBookingFetch,
 } from "../../src/integrations/wakanow/api-booking";
+import type { WakanowDirectBookingFetch } from "../../src/integrations/wakanow/wakanow.types";
 import { env } from "../../src/config";
 import type { Passenger } from "../../src/schemas/flight-booking";
 
