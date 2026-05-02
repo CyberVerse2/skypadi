@@ -113,101 +113,33 @@ test("Wakanow account fetch attaches bearer token and preserves existing cookies
   assert.equal(calls[0]?.cookie, "cultureInfo=en-ng; token=supplier-token");
 });
 
-test("Wakanow account fetch pins one supplier account for a booking session", async () => {
-  const loginBodies: string[] = [];
-  const requestTokens: Array<string | null> = [];
+test("Wakanow account fetch does not choose accounts from an in-memory pool", async () => {
   const fetchImpl: WakanowAccountAuthFetch = async (url, init = {}) => {
     if (url.includes("/token")) {
-      const body = String(init.body);
-      loginBodies.push(body);
-      const username = new URLSearchParams(body).get("username") ?? "missing";
       return jsonResponse({
-        access_token: `token-for-${username}`,
+        access_token: "unexpected-token",
         expires_in: 3600,
       });
     }
 
-    requestTokens.push(new Headers(init.headers).get("authorization"));
     return jsonResponse({ ok: true });
   };
 
   const authenticatedFetch = createWakanowAccountFetch(fetchImpl, {
+    // Runtime guard for stale callers: account selection belongs in account-assignment.ts.
     accountPool: [
       { email: "amaka.nwosu@bookings.skypadi.com", password: "password-1" },
       { email: "tolu.adebayo@bookings.skypadi.com", password: "password-2" },
-      { email: "chinedu.okoro@bookings.skypadi.com", password: "password-3" },
-      { email: "zainab.bello@bookings.skypadi.com", password: "password-4" },
     ],
     now: () => 1_000,
-  });
+  } as Parameters<typeof createWakanowAccountFetch>[1] & { accountPool: unknown });
 
-  await authenticatedFetch("https://booking.wakanow.com/api/booking/Booking/Validate");
-  await authenticatedFetch("https://booking.wakanow.com/api/booking/Booking/Validate");
-  await authenticatedFetch("https://booking.wakanow.com/api/booking/Booking/Validate");
-  await authenticatedFetch("https://booking.wakanow.com/api/booking/Booking/Validate");
-  await authenticatedFetch("https://booking.wakanow.com/api/booking/Booking/Validate");
-
-  assert.deepEqual(
-    loginBodies.map((body) => new URLSearchParams(body).get("username")),
-    ["amaka.nwosu@bookings.skypadi.com"],
+  await assert.rejects(
+    () => authenticatedFetch("https://booking.wakanow.com/api/booking/Booking/Validate"),
+    (error) =>
+      error instanceof WakanowAccountAuthError
+      && error.message === "Wakanow account credentials are not configured",
   );
-  assert.deepEqual(requestTokens, [
-    "Bearer token-for-amaka.nwosu@bookings.skypadi.com",
-    "Bearer token-for-amaka.nwosu@bookings.skypadi.com",
-    "Bearer token-for-amaka.nwosu@bookings.skypadi.com",
-    "Bearer token-for-amaka.nwosu@bookings.skypadi.com",
-    "Bearer token-for-amaka.nwosu@bookings.skypadi.com",
-  ]);
-});
-
-test("Wakanow account fetch round robins across booking sessions", async () => {
-  const loginBodies: string[] = [];
-  const requestTokens: Array<string | null> = [];
-  const fetchImpl: WakanowAccountAuthFetch = async (url, init = {}) => {
-    if (url.includes("/token")) {
-      const body = String(init.body);
-      loginBodies.push(body);
-      const username = new URLSearchParams(body).get("username") ?? "missing";
-      return jsonResponse({
-        access_token: `token-for-${username}`,
-        expires_in: 3600,
-      });
-    }
-
-    requestTokens.push(new Headers(init.headers).get("authorization"));
-    return jsonResponse({ ok: true });
-  };
-  const accountPool = [
-    { email: "amaka.nwosu@bookings.skypadi.com", password: "password-1" },
-    { email: "tolu.adebayo@bookings.skypadi.com", password: "password-2" },
-    { email: "chinedu.okoro@bookings.skypadi.com", password: "password-3" },
-    { email: "zainab.bello@bookings.skypadi.com", password: "password-4" },
-  ];
-
-  for (let index = 0; index < 5; index += 1) {
-    const authenticatedFetch = createWakanowAccountFetch(fetchImpl, {
-      accountPool,
-      now: () => 1_000,
-    });
-    await authenticatedFetch("https://booking.wakanow.com/api/booking/Booking/Validate");
-  }
-
-  assert.deepEqual(
-    loginBodies.map((body) => new URLSearchParams(body).get("username")),
-    [
-      "amaka.nwosu@bookings.skypadi.com",
-      "tolu.adebayo@bookings.skypadi.com",
-      "chinedu.okoro@bookings.skypadi.com",
-      "zainab.bello@bookings.skypadi.com",
-    ],
-  );
-  assert.deepEqual(requestTokens, [
-    "Bearer token-for-amaka.nwosu@bookings.skypadi.com",
-    "Bearer token-for-tolu.adebayo@bookings.skypadi.com",
-    "Bearer token-for-chinedu.okoro@bookings.skypadi.com",
-    "Bearer token-for-zainab.bello@bookings.skypadi.com",
-    "Bearer token-for-amaka.nwosu@bookings.skypadi.com",
-  ]);
 });
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {

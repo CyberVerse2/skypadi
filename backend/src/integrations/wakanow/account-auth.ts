@@ -31,13 +31,11 @@ type TokenCache = {
 
 type AuthOptions = {
   credentials?: WakanowAccountCredentials | null;
-  accountPool?: WakanowAccountCredentials[];
   fetchImpl?: WakanowAccountAuthFetch;
   now?: () => number;
 };
 
 const sharedTokens = new Map<string, TokenCache>();
-let nextAccountIndex = 0;
 
 export function wakanowAccountCredentialsFromEnv(): WakanowAccountCredentials | undefined {
   return wakanowAccountPoolFromEnv()[0];
@@ -122,9 +120,7 @@ export function createWakanowAccountFetch(
   baseFetch: WakanowAccountAuthFetch,
   options: AuthOptions = {},
 ): WakanowAccountAuthFetch {
-  const sessionCredentials = options.credentials === undefined
-    ? nextWakanowAccountCredentials(options.accountPool)
-    : options.credentials;
+  const sessionCredentials = options.credentials ?? null;
 
   return async (url, init = {}) => {
     const token = await getWakanowAccountToken({
@@ -141,15 +137,6 @@ export function createWakanowAccountFetch(
 
 export function clearWakanowAccountTokenCacheForTest(): void {
   sharedTokens.clear();
-  nextAccountIndex = 0;
-}
-
-function nextWakanowAccountCredentials(accountPool?: WakanowAccountCredentials[]): WakanowAccountCredentials | undefined {
-  const pool = accountPool ?? wakanowAccountPoolFromEnv();
-  if (pool.length === 0) return undefined;
-  const account = pool[nextAccountIndex % pool.length];
-  nextAccountIndex += 1;
-  return account;
 }
 
 function parseTokenResponse(text: string): TokenResponse {
