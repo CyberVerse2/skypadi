@@ -26,11 +26,19 @@ export type WhatsAppToolRoutesOptions = {
   conversationRepository: ConversationRepository;
   messageRepository?: WhatsAppMessageRepository;
   whatsappClient: WhatsAppClient;
+  typingIndicatorMinimumMs?: number;
   appSecret?: string;
   chatModel: ChatModel;
   flightSearchHandler: FlightSearchHandler;
   bookingHandler: BookingSelectionHandler;
 };
+
+type TypingIndicatorState = {
+  shownAtMs: number;
+  minimumMs: number;
+};
+
+const defaultTypingIndicatorMinimumMs = 900;
 
 type RawBodyRequest = FastifyRequest & { rawBody?: string | Buffer };
 
@@ -139,7 +147,7 @@ async function processMessages(
 
     const passengerAction = passengerActionFromMessage(message);
     if (passengerAction === "use_default") {
-      await showTypingIndicator(message, options, request);
+      const typing = await showTypingIndicator(message, options, request);
       await sendIntentReply(
         (await options.bookingHandler.continueWithDefaultPassenger?.({
           userId: requiredUserId(conversation),
@@ -148,14 +156,15 @@ async function processMessages(
         })) ?? supplierBookingStartFailureIntent(),
         conversation.id,
         message,
-        options
+        options,
+        typing
       );
       request.log.info({ providerMessageId: message.id, resultKind: "booking_saved_passenger" }, "Processed WhatsApp booking message");
       continue;
     }
 
     if (passengerAction === "different") {
-      await showTypingIndicator(message, options, request);
+      const typing = await showTypingIndicator(message, options, request);
       await sendIntentReply(
         (await options.bookingHandler.requestPassengerDetails?.({
           userId: requiredUserId(conversation),
@@ -164,7 +173,8 @@ async function processMessages(
         })) ?? supplierBookingStartFailureIntent(),
         conversation.id,
         message,
-        options
+        options,
+        typing
       );
       request.log.info({ providerMessageId: message.id, resultKind: "booking_different_passenger" }, "Processed WhatsApp booking message");
       continue;
@@ -172,7 +182,7 @@ async function processMessages(
 
     const selectedFlightOptionId = selectedFlightOptionIdFromMessage(message);
     if (selectedFlightOptionId) {
-      await showTypingIndicator(message, options, request);
+      const typing = await showTypingIndicator(message, options, request);
       await sendIntentReply(
         await options.bookingHandler.createFromFlightSelection({
           userId: requiredUserId(conversation),
@@ -182,18 +192,20 @@ async function processMessages(
         }),
         conversation.id,
         message,
-        options
+        options,
+        typing
       );
       request.log.info({ providerMessageId: message.id, resultKind: "booking_selection" }, "Processed WhatsApp booking message");
       continue;
     }
 
+    let typing: TypingIndicatorState | undefined;
     if (isPassengerDetailsFlowReply(message)) {
-      await showTypingIndicator(message, options, request);
+      typing = await showTypingIndicator(message, options, request);
     }
     const bookingIntent = await passengerDetailsIntentFromMessage(message, conversation, options);
     if (bookingIntent) {
-      await sendIntentReply(bookingIntent, conversation.id, message, options);
+      await sendIntentReply(bookingIntent, conversation.id, message, options, typing);
       request.log.info({ providerMessageId: message.id, resultKind: "booking_passenger_details" }, "Processed WhatsApp booking message");
       continue;
     }
@@ -203,12 +215,13 @@ async function processMessages(
 
     const context = await chatContextFromConversation({ conversation, message, options });
     if (isFirstTimeGreetingOnly(userText, context)) {
-      await sendIntentReply({ type: "text", body: SKYPADI_ONBOARDING_MESSAGE }, conversation.id, message, options);
+      const onboardingTyping = await showTypingIndicator(message, options, request);
+      await sendIntentReply({ type: "text", body: SKYPADI_ONBOARDING_MESSAGE }, conversation.id, message, options, onboardingTyping);
       request.log.info({ providerMessageId: message.id, resultKind: "controlled_onboarding" }, "Processed WhatsApp tool message");
       continue;
     }
 
-    await showTypingIndicator(message, options, request);
+    typing = await showTypingIndicator(message, options, request);
     const action = await decideChatActionWithModel(options.chatModel, {
       userText,
       now,
@@ -221,7 +234,7 @@ async function processMessages(
         },
         "WhatsApp chat model decision failed; sending fallback reply"
       );
-      await sendIntentReply(chatDecisionFailureIntent(context), conversation.id, message, options);
+      await sendIntentReply(chatDecisionFailureIntent(context), conversation.id, message, options, typing);
       return undefined;
     });
     if (!action) continue;
@@ -234,7 +247,7 @@ async function processMessages(
     }), context);
     if (!intent) continue;
 
-    await sendIntentReply(intent, conversation.id, message, options);
+    await sendIntentReply(intent, conversation.id, message, options, typing);
     const resumeIntent = promptToResumeAfterSideAnswer(action, conversation.draft);
     if (resumeIntent) {
       await sendIntentReply(resumeIntent, conversation.id, message, options);
@@ -267,11 +280,15 @@ async function showTypingIndicator(
   message: WhatsAppInboundMessage,
   options: WhatsAppToolRoutesOptions,
   request: FastifyRequest
-): Promise<void> {
+): Promise<TypingIndicatorState | undefined> {
   try {
     await options.whatsappClient.showTypingIndicator({
       messageId: message.id,
     });
+    return {
+      shownAtMs: Date.now(),
+      minimumMs: options.typingIndicatorMinimumMs ?? defaultTypingIndicatorMinimumMs,
+    };
   } catch (error) {
     request.log.warn(
       {
@@ -280,6 +297,7 @@ async function showTypingIndicator(
       },
       "WhatsApp typing indicator failed"
     );
+    return undefined;
   }
 }
 
@@ -679,8 +697,10 @@ async function sendIntentReply(
   intent: UiIntent,
   conversationId: string,
   message: WhatsAppInboundMessage,
-  options: WhatsAppToolRoutesOptions
+  options: WhatsAppToolRoutesOptions,
+  typing?: TypingIndicatorState
 ): Promise<void> {
+  await waitForMinimumTypingWindow(typing);
   const outboundMessage = mapUiIntentToWhatsAppMessage(intent);
   await options.whatsappClient.sendMessage({
     to: message.from,
@@ -692,6 +712,13 @@ async function sendIntentReply(
     message: outboundMessage,
     options,
   });
+}
+
+async function waitForMinimumTypingWindow(typing: TypingIndicatorState | undefined): Promise<void> {
+  if (!typing || typing.minimumMs <= 0) return;
+  const remainingMs = typing.minimumMs - (Date.now() - typing.shownAtMs);
+  if (remainingMs <= 0) return;
+  await new Promise((resolve) => setTimeout(resolve, remainingMs));
 }
 
 async function recordOutboundMessage(input: {

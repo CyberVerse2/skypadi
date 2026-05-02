@@ -212,9 +212,11 @@ test("whatsapp tool routes", async () => {
 
   async function usesSavedOnboardingForFirstTimeGreetingOnlyUsers(): Promise<void> {
     const sentMessages: SentMessage[] = [];
+    const typingEvents: TypingEvent[] = [];
     let chatModelCalls = 0;
     const app = buildToolRouteServer({
       sentMessages,
+      typingEvents,
       messageRepository: createMemoryMessageRepository(),
       chatModel: async () => {
         chatModelCalls += 1;
@@ -230,6 +232,7 @@ test("whatsapp tool routes", async () => {
     assert.match(body, /^Hi, I’m Skypadi/);
     assert.doesNotMatch(body, /Where are you flying from, where to/);
     assert.equal(chatModelCalls, 0);
+    assert.deepEqual(typingEvents, [{ messageId: "wamid.first-time-hi" }]);
 
     await app.close();
   }
@@ -1000,6 +1003,7 @@ test("whatsapp tool routes", async () => {
     return buildServer({
       whatsappVerifyToken: "verify-token",
       whatsappAppSecret: input.whatsappAppSecret ?? "secret",
+      typingIndicatorMinimumMs: 0,
       conversationRepository:
         input.conversationRepository ??
         createMemoryConversationRepository({
