@@ -1175,7 +1175,6 @@ test("whatsapp tool routes", async () => {
     return buildServer({
       whatsappVerifyToken: "verify-token",
       whatsappAppSecret: input.whatsappAppSecret ?? "secret",
-      typingIndicatorMinimumMs: 0,
       conversationRepository:
         input.conversationRepository ??
         createMemoryConversationRepository({
