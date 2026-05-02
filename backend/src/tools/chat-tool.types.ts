@@ -48,6 +48,19 @@ export type SendControlledReplyToolInput = {
   key: "skypadi_intro";
 };
 
+export type SendCustomClarificationToolInput = {
+  body: string;
+  widget: {
+    type: "reply_buttons" | "list";
+    buttonText?: string;
+    options: Array<{
+      id: string;
+      title: string;
+      description?: string;
+    }>;
+  };
+};
+
 export type ChatToolRequest =
   | {
       type: "tool";
@@ -68,6 +81,11 @@ export type ChatToolRequest =
       type: "tool";
       tool: "sendControlledReply";
       input: SendControlledReplyToolInput;
+    }
+  | {
+      type: "tool";
+      tool: "sendCustomClarification";
+      input: SendCustomClarificationToolInput;
     }
   | {
       type: "tool";

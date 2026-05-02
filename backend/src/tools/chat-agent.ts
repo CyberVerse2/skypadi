@@ -39,6 +39,19 @@ const sendControlledReplyInputSchema = z.object({
   key: z.literal("skypadi_intro"),
 });
 
+const customClarificationInputSchema = z.object({
+  body: z.string().trim().min(1),
+  widget: z.object({
+    type: z.enum(["reply_buttons", "list"]),
+    buttonText: z.string().trim().min(1).optional(),
+    options: z.array(z.object({
+      id: z.string().trim().min(1),
+      title: z.string().trim().min(1),
+      description: z.string().trim().min(1).optional(),
+    })).min(1).max(10),
+  }),
+});
+
 const legacyChatActionSchema = z.union([
   z.object({
     type: z.literal("reply"),
@@ -64,6 +77,11 @@ const legacyChatActionSchema = z.union([
       type: z.literal("tool"),
       tool: z.literal("sendControlledReply"),
       input: sendControlledReplyInputSchema,
+    }),
+    z.object({
+      type: z.literal("tool"),
+      tool: z.literal("sendCustomClarification"),
+      input: customClarificationInputSchema,
     }),
     z.object({
       type: z.literal("tool"),
@@ -98,11 +116,20 @@ const modelSendControlledReplyInputSchema = z.object({
 });
 
 const chatActionResponseSchema = z.object({
-  action: z.enum(["answerSideQuestion", "searchFlights", "collectTripDetails", "startNewTrip", "sendControlledReply", "startBookingJob"]),
+  action: z.enum([
+    "answerSideQuestion",
+    "searchFlights",
+    "collectTripDetails",
+    "startNewTrip",
+    "sendControlledReply",
+    "sendCustomClarification",
+    "startBookingJob",
+  ]),
   message: z.string().trim().nullable(),
   searchFlightsInput: modelSearchFlightsInputSchema.nullable(),
   collectTripDetailsInput: modelCollectTripDetailsInputSchema.nullable(),
   sendControlledReplyInput: modelSendControlledReplyInputSchema.nullable(),
+  customClarificationInput: customClarificationInputSchema.nullable(),
   startBookingJobInput: z
     .object({
       selectedFlightOptionId: z.string().uuid(),
@@ -191,6 +218,13 @@ function parseChatAction(value: unknown): ChatAction {
     return { type: "tool", tool: "sendControlledReply", input: parsed.sendControlledReplyInput };
   }
 
+  if (parsed.action === "sendCustomClarification") {
+    if (!parsed.customClarificationInput) {
+      throw new Error("sendCustomClarification action requires customClarificationInput");
+    }
+    return { type: "tool", tool: "sendCustomClarification", input: parsed.customClarificationInput };
+  }
+
   if (!parsed.startBookingJobInput) {
     throw new Error("startBookingJob action requires startBookingJobInput");
   }
@@ -205,6 +239,10 @@ function buildPrompt(input: DecideChatActionInput): string {
     "Return action=answerSideQuestion only for side questions or general chat.",
     "Never use action=answerSideQuestion to ask for origin, destination, travel date, departure window, trip type, return date, or passenger count.",
     "Return action=sendControlledReply with key=skypadi_intro for Skypadi capability, product, about, or help questions.",
+    "Return action=sendCustomClarification only for low-risk clarification UX that benefits from WhatsApp buttons or a list, such as ambiguous dates, supported Nigerian city/airport choices, time preference, passenger count, or starting a new trip.",
+    "Never use sendCustomClarification for flight selection, booking summaries, passenger details collection, payment, ticketing, supplier status, prices, fares, baggage promises, international flights, or connecting flights.",
+    "Custom clarification option ids may only use these prefixes: date:, origin:, destination:, departure_window:, passengers:, trip_type:, new_trip:.",
+    "Skypadi only supports Nigerian domestic direct flights right now; do not search or continue international or connecting-flight requests.",
     "Return action=startNewTrip with collectTripDetailsInput when the user asks to book, find, search, get, need, or want a new flight; include any trip details provided in the same message and ignore stale currentDraft values.",
     "Return action=collectTripDetails with collectTripDetailsInput when the user provides, confirms, corrects, or needs the next trip-detail prompt; use null fields when no new trip detail was provided.",
     "Return action=searchFlights with searchFlightsInput only when origin, destination, departure date, and adult count are known and no trip details need to be merged first.",

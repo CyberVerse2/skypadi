@@ -61,6 +61,7 @@ test("chat agent", async () => {
       },
       collectTripDetailsInput: null,
       sendControlledReplyInput: null,
+      customClarificationInput: null,
       startBookingJobInput: null,
     }),
     baseDecisionInput
@@ -92,6 +93,7 @@ test("chat agent", async () => {
       },
       collectTripDetailsInput: null,
       sendControlledReplyInput: null,
+      customClarificationInput: null,
       startBookingJobInput: null,
     }),
     baseDecisionInput
@@ -123,6 +125,7 @@ test("chat agent", async () => {
       },
       collectTripDetailsInput: null,
       sendControlledReplyInput: null,
+      customClarificationInput: null,
       startBookingJobInput: null,
     }),
     baseDecisionInput
@@ -154,6 +157,7 @@ test("chat agent", async () => {
         adults: 1,
       },
       sendControlledReplyInput: null,
+      customClarificationInput: null,
       startBookingJobInput: null,
     }),
     baseDecisionInput
@@ -184,6 +188,7 @@ test("chat agent", async () => {
         adults: null,
       },
       sendControlledReplyInput: null,
+      customClarificationInput: null,
       startBookingJobInput: null,
     }),
     {
@@ -216,6 +221,7 @@ test("chat agent", async () => {
       searchFlightsInput: null,
       collectTripDetailsInput: null,
       sendControlledReplyInput: { key: "skypadi_intro" },
+      customClarificationInput: null,
       startBookingJobInput: null,
     }),
     baseDecisionInput
@@ -227,6 +233,43 @@ test("chat agent", async () => {
     input: { key: "skypadi_intro" },
   });
 
+  const customClarificationDecision = await decideChatActionWithModel(
+    async () => ({
+      action: "sendCustomClarification",
+      message: null,
+      searchFlightsInput: null,
+      collectTripDetailsInput: null,
+      sendControlledReplyInput: null,
+      customClarificationInput: {
+        body: "Do you mean this Tuesday or next Tuesday?",
+        widget: {
+          type: "reply_buttons",
+          options: [
+            { id: "date:2026-05-05", title: "Tue, May 5" },
+            { id: "date:2026-05-12", title: "Tue, May 12" },
+          ],
+        },
+      },
+      startBookingJobInput: null,
+    }),
+    baseDecisionInput
+  );
+
+  assert.deepEqual(customClarificationDecision, {
+    type: "tool",
+    tool: "sendCustomClarification",
+    input: {
+      body: "Do you mean this Tuesday or next Tuesday?",
+      widget: {
+        type: "reply_buttons",
+        options: [
+          { id: "date:2026-05-05", title: "Tue, May 5" },
+          { id: "date:2026-05-12", title: "Tue, May 12" },
+        ],
+      },
+    },
+  });
+
   const modelShapeSideQuestionDecision = await decideChatActionWithModel(
     async () => ({
       action: "answerSideQuestion",
@@ -234,6 +277,7 @@ test("chat agent", async () => {
       searchFlightsInput: null,
       collectTripDetailsInput: null,
       sendControlledReplyInput: null,
+      customClarificationInput: null,
       startBookingJobInput: null,
     }),
     baseDecisionInput
@@ -265,6 +309,7 @@ test("chat agent", async () => {
         searchFlightsInput: null,
         collectTripDetailsInput: null,
         sendControlledReplyInput: null,
+        customClarificationInput: null,
         startBookingJobInput: null,
       }),
       baseDecisionInput

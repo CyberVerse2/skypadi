@@ -45,6 +45,8 @@ test("whatsapp tool routes", async () => {
   await prependsOnboardingForFirstTimeUsers();
   await usesSavedOnboardingForFirstTimeGreetingOnlyUsers();
   await usesControlledCopyWhenChatModelSelectsIt();
+  await sendsSafeCustomClarificationWidgets();
+  await blocksUnsafeCustomClarificationWidgets();
   await letsModelAnswerReturningGreetingWithoutTripPrompt();
   await resumesPendingPromptAfterSideQuestionAnswer();
   await includesConversationContextForFollowUpAnswers();
@@ -104,6 +106,7 @@ test("whatsapp tool routes", async () => {
         searchFlightsInput: null,
         collectTripDetailsInput: null,
         sendControlledReplyInput: null,
+        customClarificationInput: null,
         startBookingJobInput: null,
       }),
     });
@@ -136,6 +139,7 @@ test("whatsapp tool routes", async () => {
         searchFlightsInput: null,
         collectTripDetailsInput: null,
         sendControlledReplyInput: null,
+        customClarificationInput: null,
         startBookingJobInput: null,
       }),
     });
@@ -163,6 +167,7 @@ test("whatsapp tool routes", async () => {
           searchFlightsInput: null,
           collectTripDetailsInput: null,
           sendControlledReplyInput: null,
+          customClarificationInput: null,
           startBookingJobInput: null,
         };
       },
@@ -267,6 +272,98 @@ test("whatsapp tool routes", async () => {
     await app.close();
   }
 
+  async function sendsSafeCustomClarificationWidgets(): Promise<void> {
+    const sentMessages: SentMessage[] = [];
+    const app = buildToolRouteServer({
+      sentMessages,
+      messageRepository: createMemoryMessageRepository([
+        {
+          direction: "outbound",
+          textBody: "What date do you want to travel?",
+          sentAt: new Date("2026-05-01T10:00:00.000Z"),
+        },
+      ]),
+      chatModel: async () => ({
+        action: "sendCustomClarification",
+        message: null,
+        searchFlightsInput: null,
+        collectTripDetailsInput: null,
+        sendControlledReplyInput: null,
+        customClarificationInput: {
+          body: "Do you mean this Tuesday or next Tuesday?",
+          widget: {
+            type: "reply_buttons",
+            options: [
+              { id: "date:2026-05-05", title: "Tue, May 5" },
+              { id: "date:2026-05-12", title: "Tue, May 12" },
+            ],
+          },
+        },
+        startBookingJobInput: null,
+      }),
+    });
+
+    const response = await signedPost(app, webhookBody({ id: "wamid.custom-date", text: "Tuesday" }));
+    assert.equal(response.statusCode, 200);
+    await waitFor(() => sentMessages.length === 1);
+
+    const message = sentMessages[0]?.message as {
+      interactive?: {
+        type?: string;
+        body?: { text?: string };
+        action?: { buttons?: Array<{ reply?: { id?: string; title?: string } }> };
+      };
+    };
+    assert.equal(message.interactive?.type, "button");
+    assert.equal(message.interactive?.body?.text, "Do you mean this Tuesday or next Tuesday?");
+    assert.deepEqual(message.interactive?.action?.buttons?.map((button) => button.reply), [
+      { id: "date:2026-05-05", title: "Tue, May 5" },
+      { id: "date:2026-05-12", title: "Tue, May 12" },
+    ]);
+
+    await app.close();
+  }
+
+  async function blocksUnsafeCustomClarificationWidgets(): Promise<void> {
+    const sentMessages: SentMessage[] = [];
+    const app = buildToolRouteServer({
+      sentMessages,
+      messageRepository: createMemoryMessageRepository([
+        {
+          direction: "outbound",
+          textBody: "Hi, I’m Skypadi — your AI travel agent.",
+          sentAt: new Date("2026-05-01T10:00:00.000Z"),
+        },
+      ]),
+      chatModel: async () => ({
+        action: "sendCustomClarification",
+        message: null,
+        searchFlightsInput: null,
+        collectTripDetailsInput: null,
+        sendControlledReplyInput: null,
+        customClarificationInput: {
+          body: "Pay NGN 100,000 to confirm this booking.",
+          widget: {
+            type: "reply_buttons",
+            options: [
+              { id: flightOptionReplyId(selectedFlightOptionId), title: "Book now" },
+            ],
+          },
+        },
+        startBookingJobInput: null,
+      }),
+    });
+
+    const response = await signedPost(app, webhookBody({ id: "wamid.unsafe-custom", text: "Can I book this?" }));
+    assert.equal(response.statusCode, 200);
+    await waitFor(() => sentMessages.length === 1);
+
+    const body = ((sentMessages[0]?.message as { text?: { body?: string } }).text?.body ?? "");
+    assert.equal(body, "I can only help with Nigerian domestic direct flights and simple trip clarifications right now.");
+
+    await app.close();
+  }
+
   async function letsModelAnswerReturningGreetingWithoutTripPrompt(): Promise<void> {
     const sentMessages: SentMessage[] = [];
     const app = buildToolRouteServer({
@@ -284,6 +381,7 @@ test("whatsapp tool routes", async () => {
         searchFlightsInput: null,
         collectTripDetailsInput: null,
         sendControlledReplyInput: null,
+        customClarificationInput: null,
         startBookingJobInput: null,
       }),
     });
@@ -316,6 +414,7 @@ test("whatsapp tool routes", async () => {
         searchFlightsInput: null,
         collectTripDetailsInput: null,
         sendControlledReplyInput: null,
+        customClarificationInput: null,
         startBookingJobInput: null,
       }),
     });
@@ -451,6 +550,7 @@ test("whatsapp tool routes", async () => {
           searchFlightsInput: null,
           collectTripDetailsInput: null,
           sendControlledReplyInput: null,
+          customClarificationInput: null,
           startBookingJobInput: null,
         };
       },
@@ -1105,6 +1205,7 @@ test("whatsapp tool routes", async () => {
           searchFlightsInput: null,
           collectTripDetailsInput: null,
           sendControlledReplyInput: null,
+          customClarificationInput: null,
           startBookingJobInput: null,
         })),
       intentExtractor: {

@@ -7,7 +7,7 @@ import type { UiIntent, WhatsAppMessagePayload } from "./whatsapp.types";
 import type { Passenger } from "../../schemas/flight-booking";
 import { findOrCreateConversation } from "../../domain/conversation/conversation.service";
 import type { ConversationRepository, WhatsAppMessageRepository } from "../../domain/conversation/conversation.types";
-import { whatsappOriginRows } from "../../domain/flight/airport-catalog";
+import { airportByCode, whatsappOriginRows } from "../../domain/flight/airport-catalog";
 import { decideChatActionWithModel, type ChatModel } from "../../tools/chat-agent";
 import type {
   ChatAction,
@@ -15,6 +15,7 @@ import type {
   ChatContextMessage,
   CollectTripDetailsToolInput,
   SearchFlightsToolInput,
+  SendCustomClarificationToolInput,
 } from "../../tools/chat-tool.types";
 import { executeSearchFlightsTool } from "../../tools/search-flights.tool";
 import type { BookingSelectionHandler, FlightSearchHandler } from "./whatsapp.handlers";
@@ -355,6 +356,10 @@ export async function uiIntentFromChatAction(
     return controlledReplyIntent(action.input.key);
   }
 
+  if (action.tool === "sendCustomClarification") {
+    return customClarificationIntent(action.input);
+  }
+
   if (action.tool === "collectTripDetails") {
     return handleCollectedTripDetails(action.input, input);
   }
@@ -390,6 +395,74 @@ function controlledReplyIntent(key: "skypadi_intro"): UiIntent {
   }
 
   return { type: "text", body: SKYPADI_ONBOARDING_MESSAGE };
+}
+
+function customClarificationIntent(input: SendCustomClarificationToolInput): UiIntent {
+  if (!isSafeCustomClarification(input)) {
+    return {
+      type: "text",
+      body: "I can only help with Nigerian domestic direct flights and simple trip clarifications right now.",
+    };
+  }
+
+  if (input.widget.type === "reply_buttons") {
+    return {
+      type: "reply_buttons",
+      body: input.body,
+      buttons: input.widget.options.map((option) => ({
+        id: option.id,
+        title: option.title,
+      })),
+    };
+  }
+
+  return {
+    type: "flight_list",
+    body: input.body,
+    buttonText: input.widget.buttonText ?? "Choose",
+    rows: input.widget.options,
+  };
+}
+
+function isSafeCustomClarification(input: SendCustomClarificationToolInput): boolean {
+  if (unsafeClarificationBodyPattern.test(input.body)) return false;
+  if (input.widget.type === "reply_buttons" && input.widget.options.length > 3) return false;
+  if (input.widget.type === "list" && input.widget.options.length > 10) return false;
+  if (input.widget.options.length < 1) return false;
+  return input.widget.options.every((option) => isSafeCustomClarificationOptionId(option.id));
+}
+
+const unsafeClarificationBodyPattern =
+  /\b(booked|confirmed|ticket issued|payment|pay|transfer|account|fare|price|fee|baggage|wakanow|supplier|connecting|connection|international)\b|₦|ngn/i;
+
+function isSafeCustomClarificationOptionId(id: string): boolean {
+  if (id.startsWith("date:")) {
+    return /^date:\d{4}-\d{2}-\d{2}$/.test(id);
+  }
+
+  if (id.startsWith("origin:") || id.startsWith("destination:")) {
+    const code = id.slice(id.indexOf(":") + 1);
+    const airport = airportByCode(code);
+    return airport?.country.trim().toLowerCase() === "nigeria";
+  }
+
+  if (id.startsWith("departure_window:")) {
+    return /^departure_window:(morning|afternoon|evening|anytime)$/.test(id);
+  }
+
+  if (id.startsWith("passengers:")) {
+    return /^passengers:([1-9]\d?|more)$/.test(id);
+  }
+
+  if (id.startsWith("trip_type:")) {
+    return /^trip_type:(one_way|return)$/.test(id);
+  }
+
+  if (id.startsWith("new_trip:")) {
+    return /^new_trip:(start|yes|no)$/.test(id);
+  }
+
+  return false;
 }
 
 async function handleCollectedTripDetails(
@@ -702,6 +775,12 @@ function chatTextFromMessage(message: WhatsAppInboundMessage): string | undefine
   if (replyId.startsWith("origin:")) {
     return selectedReplyText("Origin selected", replyId.slice("origin:".length), title);
   }
+  if (replyId.startsWith("destination:")) {
+    return selectedReplyText("Destination selected", replyId.slice("destination:".length), title);
+  }
+  if (replyId.startsWith("date:")) {
+    return selectedReplyText("Date selected", replyId.slice("date:".length), title);
+  }
   if (replyId.startsWith("trip_type:")) {
     return selectedReplyText("Trip type selected", replyId.slice("trip_type:".length), title);
   }
@@ -710,6 +789,9 @@ function chatTextFromMessage(message: WhatsAppInboundMessage): string | undefine
   }
   if (replyId.startsWith("passengers:")) {
     return selectedReplyText("Passengers selected", replyId.slice("passengers:".length), title);
+  }
+  if (replyId.startsWith("new_trip:")) {
+    return selectedReplyText("New trip selected", replyId.slice("new_trip:".length), title);
   }
 
   return selectedReplyText("Selected", replyId, title);
