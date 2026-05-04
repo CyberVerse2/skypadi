@@ -2,29 +2,39 @@ import { createHash } from "node:crypto";
 
 import { ProxyAgent, fetch as undiciFetch } from "undici";
 
-import { env } from "../../config";
-import type { BankTransferDetails, BookingContactContext, BookingFlightSummary } from "../../schemas/booking-contract";
+import type { BankTransferDetails } from "../../schemas/booking-contract";
 import type { Passenger } from "../../schemas/flight-booking";
-import { createWakanowAccountFetch, type WakanowAccountCredentials } from "./account-auth";
+import { createWakanowAccountFetch } from "./account-auth";
+import { wakanowCommonHeaders, wakanowConfig } from "./wakanow.config";
+import type {
+  WakanowAccountCredentials,
+  WakanowDirectBookingFetch,
+  WakanowDirectBookingOptions,
+  WakanowDirectBookingRequest,
+  WakanowDirectBookingResponse,
+  WakanowDirectBookingStage,
+  WakanowPaymentMethod,
+  WakanowPaymentOption,
+  WakanowPaymentResponse,
+  WakanowSelectFlightResponse,
+  WakanowSupplierBookingState,
+} from "./wakanow.types";
 
-const FLIGHTS_API_BASE = "https://flights.wakanow.com/api/flights";
-const BOOKING_API_BASE = "https://booking.wakanow.com/api/booking";
-const FETCH_TIMEOUT_MS = 30_000;
-
-const proxyAgent = env.PROXY_URL ? new ProxyAgent(env.PROXY_URL) : undefined;
+const proxyAgent = wakanowConfig.proxyUrl ? new ProxyAgent(wakanowConfig.proxyUrl) : undefined;
 
 const COMMON_HEADERS = {
-  "Content-Type": "application/json",
-  "Accept": "application/json, text/plain, */*",
+  ...wakanowCommonHeaders({ contentType: "json", currency: wakanowConfig.currency }),
   "Accept-Language": "en-NG",
-  "Origin": "https://www.wakanow.com",
-  "Referer": "https://www.wakanow.com/",
-  "User-Agent":
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-  "x-currency": env.WAKANOW_CURRENCY,
 };
 
-export type WakanowDirectBookingFetch = (url: string, init?: RequestInit) => Promise<Response>;
+export type {
+  WakanowDirectBookingFetch,
+  WakanowDirectBookingOptions,
+  WakanowDirectBookingRequest,
+  WakanowDirectBookingResponse,
+  WakanowDirectBookingStage,
+  WakanowSupplierBookingState,
+} from "./wakanow.types";
 
 export class WakanowDirectBookingError extends Error {
   stage: WakanowDirectBookingStage;
@@ -44,88 +54,6 @@ export class WakanowDirectBookingError extends Error {
   }
 }
 
-export type WakanowDirectBookingStage =
-  | "select"
-  | "validate"
-  | "submit_booking"
-  | "payment_options"
-  | "generate_pnr"
-  | "make_payment";
-
-export type WakanowDirectBookingRequest = {
-  bookingId?: string;
-  searchKey: string;
-  flightId: string;
-  passenger: Passenger;
-  contactEmail: string;
-  supplierState?: WakanowSupplierBookingState;
-  resolveOtp?: (input: {
-    bookingId?: string;
-    customerEmail: string;
-    contactEmail: string;
-  }) => Promise<{ code: string; consume: () => Promise<void> } | undefined>;
-};
-
-export type WakanowSupplierBookingState = {
-  supplierBookingId?: string;
-  selectData?: unknown;
-  bankTransfers?: BankTransferDetails[];
-  stage?: "selected" | "validated" | "submitted" | "payment_pending";
-};
-
-export type WakanowDirectBookingResponse = {
-  provider: "wakanow";
-  bookedAt: string;
-  bookingId: string;
-  status: "pending_payment";
-  paymentUrl: string;
-  bankTransfers?: BankTransferDetails[];
-  contactContext: BookingContactContext;
-  flightSummary: BookingFlightSummary;
-  rawStatus: string;
-};
-
-type WakanowDirectBookingOptions = {
-  fetchImpl?: WakanowDirectBookingFetch;
-  accountCredentials?: WakanowAccountCredentials;
-  now?: () => Date;
-  onStateChange?: (state: WakanowSupplierBookingState) => Promise<void>;
-};
-
-type SelectFlightResponse = {
-  SearchKey?: string;
-  BookingId?: string;
-  SelectData?: unknown;
-  IsPassportRequired?: boolean | string;
-  SelectFlightResult?: {
-    BookingId?: string;
-    SelectData?: unknown;
-    IsPassportRequired?: boolean | string;
-  };
-};
-
-type PaymentResponse = {
-  PaymentResponseModel?: {
-    BookingId?: string;
-    TotalPrice?: { Amount?: number; CurrencyCode?: string };
-    BillingAddress?: unknown;
-    PaymentOptions?: PaymentOption[];
-  };
-};
-
-type PaymentOption = {
-  Id?: number | string;
-  Name?: string;
-  IsCorporateCheckout?: boolean;
-  PaymentMethods?: PaymentMethod[];
-};
-
-type PaymentMethod = {
-  Id?: number | string;
-  Name?: string;
-  PaymentDescription?: string;
-};
-
 export async function bookFlightWithWakanowApi(
   request: WakanowDirectBookingRequest,
   options: WakanowDirectBookingOptions = {},
@@ -134,7 +62,7 @@ export async function bookFlightWithWakanowApi(
     credentials: options.accountCredentials,
   });
   const now = options.now ?? (() => new Date());
-  const currency = env.WAKANOW_CURRENCY;
+  const currency = wakanowConfig.currency;
 
   const existingSupplierBookingId = request.supplierState?.supplierBookingId;
   const existingSelectData = request.supplierState?.selectData;
@@ -181,7 +109,7 @@ export async function bookFlightWithWakanowApi(
   await getJson({
     fetchImpl,
     stage: "submit_booking",
-    url: `${BOOKING_API_BASE}/Booking/Booking/${supplierBookingId}`,
+    url: `${wakanowConfig.booking.apiBaseUrl}/Booking/Booking/${supplierBookingId}`,
     headers: bookingAuthHeaders(supplierBookingId, now()),
   });
   await options.onStateChange?.({
@@ -190,24 +118,24 @@ export async function bookFlightWithWakanowApi(
     stage: "submitted",
   });
 
-  const paymentMethods = await getJson<PaymentResponse>({
+  const paymentMethods = await getJson<WakanowPaymentResponse>({
     fetchImpl,
     stage: "payment_options",
-    url: `${BOOKING_API_BASE}/Payment/Get/${supplierBookingId}/Flight`,
+    url: `${wakanowConfig.booking.apiBaseUrl}/Payment/Get/${supplierBookingId}/Flight`,
   });
   const paymentSelection = selectBankTransferPayment(paymentMethods);
 
   await getJson({
     fetchImpl,
     stage: "generate_pnr",
-    url: `${BOOKING_API_BASE}/Booking/GeneratePNR/${supplierBookingId}`,
+    url: `${wakanowConfig.booking.apiBaseUrl}/Booking/GeneratePNR/${supplierBookingId}`,
   });
 
-  const callbackUrl = `https://www.wakanow.com/en-ng/booking/${supplierBookingId}/confirmation?products=Flight`;
-  const payment = await postJson<PaymentResponse>({
+  const callbackUrl = `${wakanowConfig.webOrigin}/en-ng/booking/${supplierBookingId}/confirmation?products=Flight`;
+  const payment = await postJson<WakanowPaymentResponse>({
     fetchImpl,
     stage: "make_payment",
-    url: `${BOOKING_API_BASE}/Payment/MakePayment`,
+    url: `${wakanowConfig.booking.apiBaseUrl}/Payment/MakePayment`,
     body: {
       BookingId: supplierBookingId,
       CallbackUrl: callbackUrl,
@@ -239,7 +167,7 @@ export async function bookFlightWithWakanowApi(
     bookedAt: now().toISOString(),
     bookingId: supplierBookingId,
     status: "pending_payment",
-    paymentUrl: `https://www.wakanow.com/en-ng/booking/${supplierBookingId}/payment?products=Flight&reqKey=${request.searchKey}`,
+    paymentUrl: `${wakanowConfig.webOrigin}/en-ng/booking/${supplierBookingId}/payment?products=Flight&reqKey=${request.searchKey}`,
     bankTransfers,
     contactContext: {
       customerEmail: request.passenger.email,
@@ -265,10 +193,10 @@ async function selectFlight(input: {
   request: WakanowDirectBookingRequest;
   currency: string;
 }): Promise<{ BookingId?: string; SelectData?: unknown }> {
-  const selectedFlight = await postJson<SelectFlightResponse>({
+  const selectedFlight = await postJson<WakanowSelectFlightResponse>({
     fetchImpl: input.fetchImpl,
     stage: "select",
-    url: `${FLIGHTS_API_BASE}/Select/`,
+    url: `${wakanowConfig.search.apiBaseUrl}/Select/`,
     body: {
       SearchKey: input.request.searchKey,
       FlightId: input.request.flightId,
@@ -290,7 +218,7 @@ async function validatePassengerDetails(
     await postJson({
       fetchImpl,
       stage: "validate",
-      url: `${BOOKING_API_BASE}/Booking/Validate`,
+      url: `${wakanowConfig.booking.apiBaseUrl}/Booking/Validate`,
       body: validationRequest,
     });
     return {};
@@ -331,8 +259,8 @@ function buildValidationRequest(input: {
       },
     ],
     GeographyId: "ng",
-    Url: `https://www.wakanow.com/en-ng/booking/${input.supplierBookingId}/customer-info?products=Flight`,
-    LoginUrl: "https://www.wakanow.com/en-ng/account/login",
+    Url: `${wakanowConfig.webOrigin}/en-ng/booking/${input.supplierBookingId}/customer-info?products=Flight`,
+    LoginUrl: `${wakanowConfig.webOrigin}/en-ng/account/login`,
     PromoCode: undefined,
     CorporateCode: undefined,
     ReferralAgentId: undefined,
@@ -395,9 +323,9 @@ function normalizePhone(phone: string): string {
   return `+234${digits}`;
 }
 
-function selectBankTransferPayment(response: PaymentResponse): {
-  option: PaymentOption;
-  method: PaymentMethod;
+function selectBankTransferPayment(response: WakanowPaymentResponse): {
+  option: WakanowPaymentOption;
+  method: WakanowPaymentMethod;
   billingAddress: unknown;
 } {
   const paymentModel = response.PaymentResponseModel;
@@ -424,7 +352,7 @@ function defaultBillingAddress(passenger: Passenger): Record<string, string> {
   };
 }
 
-function parseBankTransfers(paymentModel: PaymentResponse["PaymentResponseModel"]): BankTransferDetails[] {
+function parseBankTransfers(paymentModel: WakanowPaymentResponse["PaymentResponseModel"]): BankTransferDetails[] {
   const desc = paymentModel?.PaymentOptions
     ?.flatMap((option) => option.PaymentMethods ?? [])
     .map((method) => method.PaymentDescription ?? "")
@@ -454,7 +382,7 @@ function cleanHtmlText(value: string | undefined): string | undefined {
 }
 
 function bookingAuthHeaders(bookingId: string, timestamp: Date): Record<string, string> {
-  const bookingAuthSalt = env.WAKANOW_BOOKING_AUTH_SALT;
+  const bookingAuthSalt = wakanowConfig.bookingAuthSalt;
   if (!bookingAuthSalt) {
     throw new WakanowDirectBookingError("Wakanow booking auth salt is not configured", {
       stage: "submit_booking",
@@ -518,7 +446,7 @@ async function requestJson<T>(input: {
     method: input.method,
     headers: { ...COMMON_HEADERS, ...input.headers },
     body: input.body === undefined ? undefined : JSON.stringify(input.body),
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    signal: AbortSignal.timeout(wakanowConfig.booking.fetchTimeoutMs),
   });
   const text = await response.text();
   const contentType = response.headers.get("content-type") ?? "";

@@ -4,6 +4,7 @@ import { ZodError } from "zod";
 import { env } from "./config";
 import { flightSearchRequestSchema } from "./schemas/flight-search";
 import { WakanowApiSearchError, searchFlightsApi } from "./integrations/wakanow/api-search";
+import { wakanowConfig } from "./integrations/wakanow/wakanow.config";
 import { createWhatsAppCloudClient, type WhatsAppClient } from "./channels/whatsapp/whatsapp.client";
 import { registerWhatsAppToolRoutes } from "./channels/whatsapp/whatsapp.tool-routes";
 import { registerResendWebhookRoutes } from "./integrations/resend/webhook.routes";
@@ -13,7 +14,7 @@ import type { ConversationRepository, WhatsAppMessageRepository } from "./domain
 import { createFlightSearchPresentationHandler } from "./workflows/flight-search.workflow";
 import { createLiveBookingHandler } from "./channels/whatsapp/live-booking.handler";
 import type { BookingSelectionHandler, FlightSearchHandler } from "./channels/whatsapp/whatsapp.handlers";
-import type { WakanowHoldClient } from "./integrations/wakanow/wakanow.booking";
+import type { WakanowHoldClient } from "./integrations/wakanow/wakanow.types";
 import type { IntentExtractor } from "./agent/intent-extractor";
 import { createOpenAIChatModel, type ChatModel } from "./tools/chat-agent";
 
@@ -103,7 +104,7 @@ export function buildServer(options: BuildServerOptions = {}) {
   app.get("/", async () => ({
     name: "skypadi-backend",
     endpoints: ["/health", "/api/flights/search", "/webhooks/whatsapp", "/webhooks/resend"],
-    defaults: { currency: env.WAKANOW_CURRENCY, timezone: env.WAKANOW_TIMEZONE }
+    defaults: { currency: wakanowConfig.currency, timezone: wakanowConfig.timezone }
   }));
 
   return app;
@@ -123,7 +124,7 @@ function createLiveFlightSearchHandler(): FlightSearchHandler {
     provider: {
       search: searchFlightsApi,
     },
-    displayTimeZone: env.WAKANOW_TIMEZONE,
+    displayTimeZone: wakanowConfig.timezone,
   });
 }
 
@@ -140,7 +141,7 @@ function createConfiguredLiveBookingHandler(): BookingSelectionHandler {
     db,
     inboundDomain: env.RESEND_INBOUND_DOMAIN,
     passengerDetailsFlowId: env.WHATSAPP_PASSENGER_DETAILS_FLOW_ID,
-    displayTimeZone: env.WAKANOW_TIMEZONE,
+    displayTimeZone: wakanowConfig.timezone,
   });
 }
 

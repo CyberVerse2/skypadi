@@ -1,26 +1,15 @@
-import type { SupplierHoldResult } from "./wakanow.types";
+import type { SupplierHoldResult, WakanowHoldClient, WakanowHoldRequest, WakanowSupplierBookingState } from "./wakanow.types";
 import type { DbClient } from "../../db/client";
 import type { Passenger } from "../../schemas/flight-booking";
 import { assignWakanowAccountForBooking } from "./account-assignment";
 import { wakanowAccountPoolFromEnv } from "./account-auth";
-import { bookFlightWithWakanowApi, type WakanowSupplierBookingState } from "./api-booking";
+import { bookFlightWithWakanowApi } from "./api-booking";
 import { sql } from "drizzle-orm";
 import { createDrizzleInboundEmailRepository } from "../../domain/inbound-email/inbound-email.repository";
 import type { BankTransferDetails } from "../../schemas/booking-contract";
 import { waitForInboundEmailOtp } from "../../workflows/inbound-email.workflow";
 
-export type WakanowHoldClient = {
-  createHold(input: WakanowHoldRequest): Promise<SupplierHoldResult>;
-  createHoldForBooking(input: { bookingId: string }): Promise<SupplierHoldResult>;
-};
-
-export type WakanowHoldRequest = {
-  bookingId: string;
-  selectedFlightOptionId: string;
-  passengerSnapshot: Record<string, unknown>;
-  contactEmail: string;
-  supplierBookingState?: WakanowSupplierBookingState;
-};
+export type { WakanowHoldClient, WakanowHoldRequest } from "./wakanow.types";
 
 export function createWakanowApiHoldClient(input: { db: DbClient }): WakanowHoldClient {
   const client: WakanowHoldClient = {

@@ -1,13 +1,13 @@
 import type { DbClient } from "../db/client";
 import type { CtaButtonIntent, FlightListIntent, ReplyButtonsIntent, UiIntent } from "../channels/whatsapp/whatsapp.types";
 import { flightOptionReplyId } from "../channels/whatsapp/whatsapp.reply-ids";
-import { env } from "../config";
 import type { FlightSearchResponse } from "../schemas/flight-search";
 import { rankFlightOptionsForDisplay } from "../domain/flight/flight-search.service";
 import type { DisplayFlightOption, DisplayRankedFlightOptions } from "../domain/flight/flight.types";
 import { createStoredFlightSearchFromWakanow, findRankedOptionsForSearch } from "../domain/flight/flight.repository";
 import type { WorkflowResult } from "./workflow-result";
 import { makeOk } from "./workflow-result";
+import { wakanowConfig } from "../integrations/wakanow/wakanow.config";
 
 type StoredFlightOptionRow = {
   id: string;
@@ -74,7 +74,7 @@ export function createFlightSearchPresentationHandler(input: {
         destination: request.search.destination,
         departureDate: request.search.departureDate,
         returnDate: request.search.returnDate,
-        maxResults: env.WAKANOW_MAX_RESULTS,
+        maxResults: wakanowConfig.maxResults,
       });
       const stored = await createStoredFlightSearchFromWakanow({
         db: input.db,
