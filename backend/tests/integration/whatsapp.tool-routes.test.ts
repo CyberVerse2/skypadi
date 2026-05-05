@@ -10,8 +10,9 @@ import type {
 } from "../../src/domain/conversation/conversation.types";
 import type { ChatModel } from "../../src/tools/chat-agent";
 import type { DecideChatActionInput } from "../../src/tools/chat-tool.types";
-import { bookingConfirmReplyId, flightOptionReplyId, passengerReplyIds } from "../../src/channels/whatsapp/whatsapp.reply-ids";
+import { bookingConfirmReplyId, passengerReplyIds } from "../../src/channels/whatsapp/whatsapp.reply-ids";
 import { whatsappOriginRows } from "../../src/domain/flight/airport-catalog";
+import { flightOptionReplyId } from "../../src/workflows/flight-option-reply-ids";
 import { test } from "vitest";
 
 test("whatsapp tool routes", async () => {

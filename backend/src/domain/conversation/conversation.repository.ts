@@ -36,7 +36,7 @@ export function createDrizzleConversationRepository(db: DbClient): ConversationR
       const contactId = randomUUID();
       const conversationId = isUuid(conversation.id) ? conversation.id : randomUUID();
 
-      await db.execute(sql`
+      const result = await db.execute(sql`
         with existing_contact as (
           select id, user_id from skypadi_whatsapp.whatsapp_contacts where phone_number = ${conversation.phoneNumber}
         ),
@@ -83,10 +83,24 @@ export function createDrizzleConversationRepository(db: DbClient): ConversationR
           set metadata = excluded.metadata,
               updated_at = excluded.updated_at,
               last_message_at = excluded.last_message_at
+        returning id, user_id, status, metadata, updated_at
       `);
 
-      const saved = await this.findByPhoneNumber(conversation.phoneNumber);
-      return saved ?? { ...conversation, id: conversationId, draft: { ...conversation.draft } };
+      const row = result.rows[0] as
+        | { id: string; user_id: string; status: ConversationRecord["status"]; metadata: unknown; updated_at: Date | string }
+        | undefined;
+      if (!row) return { ...conversation, id: conversationId, draft: { ...conversation.draft } };
+
+      const metadata = isRecord(row.metadata) ? row.metadata : {};
+      const draft = isRecord(metadata.draft) ? metadata.draft : {};
+      return {
+        id: row.id,
+        userId: row.user_id,
+        phoneNumber: conversation.phoneNumber,
+        status: row.status,
+        draft,
+        updatedAt: new Date(row.updated_at),
+      } as ConversationRecord;
     },
     async recordInboundMessage(input) {
       const result = await db.execute(sql`

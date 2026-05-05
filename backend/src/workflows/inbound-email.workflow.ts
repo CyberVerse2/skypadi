@@ -135,6 +135,10 @@ function normalizeAddress(address: string): string {
 }
 
 async function findFirstActiveAlias(recipients: string[], repository: InboundEmailRepository) {
+  const candidates = recipients.filter((recipient) => recipient.includes("@"));
+  const batchAlias = await repository.findFirstActiveAliasByEmails?.(candidates);
+  if (batchAlias) return batchAlias;
+
   for (const recipient of recipients) {
     if (!recipient.includes("@")) continue;
     const alias = await repository.findActiveAliasByEmail(recipient);

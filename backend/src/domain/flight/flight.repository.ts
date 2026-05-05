@@ -48,7 +48,7 @@ export async function createStoredFlightSearchFromWakanow(input: {
       ${request.destination},
       ${request.departureDate},
       ${request.returnDate ?? null},
-      1,
+      ${request.adults},
       'NGN',
       ${JSON.stringify(request)}::jsonb,
       ${now},
@@ -56,7 +56,27 @@ export async function createStoredFlightSearchFromWakanow(input: {
     )
   `);
 
-  for (const [index, result] of input.response.results.entries()) {
+  if (input.response.results.length > 0) {
+    const values = input.response.results.map((result, index) => sql`(
+      ${optionIds[index]},
+      ${flightSearchId},
+      'wakanow',
+      ${result.flightId},
+      ${result.airline},
+      ${request.origin},
+      ${request.destination},
+      ${departureDateTimeFromSearchResult(request.departureDate, result.departureTime)},
+      ${arrivalDateTimeFromSearchResult(request.departureDate, result.departureTime, result.arrivalTime, result.duration)},
+      ${parseDurationMinutes(result.duration)},
+      ${parseStops(result)},
+      ${parsePriceAmount(result.priceText)},
+      'NGN',
+      ${JSON.stringify({})}::jsonb,
+      ${JSON.stringify(result)}::jsonb,
+      ${now},
+      ${now}
+    )`);
+
     await input.db.execute(sql`
       insert into skypadi_whatsapp.flight_options (
         id,
@@ -77,25 +97,7 @@ export async function createStoredFlightSearchFromWakanow(input: {
         created_at,
         updated_at
       )
-      values (
-        ${optionIds[index]},
-        ${flightSearchId},
-        'wakanow',
-        ${result.flightId},
-        ${result.airline},
-        ${request.origin},
-        ${request.destination},
-        ${departureDateTimeFromSearchResult(request.departureDate, result.departureTime)},
-        ${arrivalDateTimeFromSearchResult(request.departureDate, result.departureTime, result.arrivalTime, result.duration)},
-        ${parseDurationMinutes(result.duration)},
-        ${parseStops(result)},
-        ${parsePriceAmount(result.priceText)},
-        'NGN',
-        ${JSON.stringify({})}::jsonb,
-        ${JSON.stringify(result)}::jsonb,
-        ${now},
-        ${now}
-      )
+      values ${sql.join(values, sql`, `)}
     `);
   }
 

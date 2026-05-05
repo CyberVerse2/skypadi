@@ -32,6 +32,7 @@ test("raw sql nullability", async () => {
         origin: "ENU",
         destination: "Lagos",
         departureDate: "2026-05-05",
+        adults: 1,
         maxResults: 10,
       },
       results: [

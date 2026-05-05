@@ -9,6 +9,7 @@ export const flightSearchRequestSchema = z
     destination: z.string().trim().min(3).max(32),
     departureDate: dateSchema,
     returnDate: dateSchema.optional(),
+    adults: z.number().int().positive().max(9).default(1),
     headless: z.boolean().optional(),
     timeoutMs: z.number().int().positive().max(300_000).optional(),
     maxResults: z.number().int().positive().max(100).default(env.WAKANOW_MAX_RESULTS)

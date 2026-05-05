@@ -17,6 +17,22 @@ export function createDrizzleInboundEmailRepository(db: DbClient): InboundEmailR
       if (!row?.booking_id) return undefined;
       return { id: row.id, bookingId: row.booking_id, emailAddress: row.email_address };
     },
+    async findFirstActiveAliasByEmails(emailAddresses) {
+      const candidates = emailAddresses.filter((emailAddress) => emailAddress.includes("@"));
+      if (candidates.length === 0) return undefined;
+
+      const result = await db.execute(sql`
+        select id, booking_id, email_address
+        from skypadi_whatsapp.booking_email_aliases
+        where email_address = any(${candidates})
+          and status = 'active'
+        order by array_position(${candidates}, email_address)
+        limit 1
+      `);
+      const row = result.rows[0] as { id: string; booking_id: string; email_address: string } | undefined;
+      if (!row?.booking_id) return undefined;
+      return { id: row.id, bookingId: row.booking_id, emailAddress: row.email_address };
+    },
     async saveInboundEmail(input) {
       const result = await db.execute(sql`
         insert into skypadi_whatsapp.inbound_emails (
@@ -51,12 +67,23 @@ export function createDrizzleInboundEmailRepository(db: DbClient): InboundEmailR
           now(),
           ${jsonb(input.raw ?? {})}
         )
-        on conflict (resend_email_id) do update
-          set processed_at = excluded.processed_at
-        returning id, (xmax = 0) as was_created
+        on conflict (resend_email_id) do nothing
+        returning id
       `);
-      const row = result.rows[0] as { id: string; was_created: boolean };
-      return { id: row.id, wasCreated: row.was_created };
+      const row = result.rows[0] as { id: string } | undefined;
+      if (row) return { id: row.id, wasCreated: true };
+
+      const existing = await db.execute(sql`
+        select id
+        from skypadi_whatsapp.inbound_emails
+        where resend_email_id = ${input.resendEmailId}
+        limit 1
+      `);
+      const existingRow = existing.rows[0] as { id: string } | undefined;
+      if (!existingRow) {
+        throw new Error("Inbound email conflict could not be resolved");
+      }
+      return { id: existingRow.id, wasCreated: false };
     },
     async claimNextUnconsumedOtp(input) {
       const result = await db.execute(sql`

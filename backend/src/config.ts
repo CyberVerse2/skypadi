@@ -33,15 +33,9 @@ const envSchema = z.object({
   WAKANOW_ACCOUNT_4_EMAIL: z.string().email().optional(),
   WAKANOW_ACCOUNT_4_PASSWORD: z.string().min(1).optional(),
   PROXY_URL: z.string().optional(),
-  STELLAR_NETWORK: z.enum(["testnet", "mainnet"]).default("testnet"),
-  WALLET_ENCRYPTION_KEY: z
-    .string()
-    .min(1, "WALLET_ENCRYPTION_KEY is required (32-byte key as hex or base64)"),
   RESEND_API_KEY: z.string().optional(),
   RESEND_WEBHOOK_SECRET: z.string().optional(),
   RESEND_INBOUND_DOMAIN: z.string().optional()
 });
 
 export const env = envSchema.parse(process.env);
-
-export type StellarNetwork = "testnet" | "mainnet";

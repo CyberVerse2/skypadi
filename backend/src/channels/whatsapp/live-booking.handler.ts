@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import type { DbClient } from "../../db/client";
 import { createDrizzleBookingRepository } from "../../domain/booking/booking.repository";
 import { createDrizzleSupplierBookingJobRepository } from "../../jobs/booking-job.repository";
-import { enqueueSupplierBookingJob } from "../../jobs/booking-queue";
+import { enqueueSupplierBookingJob, type SupplierBookingEnqueue } from "../../jobs/booking-queue";
 import {
   collectDefaultPassengerAndQueueSupplierBooking,
   collectPassengerDetailsAndQueueSupplierBooking,
@@ -19,11 +19,13 @@ export type LiveBookingHandlerConfig = {
   inboundDomain: string;
   passengerDetailsFlowId: string;
   displayTimeZone: string;
+  enqueueSupplierBooking?: SupplierBookingEnqueue;
 };
 
 export function createLiveBookingHandler(config: LiveBookingHandlerConfig): BookingSelectionHandler {
   const repository = createDrizzleBookingRepository(config.db);
   const jobRepository = createDrizzleSupplierBookingJobRepository(config.db);
+  const enqueueSupplierBooking = config.enqueueSupplierBooking ?? enqueueSupplierBookingJob;
 
   return {
     async previewFlightSelection(input) {
@@ -105,10 +107,10 @@ export function createLiveBookingHandler(config: LiveBookingHandlerConfig): Book
         passenger: input.passenger,
         repository,
         jobRepository,
-        enqueueSupplierBooking: enqueueSupplierBookingJob,
+        enqueueSupplierBooking,
       });
 
-      if (result.kind === "needs_user_input") return result.ui as UiIntent;
+      if (result.kind === "needs_user_input") return result.ui;
       if (result.kind !== "ok") return undefined;
 
       return {
@@ -124,10 +126,10 @@ export function createLiveBookingHandler(config: LiveBookingHandlerConfig): Book
         passengerRepository: repository,
         bookingPassengerRepository: repository,
         jobRepository,
-        enqueueSupplierBooking: enqueueSupplierBookingJob,
+        enqueueSupplierBooking,
       });
 
-      if (result.kind === "needs_user_input") return result.ui as UiIntent;
+      if (result.kind === "needs_user_input") return result.ui;
       if (result.kind !== "ok") {
         return { type: "text", body: "I could not start that booking yet. Please enter passenger details again." };
       }

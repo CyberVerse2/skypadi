@@ -1,0 +1,1 @@
+CREATE INDEX "inbound_emails_claimable_otp_idx" ON "skypadi_whatsapp"."inbound_emails" ("booking_id","received_at") WHERE classification = 'verification_code' and extracted_otp is not null and otp_consumed_at is null;

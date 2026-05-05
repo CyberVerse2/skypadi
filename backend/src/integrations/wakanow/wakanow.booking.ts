@@ -1,6 +1,7 @@
 import type { SupplierHoldResult } from "./wakanow.types";
 import type { DbClient } from "../../db/client";
 import type { Passenger } from "../../schemas/flight-booking";
+import { passengerSchema } from "../../schemas/flight-booking";
 import { assignWakanowAccountForBooking } from "./account-assignment";
 import { wakanowAccountPoolFromEnv } from "./account-auth";
 import { bookFlightWithWakanowApi, type WakanowSupplierBookingState } from "./api-booking";
@@ -68,10 +69,6 @@ export function createWakanowApiHoldClient(input: { db: DbClient }): WakanowHold
   };
 
   return client;
-}
-
-export function createWakanowApiFirstHoldClient(input: { db: DbClient }): WakanowHoldClient {
-  return createWakanowApiHoldClient(input);
 }
 
 export function normalizeWakanowHoldStatus(input: {
@@ -245,7 +242,7 @@ async function persistWakanowSupplierBookingState(
 }
 
 function passengerFromSnapshot(snapshot: Record<string, unknown>, contactEmail: string): Passenger {
-  return {
+  return passengerSchema.parse({
     title: stringValue(snapshot.title) as Passenger["title"],
     firstName: stringValue(snapshot.firstName) ?? "",
     middleName: stringValue(snapshot.middleName),
@@ -255,7 +252,7 @@ function passengerFromSnapshot(snapshot: Record<string, unknown>, contactEmail: 
     gender: stringValue(snapshot.gender) as Passenger["gender"],
     phone: stringValue(snapshot.phone) ?? "",
     email: contactEmail,
-  };
+  });
 }
 
 function holdExpiryFromBankTransfer(expiresIn: string | undefined): Date {

@@ -7,8 +7,9 @@ import type { UiIntent, WhatsAppMessagePayload } from "./whatsapp.types";
 import type { Passenger } from "../../schemas/flight-booking";
 import { findOrCreateConversation } from "../../domain/conversation/conversation.service";
 import type { ConversationRepository, WhatsAppMessageRepository } from "../../domain/conversation/conversation.types";
-import { airportByCode, whatsappOriginRows } from "../../domain/flight/airport-catalog";
+import { airportByCode } from "../../domain/flight/airport-catalog";
 import { decideChatActionWithModel, type ChatModel } from "../../tools/chat-agent";
+import { passengerDetailsTextFallbackIntent, tripFieldPromptIntent } from "../../workflows/trip-field-prompts";
 import type {
   ChatAction,
   ChatContext,
@@ -27,6 +28,7 @@ import {
   selectedFlightOptionIdFromBookingConfirmReplyId,
   selectedFlightOptionIdFromReplyId,
 } from "./whatsapp.reply-ids";
+import { parseTripReplyId, tripReplySelectedText } from "../../workflows/trip-reply-ids";
 
 export type WhatsAppToolRoutesOptions = {
   verifyToken: string;
@@ -620,33 +622,15 @@ const unsafeClarificationBodyPattern =
   /\b(booked|confirmed|ticket issued|payment|pay|transfer|account|fare|price|fee|baggage|wakanow|supplier|connecting|connection|international)\b|₦|ngn/i;
 
 function isSafeCustomClarificationOptionId(id: string): boolean {
-  if (id.startsWith("date:")) {
-    return /^date:\d{4}-\d{2}-\d{2}$/.test(id);
-  }
+  const reply = parseTripReplyId(id);
+  if (!reply) return false;
 
-  if (id.startsWith("origin:") || id.startsWith("destination:")) {
-    const code = id.slice(id.indexOf(":") + 1);
-    const airport = airportByCode(code);
+  if (reply.kind === "origin" || reply.kind === "destination") {
+    const airport = airportByCode(reply.value);
     return airport?.country.trim().toLowerCase() === "nigeria";
   }
 
-  if (id.startsWith("departure_window:")) {
-    return /^departure_window:(morning|afternoon|evening|anytime)$/.test(id);
-  }
-
-  if (id.startsWith("passengers:")) {
-    return /^passengers:([1-9]\d?|more)$/.test(id);
-  }
-
-  if (id.startsWith("trip_type:")) {
-    return /^trip_type:(one_way|return)$/.test(id);
-  }
-
-  if (id.startsWith("new_trip:")) {
-    return /^new_trip:(start|yes|no)$/.test(id);
-  }
-
-  return false;
+  return true;
 }
 
 async function handleCollectedTripDetails(
@@ -767,58 +751,7 @@ function searchInputFromDraft(
 function promptForMissingTripField(
   field: NonNullable<PersistedInboundMessage["conversation"]["draft"]["expectedField"]>
 ): UiIntent {
-  if (field === "origin") {
-    return {
-      type: "origin_list",
-      body: "Where are you flying from?",
-      rows: whatsappOriginRows,
-    };
-  }
-
-  if (field === "destination") {
-    return { type: "text", body: "Where are you flying to?" };
-  }
-
-  if (field === "departure_date") {
-    return { type: "text", body: "What date do you want to travel?" };
-  }
-
-  if (field === "departure_window") {
-    return {
-      type: "reply_buttons",
-      body: "What time of day works best?",
-      buttons: [
-        { id: "departure_window:morning", title: "Morning" },
-        { id: "departure_window:afternoon", title: "Afternoon" },
-        { id: "departure_window:evening", title: "Evening" },
-      ],
-    };
-  }
-
-  if (field === "trip_type") {
-    return {
-      type: "reply_buttons",
-      body: "Is this one-way or return?",
-      buttons: [
-        { id: "trip_type:one_way", title: "One-way" },
-        { id: "trip_type:return", title: "Return" },
-      ],
-    };
-  }
-
-  if (field === "passenger_details") {
-    return passengerDetailsTextFallbackIntent();
-  }
-
-  return {
-    type: "reply_buttons",
-    body: "How many adults are travelling?",
-    buttons: [
-      { id: "passengers:1", title: "1 adult" },
-      { id: "passengers:2", title: "2 adults" },
-      { id: "passengers:more", title: "More" },
-    ],
-  };
+  return field === "passenger_details" ? passengerDetailsTextFallbackIntent() : tripFieldPromptIntent(field);
 }
 
 async function passengerDetailsIntentFromMessage(
@@ -966,31 +899,14 @@ function tripDetailsFromInteractiveReply(message: WhatsAppInboundMessage): Colle
   if (message.type !== "interactive") return undefined;
 
   const replyId = message.interactive?.button_reply?.id ?? message.interactive?.list_reply?.id;
-  if (!replyId) return undefined;
+  const reply = parseTripReplyId(replyId);
+  if (!reply) return undefined;
 
-  if (replyId.startsWith("origin:")) {
-    return { origin: replyId.slice("origin:".length) };
-  }
-
-  if (replyId.startsWith("destination:")) {
-    return { destination: replyId.slice("destination:".length) };
-  }
-
-  if (replyId.startsWith("date:")) {
-    return { departureDate: replyId.slice("date:".length) };
-  }
-
-  if (replyId.startsWith("departure_window:")) {
-    return { departureWindow: replyId.slice("departure_window:".length) };
-  }
-
-  if (replyId.startsWith("passengers:")) {
-    const value = replyId.slice("passengers:".length);
-    if (value === "more") return undefined;
-    const adults = Number(value);
-    return Number.isInteger(adults) && adults > 0 ? { adults } : undefined;
-  }
-
+  if (reply.kind === "origin") return { origin: reply.value };
+  if (reply.kind === "destination") return { destination: reply.value };
+  if (reply.kind === "date") return { departureDate: reply.value };
+  if (reply.kind === "departure_window") return { departureWindow: reply.value };
+  if (reply.kind === "passengers" && reply.value !== "more") return { adults: reply.value };
   return undefined;
 }
 
@@ -1004,28 +920,8 @@ function chatTextFromMessage(message: WhatsAppInboundMessage): string | undefine
   const replyId = message.interactive?.button_reply?.id ?? message.interactive?.list_reply?.id;
   if (!replyId) return undefined;
   const title = message.interactive?.button_reply?.title ?? message.interactive?.list_reply?.title;
-
-  if (replyId.startsWith("origin:")) {
-    return selectedReplyText("Origin selected", replyId.slice("origin:".length), title);
-  }
-  if (replyId.startsWith("destination:")) {
-    return selectedReplyText("Destination selected", replyId.slice("destination:".length), title);
-  }
-  if (replyId.startsWith("date:")) {
-    return selectedReplyText("Date selected", replyId.slice("date:".length), title);
-  }
-  if (replyId.startsWith("trip_type:")) {
-    return selectedReplyText("Trip type selected", replyId.slice("trip_type:".length), title);
-  }
-  if (replyId.startsWith("departure_window:")) {
-    return selectedReplyText("Departure window selected", replyId.slice("departure_window:".length), title);
-  }
-  if (replyId.startsWith("passengers:")) {
-    return selectedReplyText("Passengers selected", replyId.slice("passengers:".length), title);
-  }
-  if (replyId.startsWith("new_trip:")) {
-    return selectedReplyText("New trip selected", replyId.slice("new_trip:".length), title);
-  }
+  const reply = parseTripReplyId(replyId);
+  if (reply) return tripReplySelectedText(reply, title);
 
   return selectedReplyText("Selected", replyId, title);
 }
@@ -1096,13 +992,6 @@ async function markPassengerDetailsFallbackExpected(
   });
 }
 
-function passengerDetailsTextFallbackIntent(): UiIntent {
-  return {
-    type: "text",
-    body: "I couldn’t open the passenger details form. Please send the passenger’s full name, title, gender, date of birth, phone number, and email in one message.",
-  };
-}
-
 async function recordOutboundMessage(input: {
   conversationId: string;
   intent: UiIntent;
@@ -1143,7 +1032,7 @@ type MetaSignatureValidation =
   | { ok: true }
   | {
       ok: false;
-      reason: "missing_signature" | "invalid_signature_format" | "signature_mismatch";
+      reason: "missing_signature" | "missing_raw_body" | "invalid_signature_format" | "signature_mismatch";
       hasRawBody: boolean;
       hasSignature: boolean;
     };
@@ -1164,6 +1053,9 @@ function validateMetaSignature(request: RawBodyRequest, appSecret: string): Meta
   }
 
   const raw = rawPayloadBuffer(request);
+  if (!raw) {
+    return { ok: false, reason: "missing_raw_body", hasRawBody, hasSignature: true };
+  }
   const actual = Buffer.from(digest, "hex");
   const expected = createHmac("sha256", appSecret).update(raw).digest();
 
@@ -1174,10 +1066,10 @@ function validateMetaSignature(request: RawBodyRequest, appSecret: string): Meta
   return { ok: true };
 }
 
-function rawPayloadBuffer(request: RawBodyRequest): Buffer {
+function rawPayloadBuffer(request: RawBodyRequest): Buffer | undefined {
   if (Buffer.isBuffer(request.rawBody)) return request.rawBody;
   if (typeof request.rawBody === "string") return Buffer.from(request.rawBody, "utf8");
-  return Buffer.from(JSON.stringify(request.body ?? {}), "utf8");
+  return undefined;
 }
 
 function headerValue(value: string | string[] | undefined): string | undefined {

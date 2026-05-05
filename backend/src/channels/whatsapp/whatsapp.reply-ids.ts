@@ -1,5 +1,8 @@
-const FLIGHT_OPTION_PREFIX = "flight_option:";
 const BOOKING_CONFIRM_PREFIX = "booking_confirm:";
+
+export {
+  selectedFlightOptionIdFromReplyId,
+} from "../../workflows/flight-option-reply-ids";
 
 export const passengerReplyIds = {
   useDefault: "passenger:use_default",
@@ -9,15 +12,6 @@ export const passengerReplyIds = {
 export const bookingReplyIds = {
   pickAnotherFlight: "booking_change:flight",
 } as const;
-
-export function flightOptionReplyId(selectedFlightOptionId: string): string {
-  return `${FLIGHT_OPTION_PREFIX}${selectedFlightOptionId}`;
-}
-
-export function selectedFlightOptionIdFromReplyId(replyId: string | undefined): string | undefined {
-  if (!replyId?.startsWith(FLIGHT_OPTION_PREFIX)) return undefined;
-  return replyId.slice(FLIGHT_OPTION_PREFIX.length);
-}
 
 export function bookingConfirmReplyId(selectedFlightOptionId: string): string {
   return `${BOOKING_CONFIRM_PREFIX}${selectedFlightOptionId}`;

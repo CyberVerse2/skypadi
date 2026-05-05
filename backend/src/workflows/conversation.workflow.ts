@@ -1,4 +1,4 @@
-import type { UiIntent } from "../channels/whatsapp/whatsapp.types";
+import type { UiIntent } from "./ui-intent";
 import type { IntentExtractor, TripIntentExtraction } from "../agent/intent-extractor";
 import { findOrCreateConversation } from "../domain/conversation/conversation.service";
 import type {
@@ -6,7 +6,8 @@ import type {
   ConversationExpectedField,
   ConversationRepository,
 } from "../domain/conversation/conversation.types";
-import { airportByCode, whatsappOriginRows } from "../domain/flight/airport-catalog";
+import { tripFieldPromptIntent } from "./trip-field-prompts";
+import { parseTripReplyId } from "./trip-reply-ids";
 import { makeNeedsUserInput, makeOk, type WorkflowResult } from "./workflow-result";
 
 type WorkflowContact = {
@@ -162,34 +163,26 @@ function assignMissingNonEmptyString(
 }
 
 function applyReplyId(draft: ConversationDraft, replyId: string): boolean {
-  const originCode = originCodeFromReplyId(replyId);
-  if (originCode) {
-    draft.origin = originCode;
+  const reply = parseTripReplyId(replyId);
+  if (!reply) return false;
+
+  if (reply.kind === "origin") {
+    draft.origin = reply.value;
     return true;
   }
 
-  if (replyId === "trip_type:one_way") {
-    draft.tripType = "one_way";
+  if (reply.kind === "trip_type") {
+    draft.tripType = reply.value;
     return true;
   }
 
-  if (replyId === "trip_type:return") {
-    draft.tripType = "return";
-    return true;
-  }
-
-  if (replyId === "passengers:1") {
-    draft.adults = 1;
-    return true;
-  }
-
-  if (replyId === "passengers:2") {
-    draft.adults = 2;
-    return true;
-  }
-
-  if (replyId === "passengers:more") {
+  if (reply.kind === "passengers" && reply.value === "more") {
     draft.expectedField = "passenger_count";
+    return true;
+  }
+
+  if (reply.kind === "passengers" && typeof reply.value === "number") {
+    draft.adults = reply.value;
     return true;
   }
 
@@ -264,25 +257,14 @@ function replyMatchesExpectedField(replyId: string, expectedField: ConversationE
     return false;
   }
 
-  if (expectedField === "origin") {
-    return Boolean(originCodeFromReplyId(replyId));
-  }
+  const reply = parseTripReplyId(replyId);
+  if (!reply) return false;
 
-  if (expectedField === "trip_type") {
-    return replyId === "trip_type:one_way" || replyId === "trip_type:return";
-  }
-
-  if (expectedField === "passengers") {
-    return replyId === "passengers:1" || replyId === "passengers:2" || replyId === "passengers:more";
-  }
+  if (expectedField === "origin") return reply.kind === "origin";
+  if (expectedField === "trip_type") return reply.kind === "trip_type";
+  if (expectedField === "passengers") return reply.kind === "passengers";
 
   return false;
-}
-
-function originCodeFromReplyId(replyId: string): string | undefined {
-  if (!replyId.startsWith("origin:")) return undefined;
-  const code = replyId.slice("origin:".length);
-  return airportByCode(code)?.code;
 }
 
 function promptForExpectedField(draft: ConversationDraft): WorkflowResult<SearchReadyPayload> {
@@ -298,102 +280,7 @@ function promptForField(
   field: ConversationExpectedField
 ): WorkflowResult<SearchReadyPayload> {
   draft.expectedField = field;
-
-  if (field === "origin") {
-    return makeNeedsUserInput("origin", originListIntent());
-  }
-
-  if (field === "destination") {
-    return makeNeedsUserInput("destination", destinationTextIntent());
-  }
-
-  if (field === "departure_date") {
-    return makeNeedsUserInput("departure_date", departureDateTextIntent());
-  }
-
-  if (field === "departure_window") {
-    return makeNeedsUserInput("departure_window", departureWindowTextIntent());
-  }
-
-  if (field === "trip_type") {
-    return makeNeedsUserInput("trip_type", tripTypeButtonsIntent());
-  }
-
-  if (field === "passengers") {
-    return makeNeedsUserInput("passengers", passengerButtonsIntent());
-  }
-
-  if (field === "return_date") {
-    return makeNeedsUserInput("return_date", returnDateTextIntent());
-  }
-
-  return makeNeedsUserInput("passenger_count", passengerCountTextIntent());
-}
-
-function originListIntent(): UiIntent {
-  return {
-    type: "origin_list",
-    body: "Where are you flying from?",
-    rows: whatsappOriginRows,
-  };
-}
-
-function tripTypeButtonsIntent(): UiIntent {
-  return {
-    type: "reply_buttons",
-    body: "Is this one-way or return?",
-    buttons: [
-      { id: "trip_type:one_way", title: "One-way" },
-      { id: "trip_type:return", title: "Return" },
-    ],
-  };
-}
-
-function destinationTextIntent(): UiIntent {
-  return {
-    type: "text",
-    body: "Where are you flying to?",
-  };
-}
-
-function departureDateTextIntent(): UiIntent {
-  return {
-    type: "text",
-    body: "What date do you want to travel?",
-  };
-}
-
-function departureWindowTextIntent(): UiIntent {
-  return {
-    type: "text",
-    body: "What time of day works best?",
-  };
-}
-
-function passengerButtonsIntent(): UiIntent {
-  return {
-    type: "reply_buttons",
-    body: "How many adults are travelling?",
-    buttons: [
-      { id: "passengers:1", title: "1 adult" },
-      { id: "passengers:2", title: "2 adults" },
-      { id: "passengers:more", title: "More" },
-    ],
-  };
-}
-
-function returnDateTextIntent(): UiIntent {
-  return {
-    type: "text",
-    body: "Return date collection is next. Please send your return date.",
-  };
-}
-
-function passengerCountTextIntent(): UiIntent {
-  return {
-    type: "text",
-    body: "Please type the number of adults travelling.",
-  };
+  return makeNeedsUserInput(field, tripFieldPromptIntent(field));
 }
 
 function generalChatTextIntent(reply: string | undefined): UiIntent {

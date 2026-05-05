@@ -16,6 +16,7 @@ import type { BookingSelectionHandler, FlightSearchHandler } from "./channels/wh
 import type { WakanowHoldClient } from "./integrations/wakanow/wakanow.booking";
 import type { IntentExtractor } from "./agent/intent-extractor";
 import { createOpenAIChatModel, type ChatModel } from "./tools/chat-agent";
+import { createSupplierBookingJobEnqueuer, type SupplierBookingEnqueue } from "./jobs/booking-queue";
 
 export type BuildServerOptions = {
   whatsappVerifyToken?: string;
@@ -28,6 +29,7 @@ export type BuildServerOptions = {
   chatModel?: ChatModel;
   flightSearchHandler?: FlightSearchHandler;
   bookingHandler?: BookingSelectionHandler;
+  enqueueSupplierBooking?: SupplierBookingEnqueue;
   supplierClient?: WakanowHoldClient;
 };
 
@@ -59,7 +61,7 @@ export function buildServer(options: BuildServerOptions = {}) {
             model: env.OPENAI_INTENT_MODEL,
           }),
           flightSearchHandler: options.flightSearchHandler ?? createLiveFlightSearchHandler(),
-          bookingHandler: options.bookingHandler ?? createConfiguredLiveBookingHandler(),
+          bookingHandler: options.bookingHandler ?? createConfiguredLiveBookingHandler(app, options.enqueueSupplierBooking),
         });
       }
 
@@ -127,7 +129,10 @@ function createLiveFlightSearchHandler(): FlightSearchHandler {
   });
 }
 
-function createConfiguredLiveBookingHandler(): BookingSelectionHandler {
+function createConfiguredLiveBookingHandler(
+  app: ReturnType<typeof Fastify>,
+  enqueueSupplierBooking?: SupplierBookingEnqueue,
+): BookingSelectionHandler {
   if (!env.RESEND_INBOUND_DOMAIN) {
     throw new Error("RESEND_INBOUND_DOMAIN is required when WhatsApp booking is enabled");
   }
@@ -136,11 +141,23 @@ function createConfiguredLiveBookingHandler(): BookingSelectionHandler {
     throw new Error("WHATSAPP_PASSENGER_DETAILS_FLOW_ID is required when WhatsApp booking is enabled");
   }
 
+  const supplierBookingEnqueuer = enqueueSupplierBooking
+    ? undefined
+    : createSupplierBookingJobEnqueuer({
+        connectionString: process.env.DATABASE_URL,
+      });
+  if (supplierBookingEnqueuer) {
+    app.addHook("onClose", async () => {
+      await supplierBookingEnqueuer.release();
+    });
+  }
+
   return createLiveBookingHandler({
     db,
     inboundDomain: env.RESEND_INBOUND_DOMAIN,
     passengerDetailsFlowId: env.WHATSAPP_PASSENGER_DETAILS_FLOW_ID,
     displayTimeZone: env.WAKANOW_TIMEZONE,
+    enqueueSupplierBooking: enqueueSupplierBooking ?? supplierBookingEnqueuer?.enqueue,
   });
 }
 

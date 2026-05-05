@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import { rankFlightOptionsForDisplay } from "../../src/domain/flight/flight-search.service";
 import { presentStoredFlightOptions, rankedFlightOptionsToIntent } from "../../src/workflows/flight-search.workflow";
-import { flightOptionReplyId } from "../../src/channels/whatsapp/whatsapp.reply-ids";
+import { flightOptionReplyId } from "../../src/workflows/flight-option-reply-ids";
 import type { DisplayFlightOption } from "../../src/domain/flight/flight.types";
 import { test } from "vitest";
 

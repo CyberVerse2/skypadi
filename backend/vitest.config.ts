@@ -7,6 +7,7 @@ export default defineConfig({
     globals: false,
     include: ["tests/**/*.test.ts"],
     reporters: "default",
+    setupFiles: ["tests/setup.ts"],
     sequence: {
       shuffle: false,
     },

@@ -50,6 +50,7 @@ export type SaveInboundEmailInput = {
 
 export type InboundEmailRepository = {
   findActiveAliasByEmail(emailAddress: string): Promise<BookingEmailAliasRecord | undefined>;
+  findFirstActiveAliasByEmails?(emailAddresses: string[]): Promise<BookingEmailAliasRecord | undefined>;
   saveInboundEmail(input: SaveInboundEmailInput): Promise<InboundEmailRecord>;
   claimNextUnconsumedOtp(input: {
     bookingId: string;

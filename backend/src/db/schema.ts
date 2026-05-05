@@ -401,6 +401,9 @@ export const inboundEmails = skypadi.table(
       table.classification,
       table.receivedAt,
     ),
+    claimableOtpIdx: index("inbound_emails_claimable_otp_idx")
+      .on(table.bookingId, table.receivedAt)
+      .where(sql`classification = 'verification_code' and extracted_otp is not null and otp_consumed_at is null`),
   }),
 );
 

@@ -1,4 +1,4 @@
-import type { UiIntent } from "../channels/whatsapp/whatsapp.types";
+import type { UiIntent } from "../workflows/ui-intent";
 import type { BookingDraft } from "../domain/booking/booking.types";
 import type { WorkflowResult } from "../workflows/workflow-result";
 import type { StartBookingJobToolInput } from "./chat-tool.types";

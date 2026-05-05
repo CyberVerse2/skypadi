@@ -4,7 +4,7 @@ import type {
   FlightSearchResponse,
   FlightSearchResult
 } from "../../schemas/flight-search";
-import { ProxyAgent, fetch as undiciFetch } from "undici";
+import { ProxyAgent } from "undici";
 import { normalizeAirportCode, resolveAirport as resolveCatalogAirport } from "../../domain/flight/airport-catalog";
 
 const FLIGHTS_API_BASE = "https://flights.wakanow.com/api/flights";
@@ -14,11 +14,10 @@ const FETCH_TIMEOUT_MS = 15_000;
 
 const proxyAgent = env.PROXY_URL ? new ProxyAgent(env.PROXY_URL) : undefined;
 
-function proxyFetch(url: string, opts: any = {}): Promise<Response> {
-  if (proxyAgent) {
-    return undiciFetch(url, { ...opts, dispatcher: proxyAgent }) as any;
-  }
-  return fetch(url, opts);
+function proxyFetch(url: string, opts: RequestInit = {}): Promise<Response> {
+  if (!proxyAgent) return fetch(url, opts);
+  const proxiedOpts = { ...opts, dispatcher: proxyAgent };
+  return fetch(url, proxiedOpts);
 }
 
 const COMMON_HEADERS = {
@@ -75,7 +74,7 @@ export async function searchFlightsApi(
     FlightSearchType: isRoundTrip ? "Return" : "Oneway",
     Ticketclass: "Y",
     FlexibleDateFlag: "false",
-    Adults: 1,
+    Adults: request.adults,
     Children: 0,
     Infants: 0,
     GeographyId: "NG",

@@ -1,9 +1,19 @@
 import type { DbClient } from "../db/client";
-import type { CtaButtonIntent, FlightListIntent, ReplyButtonsIntent, UiIntent } from "../channels/whatsapp/whatsapp.types";
-import { flightOptionReplyId } from "../channels/whatsapp/whatsapp.reply-ids";
+import type { CtaButtonIntent, FlightListIntent, ReplyButtonsIntent, UiIntent } from "./ui-intent";
+import { flightOptionReplyId } from "./flight-option-reply-ids";
 import { env } from "../config";
 import type { FlightSearchResponse } from "../schemas/flight-search";
-import { rankFlightOptionsForDisplay } from "../domain/flight/flight-search.service";
+import {
+  cheapestInWindow,
+  compareByDurationThenPrice,
+  compareByPriceThenDeparture,
+  departureWindowHours,
+  isInDepartureWindow,
+  isSensibleMorning,
+  parseDepartureMinutes,
+  rankFlightOptionsForDisplay,
+  type DepartureWindow,
+} from "../domain/flight/flight-search.service";
 import type { DisplayFlightOption, DisplayRankedFlightOptions } from "../domain/flight/flight.types";
 import { createStoredFlightSearchFromWakanow, findRankedOptionsForSearch } from "../domain/flight/flight.repository";
 import type { WorkflowResult } from "./workflow-result";
@@ -30,6 +40,7 @@ export type FlightSearchProvider = {
     destination: string;
     departureDate: string;
     returnDate?: string;
+    adults: number;
     maxResults?: number;
   }): Promise<FlightSearchResponse>;
 };
@@ -67,6 +78,7 @@ export function createFlightSearchPresentationHandler(input: {
         departureDate: string;
         departureWindow?: string;
         returnDate?: string;
+        adults: number;
       };
     }): Promise<UiIntent> {
       const response = await input.provider.search({
@@ -74,6 +86,7 @@ export function createFlightSearchPresentationHandler(input: {
         destination: request.search.destination,
         departureDate: request.search.departureDate,
         returnDate: request.search.returnDate,
+        adults: request.search.adults,
         maxResults: env.WAKANOW_MAX_RESULTS,
       });
       const stored = await createStoredFlightSearchFromWakanow({
@@ -108,8 +121,6 @@ export function rankedFlightOptionsToIntent(
 
   return recommendedOptionsToListIntent(recommendedOptions(ranked), ranked.bestValue);
 }
-
-export const rankedFlightOptionsToListIntent = rankedFlightOptionsToIntent;
 
 function recommendedOptionsToListIntent(
   options: RecommendedFlightOption[],
@@ -230,21 +241,22 @@ function findReplacementFlight(input: {
 
 function candidatesForCategory(category: RecommendedFlightOption, options: DisplayFlightOption[]): DisplayFlightOption[] {
   if (category.label === "Morning") {
-    return options.filter((option) => isInDepartureWindow(option, 5, 12)).sort(compareByPriceThenDeparture);
+    const [startHour, endHour] = departureWindowHours("morning");
+    return options.filter((option) => isInDepartureWindow(option, startHour, endHour)).sort(compareByPriceThenDeparture);
   }
   if (category.label === "Afternoon") {
-    return options.filter((option) => isInDepartureWindow(option, 12, 17)).sort(compareByPriceThenDeparture);
+    const [startHour, endHour] = departureWindowHours("afternoon");
+    return options.filter((option) => isInDepartureWindow(option, startHour, endHour)).sort(compareByPriceThenDeparture);
   }
   if (category.label === "Fastest") {
     return [...options].sort(compareByDurationThenPrice);
   }
   if (category.label === "Evening") {
-    return options.filter((option) => isInDepartureWindow(option, 18, 24)).sort(compareByPriceThenDeparture);
+    const [startHour, endHour] = departureWindowHours("evening");
+    return options.filter((option) => isInDepartureWindow(option, startHour, endHour)).sort(compareByPriceThenDeparture);
   }
   return [...options].sort(compareByPriceThenDeparture);
 }
-
-type DepartureWindow = "morning" | "afternoon" | "evening";
 
 function normalizedDepartureWindow(value: string | undefined): DepartureWindow | undefined {
   const normalized = value?.trim().toLowerCase();
@@ -259,13 +271,7 @@ function cheapestInDepartureWindow(
   departureWindow: DepartureWindow
 ): DisplayFlightOption | undefined {
   const [startHour, endHour] = departureWindowHours(departureWindow);
-  return options.filter((option) => isInDepartureWindow(option, startHour, endHour)).sort(compareByPriceThenDeparture)[0];
-}
-
-function departureWindowHours(departureWindow: DepartureWindow): [number, number] {
-  if (departureWindow === "morning") return [5, 12];
-  if (departureWindow === "afternoon") return [12, 17];
-  return [17, 24];
+  return cheapestInWindow(options, startHour, endHour);
 }
 
 function bestWindowLabel(departureWindow: DepartureWindow): RecommendedFlightOption["bodyLabel"] {
@@ -354,24 +360,6 @@ function directnessSummary(option: DisplayFlightOption): string {
   return `${option.stops} stops`;
 }
 
-function compareByPriceThenDeparture(left: DisplayFlightOption, right: DisplayFlightOption): number {
-  return left.price - right.price || parseDepartureMinutes(left.departureTime) - parseDepartureMinutes(right.departureTime);
-}
-
-function compareByDurationThenPrice(left: DisplayFlightOption, right: DisplayFlightOption): number {
-  return left.durationMinutes - right.durationMinutes || compareByPriceThenDeparture(left, right);
-}
-
-function isInDepartureWindow(option: DisplayFlightOption, startHour: number, endHour: number): boolean {
-  const minutes = parseDepartureMinutes(option.departureTime);
-  return minutes >= startHour * 60 && minutes < endHour * 60;
-}
-
-function isSensibleMorning(option: DisplayFlightOption): boolean {
-  const minutes = parseDepartureMinutes(option.departureTime);
-  return minutes >= 10 * 60 && minutes < 12 * 60;
-}
-
 function truncate(value: string, maxLength: number): string {
   return value.length <= maxLength ? value : value.slice(0, maxLength);
 }
@@ -410,10 +398,4 @@ function durationMinutes(departureAt: Date | string, arrivalAt: Date | string): 
   const departure = departureAt instanceof Date ? departureAt : new Date(departureAt);
   const arrival = arrivalAt instanceof Date ? arrivalAt : new Date(arrivalAt);
   return Math.max(0, Math.round((arrival.getTime() - departure.getTime()) / 60_000));
-}
-
-function parseDepartureMinutes(departureTime: string): number {
-  const match = /^(\d{2}):(\d{2})$/.exec(departureTime);
-  if (!match) return 0;
-  return Number(match[1]) * 60 + Number(match[2]);
 }

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { ProxyAgent, fetch as undiciFetch } from "undici";
+import { ProxyAgent } from "undici";
 
 import { env } from "../../config";
 import type { BankTransferDetails, BookingContactContext, BookingFlightSummary } from "../../schemas/booking-contract";
@@ -560,8 +560,7 @@ function isVerificationRequired(error: WakanowDirectBookingError): boolean {
 }
 
 function proxyFetch(url: string, opts: RequestInit = {}): Promise<Response> {
-  if (proxyAgent) {
-    return undiciFetch(url, { ...(opts as Record<string, unknown>), dispatcher: proxyAgent }) as unknown as Promise<Response>;
-  }
-  return fetch(url, opts);
+  if (!proxyAgent) return fetch(url, opts);
+  const proxiedOpts = { ...opts, dispatcher: proxyAgent };
+  return fetch(url, proxiedOpts);
 }

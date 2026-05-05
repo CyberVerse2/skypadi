@@ -11,6 +11,7 @@ import type {
 import { passengerSchema, type Passenger } from "../schemas/flight-booking";
 import type { WakanowHoldClient } from "../integrations/wakanow/wakanow.booking";
 import { supplierBookingJobKey } from "../jobs/booking-queue";
+import type { UiIntent } from "./ui-intent";
 import { handleSupplierHoldResult, recordSupplierHoldDecision, type SupplierBookingRepository, type SupplierHoldDecision } from "./supplier-booking.workflow";
 import { makeOk, type WorkflowResult } from "./workflow-result";
 
@@ -39,7 +40,7 @@ export async function collectPassengerDetailsAndCreateSupplierHold(input: {
   supplierClient?: Pick<WakanowHoldClient, "createHold">;
   supplierRepository?: SupplierBookingRepository;
   now?: Date;
-}): Promise<WorkflowResult<SupplierHoldDecision>> {
+}): Promise<WorkflowResult<SupplierHoldDecision, UiIntent>> {
   if (!input.repository) {
     return { kind: "temporary_failure", reason: "booking repository dependency is required" };
   }
@@ -107,7 +108,7 @@ export async function collectPassengerDetailsAndCreateSupplierHold(input: {
 
 export async function collectPassengerDetailsAndQueueSupplierBooking(
   input: QueueSupplierBookingInput
-): Promise<WorkflowResult<QueuedSupplierBooking>> {
+): Promise<WorkflowResult<QueuedSupplierBooking, UiIntent>> {
   if (!input.repository) {
     return { kind: "temporary_failure", reason: "booking repository dependency is required" };
   }
@@ -158,7 +159,7 @@ export async function collectPassengerDetailsAndQueueSupplierBooking(
 
 export async function collectDefaultPassengerAndQueueSupplierBooking(
   input: QueueSavedPassengerSupplierBookingInput
-): Promise<WorkflowResult<QueuedSupplierBooking>> {
+): Promise<WorkflowResult<QueuedSupplierBooking, UiIntent>> {
   if (!input.repository) {
     return { kind: "temporary_failure", reason: "booking repository dependency is required" };
   }
@@ -230,7 +231,7 @@ async function queueSupplierBookingWithPassenger(input: {
   enqueueSupplierBooking: NonNullable<QueueSupplierBookingInput["enqueueSupplierBooking"]>;
   collectPassenger: (collectedAt: Date) => Promise<void>;
   now?: Date;
-}): Promise<WorkflowResult<QueuedSupplierBooking>> {
+}): Promise<WorkflowResult<QueuedSupplierBooking, UiIntent>> {
   const collectedAt = input.now ?? new Date();
   const job = await input.jobRepository.createQueued({
     bookingId: input.booking.id,
