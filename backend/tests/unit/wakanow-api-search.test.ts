@@ -40,7 +40,7 @@ describe("searchFlightsApi", () => {
 
     vi.stubGlobal("fetch", fetchMock);
 
-    await searchFlightsApi({
+    const resultResponse = await searchFlightsApi({
       origin: "LOS",
       destination: "DXB",
       departureDate: "2026-06-10",
@@ -66,5 +66,11 @@ describe("searchFlightsApi", () => {
       }),
     ]);
     expect(flightRequestView.Itineraries).toEqual(body.Itineraries);
+    expect(resultResponse.results[0]).toMatchObject({
+      departureDate: "2026-06-10",
+      arrivalDate: "2026-06-10",
+      departureTime: "09:00",
+      arrivalTime: "17:00",
+    });
   });
 });

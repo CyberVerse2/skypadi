@@ -35,6 +35,7 @@
     "graphile-worker": "^0.16.6",
     "hpagent": "^1.2.0",
     "pg": "^8.20.0",
+    "playwright": "1.58.2",
     "resend": "^6.12.2",
     "undici": "^8.0.2",
     "zod": "^3.23.8"

@@ -17,6 +17,27 @@ export const wakanowConfig = {
   get maxResults(): number {
     return env.WAKANOW_MAX_RESULTS;
   },
+  get cookieWarmupEnabled(): boolean {
+    return env.WAKANOW_COOKIE_WARMUP !== "false";
+  },
+  get cookieWarmupTtlMs(): number {
+    return env.WAKANOW_COOKIE_WARMUP_TTL_MS;
+  },
+  get cookieWarmupTimeoutMs(): number {
+    return env.WAKANOW_COOKIE_WARMUP_TIMEOUT_MS;
+  },
+  get browserExecutablePath(): string | undefined {
+    return env.WAKANOW_BROWSER_EXECUTABLE_PATH;
+  },
+  get browserHeadless(): boolean {
+    return env.WAKANOW_BROWSER_HEADLESS !== "false";
+  },
+  get browserProfileDir(): string {
+    return env.WAKANOW_BROWSER_PROFILE_DIR;
+  },
+  get browserIdleTtlMs(): number {
+    return env.WAKANOW_BROWSER_IDLE_TTL_MS;
+  },
   get passwordGrantAuth(): string | undefined {
     return env.WAKANOW_PASSWORD_GRANT_AUTH;
   },
@@ -25,6 +46,9 @@ export const wakanowConfig = {
   },
   get proxyUrl(): string | undefined {
     return env.PROXY_URL;
+  },
+  get proxyUrls(): string[] {
+    return parseWakanowProxyUrls(env.WAKANOW_PROXY_URLS ?? env.PROXY_URL);
   },
   get accounts(): WakanowAccountCredentials[] {
     return wakanowAccountPoolFromEnv();
@@ -109,4 +133,28 @@ function accountFromPair(email: string | undefined, password: string | undefined
 
 function stripTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
+}
+
+export function parseWakanowProxyUrls(value: string | undefined): string[] {
+  if (!value) return [];
+
+  const urls = value
+    .split(/[\n,\s]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map(normalizeProxyUrl);
+
+  return Array.from(new Set(urls));
+}
+
+function normalizeProxyUrl(value: string): string {
+  if (/^https?:\/\//i.test(value)) return value;
+
+  const parts = value.split(":");
+  if (parts.length === 4) {
+    const [host, port, username, password] = parts;
+    return `http://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}`;
+  }
+
+  return `http://${value}`;
 }

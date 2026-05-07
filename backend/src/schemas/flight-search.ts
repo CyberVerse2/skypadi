@@ -28,6 +28,8 @@ export type FlightSearchRequest = z.infer<typeof flightSearchRequestSchema>;
 export type FlightSearchResult = {
   airline: string | null;
   priceText: string | null;
+  departureDate: string | null;
+  arrivalDate: string | null;
   departureTime: string | null;
   arrivalTime: string | null;
   duration: string | null;

@@ -20,6 +20,13 @@ const envSchema = z.object({
   WAKANOW_CURRENCY: z.string().default("NGN"),
   WAKANOW_TIMEZONE: z.string().default("Africa/Lagos"),
   WAKANOW_MAX_RESULTS: z.coerce.number().int().positive().default(50),
+  WAKANOW_COOKIE_WARMUP: z.enum(["true", "false"]).default("true"),
+  WAKANOW_COOKIE_WARMUP_TTL_MS: z.coerce.number().int().positive().default(10 * 60_000),
+  WAKANOW_COOKIE_WARMUP_TIMEOUT_MS: z.coerce.number().int().positive().default(45_000),
+  WAKANOW_BROWSER_EXECUTABLE_PATH: z.string().min(1).optional(),
+  WAKANOW_BROWSER_HEADLESS: z.enum(["true", "false"]).default("true"),
+  WAKANOW_BROWSER_PROFILE_DIR: z.string().min(1).default("/tmp/skypadi-wakanow-browser-profiles"),
+  WAKANOW_BROWSER_IDLE_TTL_MS: z.coerce.number().int().positive().default(10 * 60_000),
   WAKANOW_PASSWORD_GRANT_AUTH: z.string().min(1).optional(),
   WAKANOW_BOOKING_AUTH_SALT: z.string().min(1).optional(),
   WAKANOW_ACCOUNT_EMAIL: z.string().email().optional(),
@@ -33,6 +40,7 @@ const envSchema = z.object({
   WAKANOW_ACCOUNT_4_EMAIL: z.string().email().optional(),
   WAKANOW_ACCOUNT_4_PASSWORD: z.string().min(1).optional(),
   PROXY_URL: z.string().optional(),
+  WAKANOW_PROXY_URLS: z.string().optional(),
   STELLAR_NETWORK: z.enum(["testnet", "mainnet"]).default("testnet"),
   WALLET_ENCRYPTION_KEY: z
     .string()

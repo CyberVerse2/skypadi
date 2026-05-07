@@ -5,16 +5,30 @@ import type {
 } from "../../schemas/flight-search";
 import { ProxyAgent, fetch as undiciFetch } from "undici";
 import { normalizeAirportCode, resolveAirport as resolveCatalogAirport } from "../../domain/flight/airport-catalog";
+import { createWakanowSearchWithBrowser, getWakanowBrowserCookieHeader } from "./browser-session";
 import { wakanowCommonHeaders, wakanowConfig } from "./wakanow.config";
 import type { WakanowApiFlightResult, WakanowApiSearchResponse } from "./wakanow.types";
 
-const proxyAgent = wakanowConfig.proxyUrl ? new ProxyAgent(wakanowConfig.proxyUrl) : undefined;
+type SearchTransport = {
+  label: string;
+  proxyUrl?: string;
+  dispatcher?: ProxyAgent;
+};
 
-function proxyFetch(url: string, opts: any = {}): Promise<Response> {
-  if (proxyAgent) {
-    return undiciFetch(url, { ...opts, dispatcher: proxyAgent }) as any;
+const searchTransports = createSearchTransports(wakanowConfig.proxyUrls);
+let nextTransportIndex = 0;
+
+function proxyFetch(url: string, opts: any = {}, transport: SearchTransport = nextSearchTransport()): Promise<Response> {
+  if (transport.dispatcher) {
+    return undiciFetch(url, { ...opts, dispatcher: transport.dispatcher }) as any;
   }
   return fetch(url, opts);
+}
+
+function nextSearchTransport(): SearchTransport {
+  const transport = searchTransports[nextTransportIndex % searchTransports.length]!;
+  nextTransportIndex += 1;
+  return transport;
 }
 
 const COMMON_HEADERS = wakanowCommonHeaders({ contentType: "json" });
@@ -73,32 +87,31 @@ export async function searchFlightsApi(
   };
 
   // Step 1: Create search → get request key
-  const searchRes = await proxyFetch(`${wakanowConfig.search.apiBaseUrl}/Search`, {
-    method: "POST",
-    headers: COMMON_HEADERS,
-    body: JSON.stringify(searchBody),
-    signal: AbortSignal.timeout(wakanowConfig.search.fetchTimeoutMs)
-  });
-
-  const keyText = await searchRes.text();
-  const requestKey = keyText.replace(/"/g, "").trim();
-
-  if (!requestKey || requestKey.includes("Message") || requestKey.includes("<")) {
-    throw new WakanowApiSearchError("Failed to create flight search.", {
-      status: searchRes.status,
-      response: keyText.slice(0, 200)
-    });
-  }
+  const { requestKey, transport, apiData: browserApiData } = await createSearchRequest(searchBody);
 
   // Step 2: Poll for results
   const currency = wakanowConfig.currency;
-  let apiData: WakanowApiSearchResponse | null = null;
+  let apiData: WakanowApiSearchResponse | null = browserApiData ?? null;
+  const pollHeaders = await headersForTransport(transport);
 
-  for (let attempt = 1; attempt <= wakanowConfig.search.maxPolls; attempt++) {
-    const res = await proxyFetch(
-      `${wakanowConfig.search.apiBaseUrl}/SearchV2/${requestKey}/${currency}`,
-      { headers: COMMON_HEADERS, signal: AbortSignal.timeout(wakanowConfig.search.fetchTimeoutMs) }
-    );
+  for (let attempt = 1; !apiData?.SearchFlightResults?.length && attempt <= wakanowConfig.search.maxPolls; attempt++) {
+    let res: Response;
+    try {
+      res = await proxyFetch(
+        `${wakanowConfig.search.apiBaseUrl}/SearchV2/${requestKey}/${currency}`,
+        { headers: pollHeaders, signal: AbortSignal.timeout(wakanowConfig.search.fetchTimeoutMs) },
+        transport
+      );
+    } catch (error) {
+      if (attempt < wakanowConfig.search.maxPolls) {
+        await sleep(wakanowConfig.search.pollIntervalMs);
+        continue;
+      }
+      throw new WakanowApiSearchError("Flight results API request failed.", {
+        requestKey,
+        cause: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     if (!res.ok) {
       if (attempt < wakanowConfig.search.maxPolls) {
@@ -149,12 +162,161 @@ export async function searchFlightsApi(
 
 // ── Helpers ───────────────────────────────────────────────
 
+async function createSearchRequest(searchBody: Record<string, unknown>): Promise<{
+  requestKey: string;
+  transport: SearchTransport;
+  apiData?: WakanowApiSearchResponse;
+}> {
+  let lastError: WakanowApiSearchError | undefined;
+  const maxAttempts = Math.max(searchTransports.length, 1);
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const transport = nextSearchTransport();
+
+    if (transport.proxyUrl) {
+      const browserResult = await tryCreateSearchWithBrowser({
+        transport,
+        searchBody,
+        attempt,
+        maxAttempts,
+      });
+      if (browserResult) return browserResult;
+    }
+
+    let searchRes: Response;
+    try {
+      const headers = await headersForTransport(transport);
+      searchRes = await proxyFetch(
+        `${wakanowConfig.search.apiBaseUrl}/Search`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify(searchBody),
+          signal: AbortSignal.timeout(wakanowConfig.search.fetchTimeoutMs)
+        },
+        transport
+      );
+    } catch (error) {
+      lastError = new WakanowApiSearchError("Failed to create flight search.", {
+        cause: error instanceof Error ? error.message : String(error),
+        proxyAttempt: transport.label,
+        proxyAttemptNumber: attempt,
+        proxyAttemptCount: maxAttempts
+      });
+
+      if (transport.proxyUrl) {
+        const browserResult = await tryCreateSearchWithBrowser({
+          transport,
+          searchBody,
+          attempt,
+          maxAttempts,
+          priorDetails: lastError.details,
+        });
+        if (browserResult) return browserResult;
+      }
+
+      if (attempt === maxAttempts) throw lastError;
+      continue;
+    }
+
+    const keyText = await searchRes.text();
+    const requestKey = keyText.replace(/"/g, "").trim();
+
+    if (requestKey && !requestKey.includes("Message") && !requestKey.includes("<")) {
+      return { requestKey, transport };
+    }
+
+    lastError = new WakanowApiSearchError("Failed to create flight search.", {
+      status: searchRes.status,
+      response: keyText.slice(0, 200),
+      proxyAttempt: transport.label,
+      proxyAttemptNumber: attempt,
+      proxyAttemptCount: maxAttempts
+    });
+
+    if (transport.proxyUrl && isRetryableCreateSearchFailure(searchRes.status, keyText)) {
+      const browserResult = await tryCreateSearchWithBrowser({
+        transport,
+        searchBody,
+        attempt,
+        maxAttempts,
+        priorDetails: {
+          status: searchRes.status,
+          response: keyText.slice(0, 200),
+        },
+      });
+      if (browserResult) return browserResult;
+    }
+
+    if (!isRetryableCreateSearchFailure(searchRes.status, keyText) || attempt === maxAttempts) {
+      throw lastError;
+    }
+  }
+
+  throw lastError ?? new WakanowApiSearchError("Failed to create flight search.");
+}
+
+async function tryCreateSearchWithBrowser(input: {
+  transport: SearchTransport;
+  searchBody: Record<string, unknown>;
+  attempt: number;
+  maxAttempts: number;
+  priorDetails?: Record<string, unknown>;
+}): Promise<{ requestKey: string; transport: SearchTransport; apiData?: WakanowApiSearchResponse } | undefined> {
+  try {
+    const browserResult = await createWakanowSearchWithBrowser({
+      proxyUrl: input.transport.proxyUrl,
+      searchUrl: `${wakanowConfig.search.apiBaseUrl}/Search`,
+      searchBody: input.searchBody,
+    });
+    const browserRequestKey = browserResult.text.replace(/"/g, "").trim();
+
+    if (
+      browserRequestKey &&
+      !browserRequestKey.includes("Message") &&
+      !browserRequestKey.includes("<")
+    ) {
+      return { requestKey: browserRequestKey, transport: input.transport, apiData: browserResult.searchData };
+    }
+  } catch (error) {
+    throw new WakanowApiSearchError("Failed to create flight search.", {
+      ...input.priorDetails,
+      browserFallbackCause: error instanceof Error ? error.message : String(error),
+      proxyAttempt: `${input.transport.label}:browser`,
+      proxyAttemptNumber: input.attempt,
+      proxyAttemptCount: input.maxAttempts,
+    });
+  }
+
+  return undefined;
+}
+
+function isRetryableCreateSearchFailure(status: number, body: string): boolean {
+  return status === 403 || status === 429 || status >= 500 || /NOINDEX,\s*NOFOLLOW|access denied|forbidden/i.test(body);
+}
+
+function createSearchTransports(proxyUrls: string[]): SearchTransport[] {
+  if (proxyUrls.length === 0) return [{ label: "direct" }];
+  return proxyUrls.map((proxyUrl, index) => ({
+    label: `proxy-${index + 1}`,
+    proxyUrl,
+    dispatcher: new ProxyAgent(proxyUrl)
+  }));
+}
+
+async function headersForTransport(transport: SearchTransport): Promise<Record<string, string>> {
+  const cookie = await getWakanowBrowserCookieHeader(transport.proxyUrl);
+  return cookie ? { ...COMMON_HEADERS, Cookie: cookie } : COMMON_HEADERS;
+}
+
 function mapFlightResult(r: WakanowApiFlightResult, deeplink: string, searchKey: string): FlightSearchResult {
   const flight = r.FlightCombination.Flights[0];
   const price = r.FlightCombination.Price;
 
   const depTime = flight.DepartureTime.split("T")[1]?.slice(0, 5) ?? null;
   const arrTime = flight.ArrivalTime.split("T")[1]?.slice(0, 5) ?? null;
+  const departureDate = isoDateFromDateTime(flight.DepartureTime);
+  const arrivalDate = isoDateFromDateTime(flight.ArrivalTime);
 
   const duration = parseDuration(flight.TripDuration);
   const stops = flight.Stops === 0 ? "non-stop" : `${flight.Stops} stop${flight.Stops > 1 ? "s" : ""}`;
@@ -165,6 +327,8 @@ function mapFlightResult(r: WakanowApiFlightResult, deeplink: string, searchKey:
   return {
     airline: flight.AirlineName,
     priceText,
+    departureDate,
+    arrivalDate,
     departureTime: depTime,
     arrivalTime: arrTime,
     duration,
@@ -174,6 +338,11 @@ function mapFlightResult(r: WakanowApiFlightResult, deeplink: string, searchKey:
     flightId: r.FlightId,
     searchKey
   };
+}
+
+function isoDateFromDateTime(value: string): string | null {
+  const match = /^(\d{4}-\d{2}-\d{2})T/.exec(value);
+  return match?.[1] ?? null;
 }
 
 function resolveAirport(input: string) {
