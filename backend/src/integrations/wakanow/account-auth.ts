@@ -1,14 +1,18 @@
-import { env } from "../../config";
+import {
+  wakanowAccountCredentialsFromConfig,
+  wakanowAccountPoolFromConfig,
+  wakanowCommonHeaders,
+  wakanowConfig,
+} from "./wakanow.config";
+import type {
+  WakanowAccountAuthFetch,
+  WakanowAccountAuthOptions,
+  WakanowAccountCredentials,
+  WakanowAccountTokenCache,
+  WakanowAccountTokenResponse,
+} from "./wakanow.types";
 
-const TOKEN_ENDPOINT = "https://wakanow-api-users-production-prod.azurewebsites.net/token";
-const TOKEN_REFRESH_SKEW_MS = 5 * 60_000;
-
-export type WakanowAccountCredentials = {
-  email: string;
-  password: string;
-};
-
-export type WakanowAccountAuthFetch = (url: string, init?: RequestInit) => Promise<Response>;
+export type { WakanowAccountAuthFetch, WakanowAccountCredentials } from "./wakanow.types";
 
 export class WakanowAccountAuthError extends Error {
   constructor(message: string) {
@@ -17,59 +21,17 @@ export class WakanowAccountAuthError extends Error {
   }
 }
 
-type TokenResponse = {
-  access_token?: string;
-  userName?: string;
-  ".expires"?: string;
-  expires_in?: number;
-};
-
-type TokenCache = {
-  accessToken: string;
-  expiresAt: number;
-};
-
-type AuthOptions = {
-  credentials?: WakanowAccountCredentials | null;
-  accountPool?: WakanowAccountCredentials[];
-  fetchImpl?: WakanowAccountAuthFetch;
-  now?: () => number;
-};
-
-const sharedTokens = new Map<string, TokenCache>();
-let nextAccountIndex = 0;
+const sharedTokens = new Map<string, WakanowAccountTokenCache>();
 
 export function wakanowAccountCredentialsFromEnv(): WakanowAccountCredentials | undefined {
-  return wakanowAccountPoolFromEnv()[0];
+  return wakanowAccountCredentialsFromConfig();
 }
 
 export function wakanowAccountPoolFromEnv(): WakanowAccountCredentials[] {
-  const accounts = [
-    accountFromPair(env.WAKANOW_ACCOUNT_EMAIL, env.WAKANOW_ACCOUNT_PASSWORD),
-    accountFromPair(env.WAKANOW_ACCOUNT_1_EMAIL, env.WAKANOW_ACCOUNT_1_PASSWORD),
-    accountFromPair(env.WAKANOW_ACCOUNT_2_EMAIL, env.WAKANOW_ACCOUNT_2_PASSWORD),
-    accountFromPair(env.WAKANOW_ACCOUNT_3_EMAIL, env.WAKANOW_ACCOUNT_3_PASSWORD),
-    accountFromPair(env.WAKANOW_ACCOUNT_4_EMAIL, env.WAKANOW_ACCOUNT_4_PASSWORD),
-  ].filter((account): account is WakanowAccountCredentials => Boolean(account));
-
-  const seen = new Set<string>();
-  return accounts.filter((account) => {
-    const key = account.email.toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  return wakanowAccountPoolFromConfig();
 }
 
-function accountFromPair(email: string | undefined, password: string | undefined): WakanowAccountCredentials | undefined {
-  if (!email || !password) return undefined;
-  return {
-    email,
-    password,
-  };
-}
-
-export async function getWakanowAccountToken(options: AuthOptions = {}): Promise<string> {
+export async function getWakanowAccountToken(options: WakanowAccountAuthOptions = {}): Promise<string> {
   const credentials = options.credentials === undefined ? wakanowAccountCredentialsFromEnv() : options.credentials;
   if (!credentials) {
     throw new WakanowAccountAuthError("Wakanow account credentials are not configured");
@@ -78,24 +40,21 @@ export async function getWakanowAccountToken(options: AuthOptions = {}): Promise
   const now = options.now ?? Date.now;
   const cacheKey = credentials.email.toLowerCase();
   const cachedToken = sharedTokens.get(cacheKey);
-  if (cachedToken && cachedToken.expiresAt - TOKEN_REFRESH_SKEW_MS > now()) {
+  if (cachedToken && cachedToken.expiresAt - wakanowConfig.accountAuth.tokenRefreshSkewMs > now()) {
     return cachedToken.accessToken;
   }
 
   const fetchImpl = options.fetchImpl ?? fetch;
-  const passwordGrantAuth = env.WAKANOW_PASSWORD_GRANT_AUTH;
+  const passwordGrantAuth = wakanowConfig.passwordGrantAuth;
   if (!passwordGrantAuth) {
     throw new WakanowAccountAuthError("Wakanow password grant auth is not configured");
   }
 
-  const response = await fetchImpl(TOKEN_ENDPOINT, {
+  const response = await fetchImpl(wakanowConfig.accountAuth.tokenEndpoint, {
     method: "POST",
     headers: {
+      ...wakanowCommonHeaders({ contentType: "form" }),
       "Authorization": passwordGrantAuth,
-      "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-      "Accept": "application/json, text/plain, */*",
-      "Origin": "https://www.wakanow.com",
-      "Referer": "https://www.wakanow.com/",
     },
     body: new URLSearchParams({
       grant_type: "password",
@@ -120,11 +79,9 @@ export async function getWakanowAccountToken(options: AuthOptions = {}): Promise
 
 export function createWakanowAccountFetch(
   baseFetch: WakanowAccountAuthFetch,
-  options: AuthOptions = {},
+  options: WakanowAccountAuthOptions = {},
 ): WakanowAccountAuthFetch {
-  const sessionCredentials = options.credentials === undefined
-    ? nextWakanowAccountCredentials(options.accountPool)
-    : options.credentials;
+  const sessionCredentials = options.credentials ?? null;
 
   return async (url, init = {}) => {
     const token = await getWakanowAccountToken({
@@ -141,26 +98,17 @@ export function createWakanowAccountFetch(
 
 export function clearWakanowAccountTokenCacheForTest(): void {
   sharedTokens.clear();
-  nextAccountIndex = 0;
 }
 
-function nextWakanowAccountCredentials(accountPool?: WakanowAccountCredentials[]): WakanowAccountCredentials | undefined {
-  const pool = accountPool ?? wakanowAccountPoolFromEnv();
-  if (pool.length === 0) return undefined;
-  const account = pool[nextAccountIndex % pool.length];
-  nextAccountIndex += 1;
-  return account;
-}
-
-function parseTokenResponse(text: string): TokenResponse {
+function parseTokenResponse(text: string): WakanowAccountTokenResponse {
   try {
-    return JSON.parse(text) as TokenResponse;
+    return JSON.parse(text) as WakanowAccountTokenResponse;
   } catch {
     throw new WakanowAccountAuthError("Wakanow account login returned invalid JSON");
   }
 }
 
-function parseTokenExpiry(data: TokenResponse, now: number): number {
+function parseTokenExpiry(data: WakanowAccountTokenResponse, now: number): number {
   if (data[".expires"]) {
     const parsed = Date.parse(data[".expires"]);
     if (!Number.isNaN(parsed)) return parsed;

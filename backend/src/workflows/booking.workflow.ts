@@ -9,7 +9,7 @@ import type {
   QueueSavedPassengerSupplierBookingInput,
 } from "../domain/booking/booking.types";
 import { passengerSchema, type Passenger } from "../schemas/flight-booking";
-import type { WakanowHoldClient } from "../integrations/wakanow/wakanow.booking";
+import type { WakanowHoldClient } from "../integrations/wakanow/wakanow.types";
 import { supplierBookingJobKey } from "../jobs/booking-queue";
 import { handleSupplierHoldResult, recordSupplierHoldDecision, type SupplierBookingRepository, type SupplierHoldDecision } from "./supplier-booking.workflow";
 import { makeOk, type WorkflowResult } from "./workflow-result";

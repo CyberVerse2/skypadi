@@ -1,4 +1,3 @@
-import assert from "node:assert/strict";
 
 import {
   configuredWhatsAppClientFromEnv,
@@ -6,28 +5,47 @@ import {
   isRetryableSupplierBookingError,
 } from "../../src/jobs/tasks/supplier-booking.task";
 import { shouldSkipSupplierBookingForStatus } from "../../src/jobs/tasks/supplier-booking-status";
-import { test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
-test("supplier booking task workflow", async () => {
-  assert.equal(shouldSkipSupplierBookingForStatus("supplier_booking_pending"), false);
-  assert.equal(shouldSkipSupplierBookingForStatus("manual_review_required"), true);
-  assert.equal(shouldSkipSupplierBookingForStatus("awaiting_payment_for_hold"), true);
-  assert.equal(shouldSkipSupplierBookingForStatus("payment_pending"), true);
-  assert.equal(shouldSkipSupplierBookingForStatus("supplier_verification_required"), true);
-  assert.equal(shouldSkipSupplierBookingForStatus("issued"), true);
-  assert.equal(shouldSkipSupplierBookingForStatus(undefined), false);
-  assert.equal(configuredWhatsAppClientFromEnv({}), undefined);
-  assert.equal(isRetryableSupplierBookingError("Wakanow API request failed with 502"), true);
-  assert.equal(isRetryableSupplierBookingError("fetch failed"), true);
-  assert.equal(isRetryableSupplierBookingError("Wakanow payment response was missing bank transfer details"), false);
 
-  const markedSucceeded: string[] = [];
-  const markedFailed: string[] = [];
-  const supplierDecisionStatuses: string[] = [];
-  const originalWarn = console.warn;
-  console.warn = () => {};
+describe("workflow supplier booking task workflow", () => {
+  test.each([
+    ["supplier_booking_pending", false],
+    ["manual_review_required", true],
+    ["awaiting_payment_for_hold", true],
+    ["payment_pending", true],
+    ["supplier_verification_required", true],
+    ["issued", true],
+    [undefined, false],
+  ] as const)("skip decision for status %s is %s", (status, expected) => {
+    expect.hasAssertions();
 
-  try {
+    expect(shouldSkipSupplierBookingForStatus(status)).toBe(expected);
+  });
+
+  test("does not configure WhatsApp notifications without env values", () => {
+    expect.hasAssertions();
+
+    expect(configuredWhatsAppClientFromEnv({})).toBe(undefined);
+  });
+
+  test.each([
+    ["Wakanow API request failed with 502", true],
+    ["fetch failed", true],
+    ["Wakanow payment response was missing bank transfer details", false],
+  ])("retryable supplier error %s is %s", (message, expected) => {
+    expect.hasAssertions();
+
+    expect(isRetryableSupplierBookingError(message)).toBe(expected);
+  });
+
+  test("marks supplier hold jobs succeeded even when WhatsApp notification fails", async () => {
+    expect.hasAssertions();
+    const markedSucceeded: string[] = [];
+    const markedFailed: string[] = [];
+    const supplierDecisionStatuses: string[] = [];
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
     const task = createSupplierBookingTask({
       jobRepository: {
         async createQueued() {
@@ -72,29 +90,32 @@ test("supplier booking task workflow", async () => {
     });
 
     await task({ bookingId: "booking-1" }, {} as never);
-  } finally {
-    console.warn = originalWarn;
-  }
 
-  assert.deepEqual(supplierDecisionStatuses, ["awaiting_payment_for_hold"]);
-  assert.deepEqual(markedSucceeded, ["booking-1"]);
-  assert.deepEqual(markedFailed, []);
+    expect(supplierDecisionStatuses).toEqual(["awaiting_payment_for_hold"]);
+    expect(markedSucceeded).toEqual(["booking-1"]);
+    expect(markedFailed).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(
+      "[supplier-booking] Supplier decision was recorded but WhatsApp notification failed",
+      {
+        bookingId: "booking-1",
+        errorMessage: "WhatsApp unavailable",
+      },
+    );
 
-  console.log("supplier booking task workflow tests passed");
-
-  function jobRecord(
-    bookingId: string,
-    status: "queued" | "running" | "succeeded" | "retryable_failed" | "terminal_failed",
-  ) {
-    const now = new Date("2026-05-01T10:00:00.000Z");
-    return {
-      id: `job-${bookingId}`,
-      bookingId,
-      graphileJobKey: `supplier-booking:${bookingId}`,
-      status,
-      attemptCount: status === "running" ? 1 : 0,
-      queuedAt: now,
-      updatedAt: now,
-    };
-  }
+    function jobRecord(
+      bookingId: string,
+      status: "queued" | "running" | "succeeded" | "retryable_failed" | "terminal_failed",
+    ) {
+      const now = new Date("2026-05-01T10:00:00.000Z");
+      return {
+        id: `job-${bookingId}`,
+        bookingId,
+        graphileJobKey: `supplier-booking:${bookingId}`,
+        status,
+        attemptCount: status === "running" ? 1 : 0,
+        queuedAt: now,
+        updatedAt: now,
+      };
+    }
+  });
 });

@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 
 import type { DbClient } from "../../db/client";
-import type { WakanowAccountCredentials } from "./account-auth";
+import type { WakanowAccountCredentials } from "./wakanow.types";
 
 const WAKANOW_SUPPLIER = "wakanow";
 const ROTATION_LOCK_KEY = "skypadi:wakanow:supplier-account-assignments";

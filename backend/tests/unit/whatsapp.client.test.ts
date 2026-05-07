@@ -1,20 +1,20 @@
-import assert from "node:assert/strict";
 
 import { createWhatsAppCloudClient } from "../../src/channels/whatsapp/whatsapp.client";
-import { test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
-test("whatsapp cloud client sends messages and read indicators through the current graph api", async () => {
-  const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async (url, init) => {
-    calls.push({
-      url: String(url),
-      body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+
+describe("unit whatsapp client", () => {
+  test("whatsapp cloud client sends messages and read indicators through the current graph api", async () => {
+    expect.hasAssertions();
+    const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+      calls.push({
+        url: String(url),
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+      });
+      return new Response("{}", { status: 200 });
     });
-    return new Response("{}", { status: 200 });
-  }) as typeof fetch;
 
-  try {
     const client = createWhatsAppCloudClient({
       accessToken: "token",
       phoneNumberId: "phone-number-id",
@@ -27,17 +27,24 @@ test("whatsapp cloud client sends messages and read indicators through the curre
     await client.markMessageRead({ messageId: "wamid.123" });
     await client.showTypingIndicator({ messageId: "wamid.456" });
 
-    assert.deepEqual(calls.map((call) => call.url), [
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(calls.map((call) => call.url)).toEqual([
       "https://graph.facebook.com/v25.0/phone-number-id/messages",
       "https://graph.facebook.com/v25.0/phone-number-id/messages",
       "https://graph.facebook.com/v25.0/phone-number-id/messages",
     ]);
-    assert.deepEqual(calls[1]?.body, {
+    expect(calls[0]?.body).toMatchObject({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: "2348012345678",
+      type: "text",
+    });
+    expect(calls[1]?.body).toEqual({
       messaging_product: "whatsapp",
       status: "read",
       message_id: "wamid.123",
     });
-    assert.deepEqual(calls[2]?.body, {
+    expect(calls[2]?.body).toEqual({
       messaging_product: "whatsapp",
       status: "read",
       message_id: "wamid.456",
@@ -45,7 +52,20 @@ test("whatsapp cloud client sends messages and read indicators through the curre
         type: "text",
       },
     });
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  });
+
+  test("includes provider error details when a Cloud API request fails", async () => {
+    expect.hasAssertions();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("{\"error\":{\"message\":\"blocked\"}}", { status: 400 }),
+    );
+    const client = createWhatsAppCloudClient({
+      accessToken: "token",
+      phoneNumberId: "phone-number-id",
+    });
+
+    await expect(
+      client.showTypingIndicator({ messageId: "wamid.456" }),
+    ).rejects.toThrow(/WhatsApp Cloud API typing indicator failed: 400/);
+  });
 });

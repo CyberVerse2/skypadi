@@ -1,4 +1,3 @@
-import assert from "node:assert/strict";
 
 import {
   airportByCode,
@@ -8,27 +7,62 @@ import {
   wakanowAirports,
   whatsappOriginRows,
 } from "../../src/domain/flight/airport-catalog";
-import { test } from "vitest";
+import { describe, expect, test } from "vitest";
 
-test("airport catalog", async () => {
-  assert.ok(wakanowAirports.length > 10);
-  assert.equal(whatsappOriginRows.length, 10);
-  for (const id of ["origin:LOS", "origin:ABV", "origin:PHC", "origin:KAN", "origin:ENU"]) {
-    assert.ok(whatsappOriginRows.some((row) => row.id === id), `${id} should be in origin rows`);
-  }
-  assert.ok(nigerianOriginAirports.length >= 10);
-  assert.equal(airportByCode("ENU")?.city, "Enugu");
-  assert.equal(airportByCode("PHC")?.city, "Port Harcourt");
-  assert.equal(airportByCode("LAG")?.code, "LOS");
-  assert.equal(airportByCode("ABU")?.code, "ABV");
-  assert.equal(normalizeAirportCode("lag"), "LOS");
-  assert.equal(normalizeAirportCode("abu"), "ABV");
-  assert.equal(resolveAirport("lagos")?.code, "LOS");
-  assert.equal(resolveAirport("abuja")?.code, "ABV");
-  assert.equal(resolveAirport("Accra")?.code, "ACC");
-  assert.equal(resolveAirport("Heathrow Airport")?.code, "LHR");
-  assert.equal(airportByCode("xxx"), undefined);
-  assert.equal(resolveAirport("xxx"), undefined);
 
-  console.log("airport catalog tests passed");
+describe("unit airport catalog", () => {
+  test("keeps the WhatsApp origin list broad enough for Nigerian domestic search", () => {
+    expect.hasAssertions();
+
+    expect(wakanowAirports.length > 10).toBeTruthy();
+    expect(whatsappOriginRows.length).toBe(10);
+    expect(nigerianOriginAirports.length >= 10).toBeTruthy();
+  });
+
+  test.each(["origin:LOS", "origin:ABV", "origin:PHC", "origin:KAN", "origin:ENU"])(
+    "includes %s in the WhatsApp origin picker",
+    (id) => {
+      expect.hasAssertions();
+
+      expect(whatsappOriginRows.some((row) => row.id === id)).toBe(true);
+    },
+  );
+
+  test.each([
+    ["ENU", "Enugu"],
+    ["PHC", "Port Harcourt"],
+  ])("maps airport code %s to city %s", (code, city) => {
+    expect.hasAssertions();
+
+    expect(airportByCode(code)?.city).toBe(city);
+  });
+
+  test.each([
+    ["LAG", "LOS"],
+    ["ABU", "ABV"],
+    ["lag", "LOS"],
+    ["abu", "ABV"],
+  ])("normalizes alias %s to %s", (input, code) => {
+    expect.hasAssertions();
+
+    expect(normalizeAirportCode(input)).toBe(code);
+  });
+
+  test.each([
+    ["lagos", "LOS"],
+    ["abuja", "ABV"],
+    ["Accra", "ACC"],
+    ["Heathrow Airport", "LHR"],
+  ])("resolves %s to %s", (input, code) => {
+    expect.hasAssertions();
+
+    expect(resolveAirport(input)?.code).toBe(code);
+  });
+
+  test("returns undefined for unknown airports", () => {
+    expect.hasAssertions();
+
+    expect(airportByCode("xxx")).toBe(undefined);
+    expect(resolveAirport("xxx")).toBe(undefined);
+  });
 });
