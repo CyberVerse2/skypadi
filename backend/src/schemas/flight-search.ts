@@ -26,6 +26,7 @@ export const flightSearchRequestSchema = z
 export type FlightSearchRequest = z.infer<typeof flightSearchRequestSchema>;
 
 export type FlightSearchResult = {
+  sourceProvider?: FlightSearchProviderName;
   airline: string | null;
   priceText: string | null;
   departureDate: string | null;
@@ -41,10 +42,26 @@ export type FlightSearchResult = {
   searchKey?: string;
 };
 
+export type FlightSearchProviderName =
+  | "wakanow"
+  | "valuejet"
+  | "airpeace"
+  | "ibomair"
+  | "unitednigeria"
+  | "direct-domestic";
+
+export type FlightSearchProviderStatus = {
+  provider: FlightSearchProviderName;
+  status: "fulfilled" | "failed" | "reachable_not_mapped";
+  resultCount?: number;
+  message?: string;
+};
+
 export type FlightSearchResponse = {
-  provider: "wakanow";
+  provider: FlightSearchProviderName;
   searchedAt: string;
   request: FlightSearchRequest;
   resultCount: number;
   results: FlightSearchResult[];
+  providerStatuses?: FlightSearchProviderStatus[];
 };

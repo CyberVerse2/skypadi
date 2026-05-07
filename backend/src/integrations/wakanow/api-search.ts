@@ -173,15 +173,13 @@ async function createSearchRequest(searchBody: Record<string, unknown>): Promise
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const transport = nextSearchTransport();
 
-    if (transport.proxyUrl) {
-      const browserResult = await tryCreateSearchWithBrowser({
-        transport,
-        searchBody,
-        attempt,
-        maxAttempts,
-      });
-      if (browserResult) return browserResult;
-    }
+    const browserResult = await tryCreateSearchWithBrowser({
+      transport,
+      searchBody,
+      attempt,
+      maxAttempts,
+    });
+    if (browserResult) return browserResult;
 
     let searchRes: Response;
     try {
@@ -204,17 +202,6 @@ async function createSearchRequest(searchBody: Record<string, unknown>): Promise
         proxyAttemptCount: maxAttempts
       });
 
-      if (transport.proxyUrl) {
-        const browserResult = await tryCreateSearchWithBrowser({
-          transport,
-          searchBody,
-          attempt,
-          maxAttempts,
-          priorDetails: lastError.details,
-        });
-        if (browserResult) return browserResult;
-      }
-
       if (attempt === maxAttempts) throw lastError;
       continue;
     }
@@ -233,20 +220,6 @@ async function createSearchRequest(searchBody: Record<string, unknown>): Promise
       proxyAttemptNumber: attempt,
       proxyAttemptCount: maxAttempts
     });
-
-    if (transport.proxyUrl && isRetryableCreateSearchFailure(searchRes.status, keyText)) {
-      const browserResult = await tryCreateSearchWithBrowser({
-        transport,
-        searchBody,
-        attempt,
-        maxAttempts,
-        priorDetails: {
-          status: searchRes.status,
-          response: keyText.slice(0, 200),
-        },
-      });
-      if (browserResult) return browserResult;
-    }
 
     if (!isRetryableCreateSearchFailure(searchRes.status, keyText) || attempt === maxAttempts) {
       throw lastError;
@@ -278,14 +251,8 @@ async function tryCreateSearchWithBrowser(input: {
     ) {
       return { requestKey: browserRequestKey, transport: input.transport, apiData: browserResult.searchData };
     }
-  } catch (error) {
-    throw new WakanowApiSearchError("Failed to create flight search.", {
-      ...input.priorDetails,
-      browserFallbackCause: error instanceof Error ? error.message : String(error),
-      proxyAttempt: `${input.transport.label}:browser`,
-      proxyAttemptNumber: input.attempt,
-      proxyAttemptCount: input.maxAttempts,
-    });
+  } catch {
+    return undefined;
   }
 
   return undefined;
@@ -325,6 +292,7 @@ function mapFlightResult(r: WakanowApiFlightResult, deeplink: string, searchKey:
   const priceText = `${currency}${price.Amount.toLocaleString()}`;
 
   return {
+    sourceProvider: "wakanow",
     airline: flight.AirlineName,
     priceText,
     departureDate,
