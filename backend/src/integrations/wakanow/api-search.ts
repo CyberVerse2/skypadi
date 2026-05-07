@@ -35,29 +35,22 @@ export async function searchFlightsApi(
   const destination = resolveAirport(request.destination);
 
   const isRoundTrip = Boolean(request.returnDate);
-  const itinerary: Record<string, unknown> = {
-    Ticketclass: "Y",
-    Departure: origin.code,
-    Destination: destination.code,
-    DepartureDate: formatWakanowDate(request.departureDate),
-    DepartureMetaData: {
-      AirportCode: origin.code,
-      Description: origin.description,
-      CityCountry: `${origin.city}, ${origin.country}`,
-      City: origin.city,
-      Country: origin.country
-    },
-    DestinationMetaData: {
-      AirportCode: destination.code,
-      Description: destination.description,
-      CityCountry: `${destination.city}, ${destination.country}`,
-      City: destination.city,
-      Country: destination.country
-    }
-  };
+  const itineraries = [
+    createItinerary({
+      departure: origin,
+      destination,
+      departureDate: request.departureDate
+    })
+  ];
 
   if (isRoundTrip) {
-    itinerary.ReturnDate = formatWakanowDate(request.returnDate!);
+    itineraries.push(
+      createItinerary({
+        departure: destination,
+        destination: origin,
+        departureDate: request.returnDate!
+      })
+    );
   }
 
   // Build the FlightRequestView (stringified version of the full request, as Wakanow expects)
@@ -71,7 +64,7 @@ export async function searchFlightsApi(
     GeographyId: "NG",
     TargetCurrency: wakanowConfig.currency,
     LanguageCode: "en",
-    Itineraries: [itinerary]
+    Itineraries: itineraries
   };
 
   const searchBody = {
@@ -206,6 +199,33 @@ function resolveAirport(input: string) {
   }
 
   throw new WakanowApiSearchError(`Unknown airport: "${input}". Use city name or 3-letter code.`);
+}
+
+type ResolvedAirport = ReturnType<typeof resolveAirport>;
+
+function createItinerary(input: {
+  departure: ResolvedAirport;
+  destination: ResolvedAirport;
+  departureDate: string;
+}): Record<string, unknown> {
+  return {
+    Ticketclass: "Y",
+    Departure: input.departure.code,
+    Destination: input.destination.code,
+    DepartureDate: formatWakanowDate(input.departureDate),
+    DepartureMetaData: airportMetadata(input.departure),
+    DestinationMetaData: airportMetadata(input.destination)
+  };
+}
+
+function airportMetadata(airport: ResolvedAirport): Record<string, string> {
+  return {
+    AirportCode: airport.code,
+    Description: airport.description,
+    CityCountry: `${airport.city}, ${airport.country}`,
+    City: airport.city,
+    Country: airport.country
+  };
 }
 
 function formatWakanowDate(isoDate: string): string {
