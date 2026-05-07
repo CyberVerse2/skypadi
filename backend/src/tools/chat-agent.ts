@@ -136,7 +136,17 @@ const modelCustomClarificationInputSchema = z.object({
   }),
 });
 
-const modelCollectPassengerDetailsInputSchema = passengerSchema;
+const modelCollectPassengerDetailsInputSchema = z.object({
+  title: z.enum(["Mr", "Ms", "Mrs", "Miss", "Sir", "Dr"]),
+  firstName: z.string().trim().min(2).max(50),
+  lastName: z.string().trim().min(2).max(50),
+  middleName: z.string().trim().max(50).nullable(),
+  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD"),
+  nationality: z.string().trim().nullable(),
+  gender: z.enum(["Male", "Female"]),
+  phone: z.string().trim().min(7).max(20),
+  email: z.string().email(),
+});
 
 export const chatActionResponseSchema = z.object({
   action: z.enum([
@@ -271,7 +281,15 @@ function parseChatAction(value: unknown): ChatAction {
     if (!parsed.passengerDetailsInput) {
       throw new Error("collectPassengerDetails action requires passengerDetailsInput");
     }
-    return { type: "tool", tool: "collectPassengerDetails", input: parsed.passengerDetailsInput };
+    return {
+      type: "tool",
+      tool: "collectPassengerDetails",
+      input: passengerSchema.parse({
+        ...parsed.passengerDetailsInput,
+        ...(parsed.passengerDetailsInput.middleName ? { middleName: parsed.passengerDetailsInput.middleName } : { middleName: undefined }),
+        ...(parsed.passengerDetailsInput.nationality ? { nationality: parsed.passengerDetailsInput.nationality } : { nationality: undefined }),
+      }),
+    };
   }
 
   if (!parsed.startBookingJobInput) {

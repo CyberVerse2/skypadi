@@ -386,9 +386,25 @@ test("chat agent", async () => {
 test("chat model response schema is valid for strict OpenAI structured outputs", async () => {
   const schema = await zodSchema(chatActionResponseSchema).jsonSchema;
   const optionSchema = findObjectSchemaWithProperties(schema, ["id", "title", "description"]);
+  const passengerSchema = findObjectSchemaWithProperties(schema, [
+    "title",
+    "firstName",
+    "lastName",
+    "middleName",
+    "dateOfBirth",
+    "nationality",
+    "gender",
+    "phone",
+    "email",
+  ]);
 
   assert.ok(optionSchema, "custom clarification option schema should be present");
   assert.deepEqual(new Set(optionSchema.required), new Set(["id", "title", "description"]));
+  assert.ok(passengerSchema, "passenger details schema should be present");
+  assert.deepEqual(
+    new Set(passengerSchema.required),
+    new Set(["title", "firstName", "lastName", "middleName", "dateOfBirth", "nationality", "gender", "phone", "email"])
+  );
 });
 
 function findObjectSchemaWithProperties(value: unknown, properties: string[]): { required?: string[] } | undefined {
