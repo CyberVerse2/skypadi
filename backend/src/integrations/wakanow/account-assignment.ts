@@ -16,6 +16,7 @@ export async function assignWakanowAccountForBooking(input: {
   }
 
   const accountEmails = input.accountPool.map((account) => account.email.toLowerCase());
+  const accountEmailArray = sql.join(accountEmails.map((email) => sql`${email}`), sql`, `);
   const result = await input.db.execute(sql`
     with rotation_lock as (
       select pg_advisory_xact_lock(hashtext(${ROTATION_LOCK_KEY}))
@@ -29,7 +30,7 @@ export async function assignWakanowAccountForBooking(input: {
     ),
     account_pool as (
       select lower(account_email) as account_email, (ordinality - 1)::int as pool_index
-      from unnest(${accountEmails}::text[]) with ordinality as pool(account_email, ordinality)
+      from unnest(array[${accountEmailArray}]::text[]) with ordinality as pool(account_email, ordinality)
     ),
     created_assignment as (
       insert into skypadi_whatsapp.supplier_account_assignments (
