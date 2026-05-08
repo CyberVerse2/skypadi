@@ -15,8 +15,7 @@ export type BookingAlias = {
 export function generateBookingEmailAlias(input: BookingAliasInput): BookingAlias {
   const domain = normalizeDomain(input.domain);
   const token = normalizeToken(input.idGenerator?.() ?? randomBytes(8).toString("hex"));
-  const prefix = normalizeLocalPartPrefix(input.prefix ?? "book");
-  const localPart = `${prefix}_${token}`;
+  const localPart = humanReadableLocalPart(token, input.prefix);
 
   return {
     emailAddress: `${localPart}@${domain}`,
@@ -45,7 +44,20 @@ function normalizeToken(token: string): string {
   return normalized;
 }
 
-function normalizeLocalPartPrefix(prefix: string): string {
-  const normalized = prefix.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 20);
-  return normalized || "book";
+function humanReadableLocalPart(token: string, prefix?: string): string {
+  const firstNames = ["amaka", "nkiru", "mariam", "zainab", "tolu", "bassey", "kunle", "chioma"];
+  const lastNames = ["okafor", "obi", "sani", "bello", "adebayo", "etim", "fashola", "nwachukwu"];
+  const seed = Array.from(token).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const first = firstNames[seed % firstNames.length]!;
+  const last = lastNames[Math.floor(seed / firstNames.length) % lastNames.length]!;
+  const suffix = token.slice(0, 6);
+  const normalizedPrefix = normalizeLocalPartSegment(prefix ?? "");
+
+  return [first, last, normalizedPrefix === "book" ? undefined : normalizedPrefix, suffix]
+    .filter(Boolean)
+    .join(".");
+}
+
+function normalizeLocalPartSegment(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "").slice(0, 20);
 }

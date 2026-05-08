@@ -39,7 +39,7 @@ describe("workflow booking workflow", () => {
           userId: input.userId,
           conversationId: input.conversationId,
           selectedFlightOptionId: "opt_123",
-          bookingEmailAlias: "book_abc123@bookings.wakanow.com",
+          bookingEmailAlias: "tolu.nwachukwu.abc123@bookings.wakanow.com",
           status: "priced",
         };
       },
@@ -70,11 +70,11 @@ describe("workflow booking workflow", () => {
       expect(result.value.userId).toBe("user_123");
       expect(result.value.conversationId).toBe("conv_123");
       expect(result.value.selectedFlightOptionId).toBe("opt_123");
-      expect(result.value.bookingEmailAlias).toBe("book_abc123@bookings.wakanow.com");
+      expect(result.value.bookingEmailAlias).toBe("tolu.nwachukwu.abc123@bookings.wakanow.com");
     }
     expect(writes.length).toBe(1);
     expect(writes[0]?.status).toBe("priced");
-    expect(writes[0]?.aliasLocalPart).toBe("book_abc123");
+    expect(writes[0]?.aliasLocalPart).toBe("tolu.nwachukwu.abc123");
 
     const invalidDomain = await createBookingFromSelectedOption({
       userId: "user_123",
@@ -153,7 +153,7 @@ describe("workflow booking workflow", () => {
     }
     expect(collectedPassengerDetails.length).toBe(1);
     expect(collectedPassengerDetails[0]?.passenger.email).toBe("celestine@email.com");
-    expect(collectedPassengerDetails[0]?.supplierContactEmail).toBe("book_abc123@bookings.wakanow.com");
+    expect(collectedPassengerDetails[0]?.supplierContactEmail).toBe("tolu.nwachukwu.abc123@bookings.wakanow.com");
 
     const savedPassengerCollections: unknown[] = [];
     const defaultPassengerEnqueues: string[] = [];
@@ -235,7 +235,7 @@ describe("workflow booking workflow", () => {
         phone: "08012345678",
         email: "celestine@email.com",
       },
-      supplierContactEmail: "book_abc123@bookings.wakanow.com",
+      supplierContactEmail: "tolu.nwachukwu.abc123@bookings.wakanow.com",
       collectedAt: new Date("2026-05-01T12:03:00.000Z"),
     });
 
@@ -358,7 +358,7 @@ describe("workflow booking workflow", () => {
     }
     expect(collectedPassengerDetails.length).toBe(3);
     expect(collectedPassengerDetails[2]?.passenger.email).toBe("celestine@email.com");
-    expect(collectedPassengerDetails[2]?.supplierContactEmail).toBe("book_abc123@bookings.wakanow.com");
+    expect(collectedPassengerDetails[2]?.supplierContactEmail).toBe("tolu.nwachukwu.abc123@bookings.wakanow.com");
     expect(supplierCalls.length).toBe(1);
 
     const invalidPassengerDetails = await collectPassengerDetailsAndCreateSupplierHold({
