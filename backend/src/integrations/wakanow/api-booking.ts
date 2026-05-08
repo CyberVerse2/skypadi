@@ -293,7 +293,11 @@ async function validatePassengerDetailsWithBrowser(validationRequest: Record<str
     status: response.status,
     contentType: "application/json",
     text: response.text,
-    details: { transport: "browser" },
+    details: {
+      transport: "browser",
+      path: "/api/booking/Booking/Validate",
+      method: "POST",
+    },
   });
 }
 
@@ -617,7 +621,7 @@ function parseJsonResponse<T>(input: {
   if (!input.contentType.includes("json") && !looksJson) {
     throw new WakanowDirectBookingError("Wakanow API returned non-JSON response", {
       stage: input.stage,
-      details: { ...input.details, status: input.status, preview: input.text.slice(0, 300) },
+      details: { stage: input.stage, ...input.details, status: input.status, preview: input.text.slice(0, 300) },
       safeToFallback: input.safeToFallback,
     });
   }
@@ -628,14 +632,14 @@ function parseJsonResponse<T>(input: {
   } catch {
     throw new WakanowDirectBookingError("Wakanow API returned invalid JSON response", {
       stage: input.stage,
-      details: { ...input.details, status: input.status, preview: input.text.slice(0, 300) },
+      details: { stage: input.stage, ...input.details, status: input.status, preview: input.text.slice(0, 300) },
       safeToFallback: input.safeToFallback,
     });
   }
   if (input.status < 200 || input.status >= 300) {
     throw new WakanowDirectBookingError(data.Message ?? `Wakanow API request failed with ${input.status}`, {
       stage: input.stage,
-      details: { ...input.details, status: input.status, response: data },
+      details: { stage: input.stage, ...input.details, status: input.status, response: data },
       safeToFallback: input.safeToFallback,
     });
   }
