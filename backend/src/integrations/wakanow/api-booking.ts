@@ -20,7 +20,8 @@ import type {
   WakanowSupplierBookingState,
 } from "./wakanow.types";
 
-const proxyAgent = wakanowConfig.proxyUrl ? new ProxyAgent(wakanowConfig.proxyUrl) : undefined;
+const bookingProxyUrl = wakanowConfig.proxyUrls[0] ?? wakanowConfig.proxyUrl;
+const proxyAgent = bookingProxyUrl ? new ProxyAgent(bookingProxyUrl) : undefined;
 
 const COMMON_HEADERS = {
   ...wakanowCommonHeaders({ contentType: "json", currency: wakanowConfig.currency }),
@@ -442,12 +443,25 @@ async function requestJson<T>(input: {
   headers?: Record<string, string>;
   safeToFallback?: boolean;
 }): Promise<T> {
-  const response = await input.fetchImpl(input.url, {
-    method: input.method,
-    headers: { ...COMMON_HEADERS, ...input.headers },
-    body: input.body === undefined ? undefined : JSON.stringify(input.body),
-    signal: AbortSignal.timeout(wakanowConfig.booking.fetchTimeoutMs),
-  });
+  let response: Response;
+  try {
+    response = await input.fetchImpl(input.url, {
+      method: input.method,
+      headers: { ...COMMON_HEADERS, ...input.headers },
+      body: input.body === undefined ? undefined : JSON.stringify(input.body),
+      signal: AbortSignal.timeout(wakanowConfig.booking.fetchTimeoutMs),
+    });
+  } catch (error) {
+    throw new WakanowDirectBookingError(error instanceof Error ? error.message : "Wakanow API request failed", {
+      stage: input.stage,
+      details: {
+        url: input.url,
+        method: input.method,
+        proxy: proxyAgent ? "configured" : "direct",
+      },
+      safeToFallback: input.safeToFallback,
+    });
+  }
   const text = await response.text();
   const contentType = response.headers.get("content-type") ?? "";
 
