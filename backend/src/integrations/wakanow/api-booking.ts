@@ -1,7 +1,5 @@
 import { createHash } from "node:crypto";
 
-import { ProxyAgent, fetch as undiciFetch } from "undici";
-
 import type { BankTransferDetails } from "../../schemas/booking-contract";
 import type { Passenger } from "../../schemas/flight-booking";
 import { createWakanowAccountFetch } from "./account-auth";
@@ -19,9 +17,6 @@ import type {
   WakanowSelectFlightResponse,
   WakanowSupplierBookingState,
 } from "./wakanow.types";
-
-const bookingProxyUrl = wakanowConfig.proxyUrls[0] ?? wakanowConfig.proxyUrl;
-const proxyAgent = bookingProxyUrl ? new ProxyAgent(bookingProxyUrl) : undefined;
 
 const COMMON_HEADERS = {
   ...wakanowCommonHeaders({ contentType: "json", currency: wakanowConfig.currency }),
@@ -457,7 +452,7 @@ async function requestJson<T>(input: {
       details: {
         url: input.url,
         method: input.method,
-        proxy: proxyAgent ? "configured" : "direct",
+        transport: "direct",
       },
       safeToFallback: input.safeToFallback,
     });
@@ -502,8 +497,5 @@ function isVerificationRequired(error: WakanowDirectBookingError): boolean {
 }
 
 function proxyFetch(url: string, opts: RequestInit = {}): Promise<Response> {
-  if (proxyAgent) {
-    return undiciFetch(url, { ...(opts as Record<string, unknown>), dispatcher: proxyAgent }) as unknown as Promise<Response>;
-  }
   return fetch(url, opts);
 }
