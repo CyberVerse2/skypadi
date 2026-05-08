@@ -93,6 +93,64 @@ export async function selectWakanowFlightWithBrowser(input: {
   });
 }
 
+export async function validateWakanowBookingWithBrowser(input: {
+  proxyUrl: string | undefined;
+  validationBody: Record<string, unknown>;
+}): Promise<{ status: number; text: string; cookieHeader?: string }> {
+  const profileKey = browserProfileKey(input.proxyUrl);
+  return withBrowserProfileLock(profileKey, async () => {
+    const session = await getLiveBrowserSession(profileKey, input.proxyUrl);
+    const page = await session.context.newPage();
+
+    try {
+      const response = await runSameOriginBookingValidate(page, input.validationBody);
+      const cookies = await session.context.cookies([
+        wakanowConfig.webOrigin,
+        wakanowConfig.search.apiBaseUrl,
+        wakanowConfig.booking.apiBaseUrl,
+      ]);
+      return {
+        ...response,
+        cookieHeader: cookiesToHeader(cookies),
+      };
+    } finally {
+      await page.close().catch(() => undefined);
+      scheduleIdleClose(profileKey, session);
+    }
+  });
+}
+
+async function runSameOriginBookingValidate(
+  page: Page,
+  validationBody: Record<string, unknown>
+): Promise<{ status: number; text: string }> {
+  await page.goto(`${wakanowConfig.booking.apiBaseUrl}/Booking/Validate`, {
+    waitUntil: "commit",
+    timeout: wakanowConfig.cookieWarmupTimeoutMs,
+  }).catch(() => undefined);
+
+  await page.waitForTimeout(1_000);
+
+  return page.evaluate(
+    async ({ validationBody }) => {
+      const response = await fetch("/api/booking/Booking/Validate", {
+        method: "POST",
+        redirect: "manual",
+        headers: {
+          "Accept": "application/json, text/plain, */*",
+          "Accept-Language": "en-NG",
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify(validationBody),
+      });
+
+      return { status: response.status, text: await response.text() };
+    },
+    { validationBody }
+  );
+}
+
 async function warmWakanowCookies(proxyUrl: string | undefined): Promise<string | undefined> {
   const browser = await launchWakanowBrowser(proxyUrl);
 

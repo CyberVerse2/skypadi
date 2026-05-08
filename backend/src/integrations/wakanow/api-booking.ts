@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import type { BankTransferDetails } from "../../schemas/booking-contract";
 import type { Passenger } from "../../schemas/flight-booking";
 import { createWakanowAccountFetch } from "./account-auth";
-import { selectWakanowFlightWithBrowser } from "./browser-session";
+import { selectWakanowFlightWithBrowser, validateWakanowBookingWithBrowser } from "./browser-session";
 import { wakanowCommonHeaders, wakanowConfig } from "./wakanow.config";
 import type {
   WakanowAccountCredentials,
@@ -91,10 +91,11 @@ export async function bookFlightWithWakanowApi(
     currency,
   });
 
-  const validation = await validatePassengerDetails(fetchImpl, validationRequest, request);
+  const preferBrowser = !options.fetchImpl;
+  const validation = await validatePassengerDetails(fetchImpl, validationRequest, request, { preferBrowser });
   if (validation.verificationCode) {
     validationRequest.VerificationCode = validation.verificationCode;
-    await validatePassengerDetails(fetchImpl, validationRequest, request, true);
+    await validatePassengerDetails(fetchImpl, validationRequest, request, { isRetry: true, preferBrowser });
     await validation.consume?.();
   }
   await options.onStateChange?.({
@@ -238,18 +239,22 @@ async function validatePassengerDetails(
   fetchImpl: WakanowDirectBookingFetch,
   validationRequest: Record<string, unknown>,
   request: WakanowDirectBookingRequest,
-  isRetry = false,
+  options: { isRetry?: boolean; preferBrowser?: boolean } = {},
 ): Promise<{ verificationCode?: string; consume?: () => Promise<void> }> {
   try {
-    await postJson({
-      fetchImpl,
-      stage: "validate",
-      url: `${wakanowConfig.booking.apiBaseUrl}/Booking/Validate`,
-      body: validationRequest,
-    });
+    if (options.preferBrowser) {
+      await validatePassengerDetailsWithBrowser(validationRequest);
+    } else {
+      await postJson({
+        fetchImpl,
+        stage: "validate",
+        url: `${wakanowConfig.booking.apiBaseUrl}/Booking/Validate`,
+        body: validationRequest,
+      });
+    }
     return {};
   } catch (error) {
-    if (!(error instanceof WakanowDirectBookingError) || isRetry || !isVerificationRequired(error)) {
+    if (!(error instanceof WakanowDirectBookingError) || options.isRetry || !isVerificationRequired(error)) {
       throw error;
     }
 
@@ -267,6 +272,21 @@ async function validatePassengerDetails(
 
     return { verificationCode: otp.code, consume: otp.consume };
   }
+}
+
+async function validatePassengerDetailsWithBrowser(validationRequest: Record<string, unknown>): Promise<void> {
+  const response = await validateWakanowBookingWithBrowser({
+    proxyUrl: undefined,
+    validationBody: validationRequest,
+  });
+
+  parseJsonResponse({
+    stage: "validate",
+    status: response.status,
+    contentType: "application/json",
+    text: response.text,
+    details: { transport: "browser" },
+  });
 }
 
 function buildValidationRequest(input: {
