@@ -17,12 +17,13 @@ describe("unit wakanow api booking", () => {
 
   test("Wakanow direct API booking creates a pending-payment booking without browser automation", async () => {
     expect.hasAssertions();
-    const requests: Array<{ url: string; method: string; body?: unknown; headers: Record<string, string> }> = [];
+    const requests: Array<{ url: string; method: string; redirect?: RequestRedirect; body?: unknown; headers: Record<string, string> }> = [];
     const fetchImpl: WakanowDirectBookingFetch = async (url, init = {}) => {
       const headers = Object.fromEntries(new Headers(init.headers).entries());
       requests.push({
         url: String(url),
         method: init.method ?? "GET",
+        redirect: init.redirect,
         body: init.body ? JSON.parse(String(init.body)) : undefined,
         headers,
       });
@@ -122,6 +123,7 @@ describe("unit wakanow api booking", () => {
       FlightId: "flight_abc",
       TargetCurrency: "NGN",
     });
+    expect(selectRequest?.redirect).toBe("manual");
 
     const validateRequest = requests.find((request) => request.url.endsWith("/api/booking/Booking/Validate"));
     const validateBody = validateRequest?.body as Record<string, any> | undefined;

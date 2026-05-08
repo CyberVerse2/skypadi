@@ -442,6 +442,7 @@ async function requestJson<T>(input: {
   try {
     response = await input.fetchImpl(input.url, {
       method: input.method,
+      redirect: "manual",
       headers: { ...COMMON_HEADERS, ...input.headers },
       body: input.body === undefined ? undefined : JSON.stringify(input.body),
       signal: AbortSignal.timeout(wakanowConfig.booking.fetchTimeoutMs),
