@@ -14,5 +14,8 @@ RUN npm run build
 # Remove devDependencies after build
 RUN npm prune --omit=dev
 
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
+
 EXPOSE 8080
-CMD ["node", "dist/index.js"]
+CMD ["./docker-entrypoint.sh"]
