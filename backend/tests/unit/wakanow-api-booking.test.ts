@@ -135,7 +135,7 @@ describe("unit wakanow api booking", () => {
         TargetCurrency: "NGN",
       },
     ]);
-    expect(validateBody?.PassengerDetails?.[0]?.Email).toBe("book_abc@bookings.wakanow.com");
+    expect(validateBody?.PassengerDetails?.[0]?.Email).toBe("ada@example.com");
 
     const submitRequest = requests.find((request) => request.url.endsWith("/api/booking/Booking/Booking/987654"));
     expect(submitRequest?.headers["x-auth-hash"]).toBe("a7f16b10eb44461406b6467d2292543a833202e6e6dd4342ec217620a03a01d7f0c0c8587984c093b72f898fdf180f61c610af30cd571e66415b0456994bf730");

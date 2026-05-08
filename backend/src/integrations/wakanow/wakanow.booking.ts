@@ -243,7 +243,7 @@ function passengerFromSnapshot(snapshot: Record<string, unknown>, contactEmail: 
     nationality: stringValue(snapshot.nationality) ?? "Nigerian",
     gender: stringValue(snapshot.gender) as Passenger["gender"],
     phone: stringValue(snapshot.phone) ?? "",
-    email: contactEmail,
+    email: stringValue(snapshot.email) ?? contactEmail,
   };
 }
 

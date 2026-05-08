@@ -376,7 +376,7 @@ function buildValidationRequest(input: {
   currency: string;
 }): Record<string, unknown> {
   return {
-    PassengerDetails: [passengerToWakanowPassenger(input.request.passenger, input.request.contactEmail)],
+    PassengerDetails: [passengerToWakanowPassenger(input.request.passenger)],
     BookingItemModels: [
       {
         ProductType: "Flight",
@@ -395,12 +395,12 @@ function buildValidationRequest(input: {
   };
 }
 
-function passengerToWakanowPassenger(passenger: Passenger, contactEmail: string): Record<string, unknown> {
+function passengerToWakanowPassenger(passenger: Passenger): Record<string, unknown> {
   const birthDate = parseDateParts(passenger.dateOfBirth);
   const phone = normalizePhone(passenger.phone);
   return {
     PassengerType: "Adult",
-    Email: contactEmail,
+    Email: passenger.email,
     PhoneNumber: phone,
     Title: passenger.title,
     FirstName: passenger.firstName,
