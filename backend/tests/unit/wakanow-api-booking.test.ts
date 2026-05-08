@@ -72,7 +72,7 @@ describe("unit wakanow api booking", () => {
         });
       }
 
-      if (String(url).endsWith("/api/booking/Booking/GeneratePNR/987654")) {
+      if (String(url).endsWith("/api/booking/Booking/TicketPNR/987654")) {
         return jsonResponse({ Status: "OK" });
       }
 
@@ -180,7 +180,7 @@ describe("unit wakanow api booking", () => {
         && error.message === "Wakanow booking auth salt is not configured");
   });
 
-  test("Wakanow direct API booking persists supplier state and can resume after select", async () => {
+  test("Wakanow direct API booking persists supplier state and resumes after submitted stage", async () => {
     expect.hasAssertions();
     const states: unknown[] = [];
     const urls: string[] = [];
@@ -195,7 +195,7 @@ describe("unit wakanow api booking", () => {
       if (String(url).endsWith("/api/booking/Booking/Validate")) return jsonResponse("2605010405376");
       if (String(url).endsWith("/api/booking/Booking/Booking/2605010405376")) return jsonResponse({});
       if (String(url).endsWith("/api/booking/Payment/Get/2605010405376/Flight")) return paymentModelResponse("2605010405376");
-      if (String(url).endsWith("/api/booking/Booking/GeneratePNR/2605010405376")) return jsonResponse({});
+      if (String(url).endsWith("/api/booking/Booking/TicketPNR/2605010405376")) return jsonResponse({});
       if (String(url).endsWith("/api/booking/Payment/MakePayment")) return paymentModelResponse("2605010405376");
       throw new Error(`unexpected request ${String(url)}`);
     };
@@ -239,10 +239,14 @@ describe("unit wakanow api booking", () => {
       if (String(url).endsWith("/api/flights/Select/")) {
         throw new Error("resume should not select again");
       }
-      if (String(url).endsWith("/api/booking/Booking/Validate")) return jsonResponse("2605010405376");
-      if (String(url).endsWith("/api/booking/Booking/Booking/2605010405376")) return jsonResponse({});
+      if (String(url).endsWith("/api/booking/Booking/Validate")) {
+        throw new Error("resume should not validate a submitted booking again");
+      }
+      if (String(url).endsWith("/api/booking/Booking/Booking/2605010405376")) {
+        throw new Error("resume should not submit a submitted booking again");
+      }
       if (String(url).endsWith("/api/booking/Payment/Get/2605010405376/Flight")) return paymentModelResponse("2605010405376");
-      if (String(url).endsWith("/api/booking/Booking/GeneratePNR/2605010405376")) return jsonResponse({});
+      if (String(url).endsWith("/api/booking/Booking/TicketPNR/2605010405376")) return jsonResponse({});
       if (String(url).endsWith("/api/booking/Payment/MakePayment")) return paymentModelResponse("2605010405376");
       throw new Error(`unexpected request ${String(url)}`);
     };
@@ -256,6 +260,7 @@ describe("unit wakanow api booking", () => {
         supplierState: {
           supplierBookingId: "2605010405376",
           selectData: { selected: "persist-me" },
+          stage: "submitted",
         },
       },
       { fetchImpl: resumedFetch },
@@ -263,6 +268,8 @@ describe("unit wakanow api booking", () => {
 
     expect(urls.some((url) => url.endsWith("/api/flights/Select/"))).toBe(true);
     expect(resumedUrls.some((url) => url.endsWith("/api/flights/Select/"))).toBe(false);
+    expect(resumedUrls.some((url) => url.endsWith("/api/booking/Booking/Validate"))).toBe(false);
+    expect(resumedUrls.some((url) => url.endsWith("/api/booking/Booking/Booking/2605010405376"))).toBe(false);
   });
 
   test("Wakanow direct API booking retries validation with supplier email OTP when required", async () => {
@@ -296,7 +303,7 @@ describe("unit wakanow api booking", () => {
 
       if (String(url).endsWith("/api/booking/Booking/Booking/987654")) return jsonResponse({});
       if (String(url).endsWith("/api/booking/Payment/Get/987654/Flight")) return paymentModelResponse();
-      if (String(url).endsWith("/api/booking/Booking/GeneratePNR/987654")) return jsonResponse({});
+      if (String(url).endsWith("/api/booking/Booking/TicketPNR/987654")) return jsonResponse({});
       if (String(url).endsWith("/api/booking/Payment/MakePayment")) return paymentModelResponse();
 
       throw new Error(`unexpected request ${String(url)}`);
@@ -342,7 +349,7 @@ describe("unit wakanow api booking", () => {
       if (String(url).endsWith("/api/booking/Booking/Validate")) return jsonResponse({ Status: "OK" });
       if (String(url).endsWith("/api/booking/Booking/Booking/2605010405203")) return jsonResponse({});
       if (String(url).endsWith("/api/booking/Payment/Get/2605010405203/Flight")) return paymentModelResponse("2605010405203");
-      if (String(url).endsWith("/api/booking/Booking/GeneratePNR/2605010405203")) return jsonResponse({});
+      if (String(url).endsWith("/api/booking/Booking/TicketPNR/2605010405203")) return jsonResponse({});
       if (String(url).endsWith("/api/booking/Payment/MakePayment")) return paymentModelResponse("2605010405203");
 
       throw new Error(`unexpected request ${String(url)}`);
@@ -374,7 +381,7 @@ describe("unit wakanow api booking", () => {
       if (String(url).endsWith("/api/booking/Booking/Validate")) return jsonResponse("2605010405374");
       if (String(url).endsWith("/api/booking/Booking/Booking/2605010405374")) return jsonResponse({});
       if (String(url).endsWith("/api/booking/Payment/Get/2605010405374/Flight")) return paymentModelResponse("2605010405374");
-      if (String(url).endsWith("/api/booking/Booking/GeneratePNR/2605010405374")) return jsonResponse({});
+      if (String(url).endsWith("/api/booking/Booking/TicketPNR/2605010405374")) return jsonResponse({});
       if (String(url).endsWith("/api/booking/Payment/MakePayment")) return paymentModelResponse("2605010405374");
 
       throw new Error(`unexpected request ${String(url)}`);
@@ -428,7 +435,7 @@ describe("unit wakanow api booking", () => {
           },
         });
       }
-      if (String(url).endsWith("/api/booking/Booking/GeneratePNR/2605010405375")) return jsonResponse({});
+      if (String(url).endsWith("/api/booking/Booking/TicketPNR/2605010405375")) return jsonResponse({});
       if (String(url).endsWith("/api/booking/Payment/MakePayment")) {
         paymentBody = JSON.parse(String(init.body));
         return paymentModelResponse("2605010405375");

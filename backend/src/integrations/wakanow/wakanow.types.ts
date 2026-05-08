@@ -35,7 +35,7 @@ export type WakanowDirectBookingStage =
   | "validate"
   | "submit_booking"
   | "payment_options"
-  | "generate_pnr"
+  | "ticket_pnr"
   | "make_payment";
 
 export type WakanowDirectBookingRequest = {

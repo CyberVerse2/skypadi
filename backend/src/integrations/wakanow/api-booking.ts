@@ -73,6 +73,7 @@ export async function bookFlightWithWakanowApi(
 
   const supplierBookingId = selectedFlightResult.BookingId;
   const selectData = selectedFlightResult.SelectData;
+  const supplierStage = request.supplierState?.stage;
   if (!supplierBookingId || !selectData) {
     throw new WakanowDirectBookingError("Wakanow select response was missing booking data", {
       stage: "select",
@@ -96,30 +97,35 @@ export async function bookFlightWithWakanowApi(
   });
 
   const preferBrowser = !options.fetchImpl;
-  const validation = await validatePassengerDetails(fetchImpl, validationRequest, request, { preferBrowser });
-  if (validation.verificationCode) {
-    validationRequest.VerificationCode = validation.verificationCode;
-    await validatePassengerDetails(fetchImpl, validationRequest, request, { isRetry: true, preferBrowser });
-    await validation.consume?.();
+  let validation: { verificationCode?: string; consume?: () => Promise<void> } = {};
+  if (!hasReachedSupplierStage(supplierStage, "validated")) {
+    validation = await validatePassengerDetails(fetchImpl, validationRequest, request, { preferBrowser });
+    if (validation.verificationCode) {
+      validationRequest.VerificationCode = validation.verificationCode;
+      await validatePassengerDetails(fetchImpl, validationRequest, request, { isRetry: true, preferBrowser });
+      await validation.consume?.();
+    }
+    await options.onStateChange?.({
+      supplierBookingId,
+      selectData,
+      stage: "validated",
+    });
   }
-  await options.onStateChange?.({
-    supplierBookingId,
-    selectData,
-    stage: "validated",
-  });
 
-  await getBookingJson({
-    fetchImpl,
-    stage: "submit_booking",
-    path: `/Booking/Booking/${supplierBookingId}`,
-    headers: bookingAuthHeaders(supplierBookingId, now()),
-    preferBrowser,
-  });
-  await options.onStateChange?.({
-    supplierBookingId,
-    selectData,
-    stage: "submitted",
-  });
+  if (!hasReachedSupplierStage(supplierStage, "submitted")) {
+    await getBookingJson({
+      fetchImpl,
+      stage: "submit_booking",
+      path: `/Booking/Booking/${supplierBookingId}`,
+      headers: bookingAuthHeaders(supplierBookingId, now()),
+      preferBrowser,
+    });
+    await options.onStateChange?.({
+      supplierBookingId,
+      selectData,
+      stage: "submitted",
+    });
+  }
 
   const paymentMethods = await getBookingJson<WakanowPaymentResponse>({
     fetchImpl,
@@ -131,8 +137,8 @@ export async function bookFlightWithWakanowApi(
 
   await getBookingJson({
     fetchImpl,
-    stage: "generate_pnr",
-    path: `/Booking/GeneratePNR/${supplierBookingId}`,
+    stage: "ticket_pnr",
+    path: `/Booking/TicketPNR/${supplierBookingId}`,
     preferBrowser,
   });
 
@@ -192,6 +198,19 @@ export async function bookFlightWithWakanowApi(
     },
     rawStatus: "pending_payment",
   };
+}
+
+function hasReachedSupplierStage(
+  current: WakanowSupplierBookingState["stage"] | undefined,
+  target: NonNullable<WakanowSupplierBookingState["stage"]>,
+): boolean {
+  const order: NonNullable<WakanowSupplierBookingState["stage"]>[] = [
+    "selected",
+    "validated",
+    "submitted",
+    "payment_pending",
+  ];
+  return order.indexOf(current as NonNullable<WakanowSupplierBookingState["stage"]>) >= order.indexOf(target);
 }
 
 async function selectFlight(input: {
