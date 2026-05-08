@@ -15,9 +15,12 @@ import type {
 export type { WakanowAccountAuthFetch, WakanowAccountCredentials } from "./wakanow.types";
 
 export class WakanowAccountAuthError extends Error {
-  constructor(message: string) {
+  details?: Record<string, unknown>;
+
+  constructor(message: string, details?: Record<string, unknown>) {
     super(message);
     this.name = "WakanowAccountAuthError";
+    this.details = details;
   }
 }
 
@@ -66,7 +69,12 @@ export async function getWakanowAccountToken(options: WakanowAccountAuthOptions 
   const text = await response.text();
   const data = parseTokenResponse(text);
   if (!response.ok || !data.access_token) {
-    throw new WakanowAccountAuthError(`Wakanow account login failed with ${response.status}`);
+    throw new WakanowAccountAuthError(`Wakanow account login failed with ${response.status}`, {
+      status: response.status,
+      statusText: response.statusText,
+      contentType: response.headers.get("content-type"),
+      response: data,
+    });
   }
 
   const token = {

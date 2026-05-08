@@ -60,11 +60,12 @@ export function createSupplierBookingTask(dependencies: SupplierBookingTaskDepen
       await dependencies.jobRepository.markSucceeded({ bookingId: payload.bookingId, finishedAt: new Date() });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Supplier booking job failed";
+      const errorMessage = formatSupplierBookingError(error, message);
       await dependencies.jobRepository.markFailed({
         bookingId: payload.bookingId,
         failedAt: new Date(),
-        errorMessage: message,
-        retryable: isRetryableSupplierBookingError(message),
+        errorMessage,
+        retryable: isRetryableSupplierBookingError(errorMessage),
       });
       throw error;
     }
@@ -92,6 +93,20 @@ function assertSupplierBookingPayload(payload: unknown): asserts payload is Supp
 
 export function isRetryableSupplierBookingError(message: string): boolean {
   return /timeout|network|temporar|fetch failed|econnreset|etimedout|eai_again|429|5\d{2}|too many requests|bad gateway|service unavailable|gateway timeout/i.test(message);
+}
+
+export function formatSupplierBookingError(error: unknown, fallbackMessage?: string): string {
+  const message = fallbackMessage ?? (error instanceof Error ? error.message : "Supplier booking job failed");
+  const details = error && typeof error === "object" && "details" in error
+    ? (error as { details?: unknown }).details
+    : undefined;
+  if (details === undefined) return message;
+
+  try {
+    return JSON.stringify({ message, details });
+  } catch {
+    return message;
+  }
 }
 
 async function findBookingStatus(bookingId: string): Promise<BookingStatus | undefined> {

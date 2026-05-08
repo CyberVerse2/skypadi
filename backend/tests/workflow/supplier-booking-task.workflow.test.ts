@@ -2,6 +2,7 @@
 import {
   configuredWhatsAppClientFromEnv,
   createSupplierBookingTask,
+  formatSupplierBookingError,
   isRetryableSupplierBookingError,
 } from "../../src/jobs/tasks/supplier-booking.task";
 import { shouldSkipSupplierBookingForStatus } from "../../src/jobs/tasks/supplier-booking-status";
@@ -37,6 +38,28 @@ describe("workflow supplier booking task workflow", () => {
     expect.hasAssertions();
 
     expect(isRetryableSupplierBookingError(message)).toBe(expected);
+  });
+
+  test("formats supplier error details for persistence", () => {
+    expect.hasAssertions();
+    const error = Object.assign(new Error("Wakanow account login failed with 400"), {
+      details: {
+        status: 400,
+        response: {
+          error: "Invalid client",
+        },
+      },
+    });
+
+    expect(formatSupplierBookingError(error)).toBe(JSON.stringify({
+      message: "Wakanow account login failed with 400",
+      details: {
+        status: 400,
+        response: {
+          error: "Invalid client",
+        },
+      },
+    }));
   });
 
   test("marks supplier hold jobs succeeded even when WhatsApp notification fails", async () => {

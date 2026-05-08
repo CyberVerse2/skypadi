@@ -150,6 +150,33 @@ describe("Wakanow account auth", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  test("includes safe response details when account login fails", async () => {
+    expect.hasAssertions();
+    const fetchImpl: WakanowAccountAuthFetch = async () =>
+      jsonResponse({
+        error: "Invalid client",
+        error_description: "Client credentials could not be retrieved through the Authorization header.",
+      }, { status: 400, statusText: "Bad Request" });
+
+    await expect(getWakanowAccountToken({
+      credentials: {
+        email: "bookings@bookings.skypadi.com",
+        password: "secret-password",
+      },
+      fetchImpl,
+    })).rejects.toMatchObject({
+      name: "WakanowAccountAuthError",
+      message: "Wakanow account login failed with 400",
+      details: {
+        status: 400,
+        statusText: "Bad Request",
+        response: {
+          error: "Invalid client",
+        },
+      },
+    } satisfies Partial<WakanowAccountAuthError>);
+  });
+
   test("does not choose accounts from an in-memory pool", async () => {
     expect.hasAssertions();
     const fetchImpl = vi.fn<WakanowAccountAuthFetch>(async (url) => {
@@ -185,6 +212,7 @@ describe("Wakanow account auth", () => {
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), {
     status: init.status ?? 200,
+    statusText: init.statusText,
     headers: { "content-type": "application/json", ...init.headers },
   });
 }
