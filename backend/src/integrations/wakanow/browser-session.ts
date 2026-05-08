@@ -70,6 +70,29 @@ export async function createWakanowSearchWithBrowser(input: {
   });
 }
 
+export async function selectWakanowFlightWithBrowser(input: {
+  proxyUrl: string | undefined;
+  selectBody: Record<string, unknown>;
+}): Promise<{ status: number; text: string; cookieHeader?: string }> {
+  const profileKey = browserProfileKey(input.proxyUrl);
+  return withBrowserProfileLock(profileKey, async () => {
+    const session = await getLiveBrowserSession(profileKey, input.proxyUrl);
+    const page = await session.context.newPage();
+
+    try {
+      const response = await runSameOriginApiSelect(page, input.selectBody);
+      const cookies = await session.context.cookies([wakanowConfig.webOrigin, wakanowConfig.search.apiBaseUrl]);
+      return {
+        ...response,
+        cookieHeader: cookiesToHeader(cookies),
+      };
+    } finally {
+      await page.close().catch(() => undefined);
+      scheduleIdleClose(profileKey, session);
+    }
+  });
+}
+
 async function warmWakanowCookies(proxyUrl: string | undefined): Promise<string | undefined> {
   const browser = await launchWakanowBrowser(proxyUrl);
 
@@ -261,6 +284,41 @@ async function runSameOriginApiSearch(
     text: result.text,
     searchData: result.searchData as WakanowApiSearchResponse | undefined,
   };
+}
+
+async function runSameOriginApiSelect(
+  page: Page,
+  selectBody: Record<string, unknown>
+): Promise<{ status: number; text: string }> {
+  await page.goto(`${wakanowConfig.search.apiBaseUrl}/Select`, {
+    waitUntil: "commit",
+    timeout: wakanowConfig.cookieWarmupTimeoutMs,
+  }).catch(() => undefined);
+
+  await page.waitForTimeout(1_000);
+
+  return page.evaluate(
+    async ({ selectBody, currency }) => {
+      const response = await fetch("/api/flights/Select/", {
+        method: "POST",
+        redirect: "manual",
+        headers: {
+          "Accept": "application/json, text/plain, */*",
+          "Accept-Language": "en-NG",
+          "Content-Type": "application/json",
+          "x-currency": currency,
+        },
+        credentials: "include",
+        body: JSON.stringify(selectBody),
+      });
+
+      return { status: response.status, text: await response.text() };
+    },
+    {
+      selectBody,
+      currency: wakanowConfig.currency,
+    }
+  );
 }
 
 function isValidSearchKey(text: string): boolean {

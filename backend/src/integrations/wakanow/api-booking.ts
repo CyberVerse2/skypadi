@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type { BankTransferDetails } from "../../schemas/booking-contract";
 import type { Passenger } from "../../schemas/flight-booking";
 import { createWakanowAccountFetch } from "./account-auth";
+import { selectWakanowFlightWithBrowser } from "./browser-session";
 import { wakanowCommonHeaders, wakanowConfig } from "./wakanow.config";
 import type {
   WakanowAccountCredentials,
@@ -64,7 +65,7 @@ export async function bookFlightWithWakanowApi(
   const existingSelectData = request.supplierState?.selectData;
   const selectedFlightResult = existingSupplierBookingId && existingSelectData
     ? { BookingId: existingSupplierBookingId, SelectData: existingSelectData }
-    : await selectFlight({ fetchImpl, request, currency });
+    : await selectFlight({ fetchImpl, request, currency, preferBrowser: !options.fetchImpl });
 
   const supplierBookingId = selectedFlightResult.BookingId;
   const selectData = selectedFlightResult.SelectData;
@@ -188,20 +189,49 @@ async function selectFlight(input: {
   fetchImpl: WakanowDirectBookingFetch;
   request: WakanowDirectBookingRequest;
   currency: string;
+  preferBrowser: boolean;
 }): Promise<{ BookingId?: string; SelectData?: unknown }> {
+  const body = {
+    SearchKey: input.request.searchKey,
+    FlightId: input.request.flightId,
+    TargetCurrency: input.currency,
+  };
+
+  if (input.preferBrowser) {
+    try {
+      const selectedFlight = await selectFlightWithBrowser(body);
+      return selectedFlight.SelectFlightResult ?? selectedFlight;
+    } catch (error) {
+      if (error instanceof WakanowDirectBookingError) throw error;
+      // Direct fetch remains as a final fallback for environments where browser startup fails.
+    }
+  }
+
   const selectedFlight = await postJson<WakanowSelectFlightResponse>({
     fetchImpl: input.fetchImpl,
     stage: "select",
     url: `${wakanowConfig.search.apiBaseUrl}/Select/`,
-    body: {
-      SearchKey: input.request.searchKey,
-      FlightId: input.request.flightId,
-      TargetCurrency: input.currency,
-    },
+    body,
     safeToFallback: true,
   });
 
   return selectedFlight.SelectFlightResult ?? selectedFlight;
+}
+
+async function selectFlightWithBrowser(body: Record<string, unknown>): Promise<WakanowSelectFlightResponse> {
+  const response = await selectWakanowFlightWithBrowser({
+    proxyUrl: undefined,
+    selectBody: body,
+  });
+
+  return parseJsonResponse<WakanowSelectFlightResponse>({
+    stage: "select",
+    status: response.status,
+    contentType: "application/json",
+    text: response.text,
+    safeToFallback: true,
+    details: { transport: "browser" },
+  });
 }
 
 async function validatePassengerDetails(
@@ -461,30 +491,47 @@ async function requestJson<T>(input: {
   const text = await response.text();
   const contentType = response.headers.get("content-type") ?? "";
 
-  const trimmed = text.trim();
+  return parseJsonResponse<T>({
+    stage: input.stage,
+    status: response.status,
+    contentType,
+    text,
+    safeToFallback: input.safeToFallback,
+  });
+}
+
+function parseJsonResponse<T>(input: {
+  stage: WakanowDirectBookingStage;
+  status: number;
+  contentType: string;
+  text: string;
+  safeToFallback?: boolean;
+  details?: Record<string, unknown>;
+}): T {
+  const trimmed = input.text.trim();
   const looksJson = /^[{["0-9tfn-]/.test(trimmed);
-  if (!contentType.includes("json") && !looksJson) {
+  if (!input.contentType.includes("json") && !looksJson) {
     throw new WakanowDirectBookingError("Wakanow API returned non-JSON response", {
       stage: input.stage,
-      details: { status: response.status, preview: text.slice(0, 300) },
+      details: { ...input.details, status: input.status, preview: input.text.slice(0, 300) },
       safeToFallback: input.safeToFallback,
     });
   }
 
   let data: T & { Message?: string };
   try {
-    data = JSON.parse(text) as T & { Message?: string };
+    data = JSON.parse(input.text) as T & { Message?: string };
   } catch {
     throw new WakanowDirectBookingError("Wakanow API returned invalid JSON response", {
       stage: input.stage,
-      details: { status: response.status, preview: text.slice(0, 300) },
+      details: { ...input.details, status: input.status, preview: input.text.slice(0, 300) },
       safeToFallback: input.safeToFallback,
     });
   }
-  if (!response.ok) {
-    throw new WakanowDirectBookingError(data.Message ?? `Wakanow API request failed with ${response.status}`, {
+  if (input.status < 200 || input.status >= 300) {
+    throw new WakanowDirectBookingError(data.Message ?? `Wakanow API request failed with ${input.status}`, {
       stage: input.stage,
-      details: { status: response.status, response: data },
+      details: { ...input.details, status: input.status, response: data },
       safeToFallback: input.safeToFallback,
     });
   }
