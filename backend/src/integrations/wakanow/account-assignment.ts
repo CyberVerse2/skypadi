@@ -45,10 +45,10 @@ export async function assignWakanowAccountForBooking(input: {
         ${WAKANOW_SUPPLIER},
         account_pool.account_email,
         account_pool.pool_index,
-        jsonb_build_object('pool_size', ${input.accountPool.length})
+        jsonb_build_object('pool_size', ${input.accountPool.length}::int)
       from account_pool, rotation_lock
       where account_pool.pool_index = (
-        select count(*)::int % ${input.accountPool.length}
+        select count(*)::int % ${input.accountPool.length}::int
         from skypadi_whatsapp.supplier_account_assignments
         where supplier = ${WAKANOW_SUPPLIER}
       )
