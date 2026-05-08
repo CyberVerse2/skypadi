@@ -365,7 +365,11 @@ async function requestBookingJsonWithBrowser<T = unknown>(input: {
     status: response.status,
     contentType: "application/json",
     text: response.text,
-    details: { transport: "browser" },
+    details: {
+      transport: "browser",
+      path: `/api/booking${input.path}`,
+      method: input.method,
+    },
   });
 }
 
