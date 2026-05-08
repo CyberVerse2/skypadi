@@ -3,7 +3,11 @@ import { createHash } from "node:crypto";
 import type { BankTransferDetails } from "../../schemas/booking-contract";
 import type { Passenger } from "../../schemas/flight-booking";
 import { createWakanowAccountFetch } from "./account-auth";
-import { selectWakanowFlightWithBrowser, validateWakanowBookingWithBrowser } from "./browser-session";
+import {
+  requestWakanowBookingWithBrowser,
+  selectWakanowFlightWithBrowser,
+  validateWakanowBookingWithBrowser,
+} from "./browser-session";
 import { wakanowCommonHeaders, wakanowConfig } from "./wakanow.config";
 import type {
   WakanowAccountCredentials,
@@ -104,11 +108,12 @@ export async function bookFlightWithWakanowApi(
     stage: "validated",
   });
 
-  await getJson({
+  await getBookingJson({
     fetchImpl,
     stage: "submit_booking",
-    url: `${wakanowConfig.booking.apiBaseUrl}/Booking/Booking/${supplierBookingId}`,
+    path: `/Booking/Booking/${supplierBookingId}`,
     headers: bookingAuthHeaders(supplierBookingId, now()),
+    preferBrowser,
   });
   await options.onStateChange?.({
     supplierBookingId,
@@ -116,24 +121,27 @@ export async function bookFlightWithWakanowApi(
     stage: "submitted",
   });
 
-  const paymentMethods = await getJson<WakanowPaymentResponse>({
+  const paymentMethods = await getBookingJson<WakanowPaymentResponse>({
     fetchImpl,
     stage: "payment_options",
-    url: `${wakanowConfig.booking.apiBaseUrl}/Payment/Get/${supplierBookingId}/Flight`,
+    path: `/Payment/Get/${supplierBookingId}/Flight`,
+    preferBrowser,
   });
   const paymentSelection = selectBankTransferPayment(paymentMethods);
 
-  await getJson({
+  await getBookingJson({
     fetchImpl,
     stage: "generate_pnr",
-    url: `${wakanowConfig.booking.apiBaseUrl}/Booking/GeneratePNR/${supplierBookingId}`,
+    path: `/Booking/GeneratePNR/${supplierBookingId}`,
+    preferBrowser,
   });
 
   const callbackUrl = `${wakanowConfig.webOrigin}/en-ng/booking/${supplierBookingId}/confirmation?products=Flight`;
-  const payment = await postJson<WakanowPaymentResponse>({
+  const payment = await postBookingJson<WakanowPaymentResponse>({
     fetchImpl,
     stage: "make_payment",
-    url: `${wakanowConfig.booking.apiBaseUrl}/Payment/MakePayment`,
+    path: "/Payment/MakePayment",
+    preferBrowser,
     body: {
       BookingId: supplierBookingId,
       CallbackUrl: callbackUrl,
@@ -282,6 +290,78 @@ async function validatePassengerDetailsWithBrowser(validationRequest: Record<str
 
   parseJsonResponse({
     stage: "validate",
+    status: response.status,
+    contentType: "application/json",
+    text: response.text,
+    details: { transport: "browser" },
+  });
+}
+
+async function getBookingJson<T = unknown>(input: {
+  fetchImpl: WakanowDirectBookingFetch;
+  stage: WakanowDirectBookingStage;
+  path: string;
+  headers?: Record<string, string>;
+  preferBrowser: boolean;
+}): Promise<T> {
+  if (input.preferBrowser) {
+    return requestBookingJsonWithBrowser<T>({
+      stage: input.stage,
+      path: input.path,
+      method: "GET",
+      headers: input.headers,
+    });
+  }
+
+  return getJson<T>({
+    fetchImpl: input.fetchImpl,
+    stage: input.stage,
+    url: `${wakanowConfig.booking.apiBaseUrl}${input.path}`,
+    headers: input.headers,
+  });
+}
+
+async function postBookingJson<T = unknown>(input: {
+  fetchImpl: WakanowDirectBookingFetch;
+  stage: WakanowDirectBookingStage;
+  path: string;
+  body: unknown;
+  preferBrowser: boolean;
+}): Promise<T> {
+  if (input.preferBrowser) {
+    return requestBookingJsonWithBrowser<T>({
+      stage: input.stage,
+      path: input.path,
+      method: "POST",
+      body: input.body,
+    });
+  }
+
+  return postJson<T>({
+    fetchImpl: input.fetchImpl,
+    stage: input.stage,
+    url: `${wakanowConfig.booking.apiBaseUrl}${input.path}`,
+    body: input.body,
+  });
+}
+
+async function requestBookingJsonWithBrowser<T = unknown>(input: {
+  stage: WakanowDirectBookingStage;
+  path: string;
+  method: "GET" | "POST";
+  headers?: Record<string, string>;
+  body?: unknown;
+}): Promise<T> {
+  const response = await requestWakanowBookingWithBrowser({
+    proxyUrl: undefined,
+    path: `/api/booking${input.path}`,
+    method: input.method,
+    headers: input.headers,
+    body: input.body,
+  });
+
+  return parseJsonResponse<T>({
+    stage: input.stage,
     status: response.status,
     contentType: "application/json",
     text: response.text,

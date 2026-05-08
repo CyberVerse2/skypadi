@@ -97,13 +97,33 @@ export async function validateWakanowBookingWithBrowser(input: {
   proxyUrl: string | undefined;
   validationBody: Record<string, unknown>;
 }): Promise<{ status: number; text: string; cookieHeader?: string }> {
+  return requestWakanowBookingWithBrowser({
+    proxyUrl: input.proxyUrl,
+    path: "/api/booking/Booking/Validate",
+    method: "POST",
+    body: input.validationBody,
+  });
+}
+
+export async function requestWakanowBookingWithBrowser(input: {
+  proxyUrl: string | undefined;
+  path: string;
+  method: "GET" | "POST";
+  headers?: Record<string, string>;
+  body?: unknown;
+}): Promise<{ status: number; text: string; cookieHeader?: string }> {
   const profileKey = browserProfileKey(input.proxyUrl);
   return withBrowserProfileLock(profileKey, async () => {
     const session = await getLiveBrowserSession(profileKey, input.proxyUrl);
     const page = await session.context.newPage();
 
     try {
-      const response = await runSameOriginBookingValidate(page, input.validationBody);
+      const response = await runSameOriginBookingRequest(page, {
+        path: input.path,
+        method: input.method,
+        headers: input.headers,
+        body: input.body,
+      });
       const cookies = await session.context.cookies([
         wakanowConfig.webOrigin,
         wakanowConfig.search.apiBaseUrl,
@@ -120,11 +140,17 @@ export async function validateWakanowBookingWithBrowser(input: {
   });
 }
 
-async function runSameOriginBookingValidate(
+async function runSameOriginBookingRequest(
   page: Page,
-  validationBody: Record<string, unknown>
+  request: {
+    path: string;
+    method: "GET" | "POST";
+    headers?: Record<string, string>;
+    body?: unknown;
+  }
 ): Promise<{ status: number; text: string }> {
-  await page.goto(`${wakanowConfig.booking.apiBaseUrl}/Booking/Validate`, {
+  const path = request.path.startsWith("/") ? request.path : `/${request.path}`;
+  await page.goto(`${wakanowConfig.booking.apiBaseUrl}${path.replace(/^\/api\/booking/, "")}`, {
     waitUntil: "commit",
     timeout: wakanowConfig.cookieWarmupTimeoutMs,
   }).catch(() => undefined);
@@ -132,22 +158,23 @@ async function runSameOriginBookingValidate(
   await page.waitForTimeout(1_000);
 
   return page.evaluate(
-    async ({ validationBody }) => {
-      const response = await fetch("/api/booking/Booking/Validate", {
-        method: "POST",
+    async ({ request, path }) => {
+      const response = await fetch(path, {
+        method: request.method,
         redirect: "manual",
         headers: {
           "Accept": "application/json, text/plain, */*",
           "Accept-Language": "en-NG",
-          "Content-Type": "application/json",
+          ...(request.body === undefined ? {} : { "Content-Type": "application/json" }),
+          ...(request.headers ?? {}),
         },
         credentials: "include",
-        body: JSON.stringify(validationBody),
+        body: request.body === undefined ? undefined : JSON.stringify(request.body),
       });
 
       return { status: response.status, text: await response.text() };
     },
-    { validationBody }
+    { request, path }
   );
 }
 
